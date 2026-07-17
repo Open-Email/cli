@@ -1,0 +1,102 @@
+# goreleaser configuration for the openemail CLI.
+# https://goreleaser.com — run `goreleaser release --snapshot --clean` to dry-run.
+version: 2
+
+project_name: openemail
+
+before:
+  hooks:
+    - go mod tidy
+    - mkdir -p completions
+    - sh -c "go run ./cmd/openemail completion bash > completions/openemail.bash"
+    - sh -c "go run ./cmd/openemail completion zsh  > completions/openemail.zsh"
+    - sh -c "go run ./cmd/openemail completion fish > completions/openemail.fish"
+
+builds:
+  - id: openemail
+    main: ./cmd/openemail
+    binary: openemail
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/openemail/openemail-cli/internal/cli.Version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    ids: [openemail]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+      - completions/*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+brews:
+  - name: openemail
+    ids: [default]
+    repository:
+      owner: openemail
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/openemail/openemail-cli
+    description: Command-line client for the OpenEmail platform
+    license: MIT
+    test: |
+      system "#{bin}/openemail", "version"
+    install: |
+      bin.install "openemail"
+      bash_completion.install "completions/openemail.bash" => "openemail"
+      zsh_completion.install "completions/openemail.zsh" => "_openemail"
+      fish_completion.install "completions/openemail.fish"
+
+scoops:
+  - repository:
+      owner: openemail
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/openemail/openemail-cli
+    description: Command-line client for the OpenEmail platform
+    license: MIT
+
+nfpms:
+  - id: packages
+    package_name: openemail
+    vendor: OpenEmail
+    homepage: https://github.com/openemail/openemail-cli
+    maintainer: OpenEmail <dev@open.email>
+    description: Command-line client for the OpenEmail platform
+    license: MIT
+    formats: [deb, rpm]
+    contents:
+      - src: completions/openemail.bash
+        dst: /usr/share/bash-completion/completions/openemail
+      - src: completions/openemail.zsh
+        dst: /usr/share/zsh/site-functions/_openemail
+      - src: completions/openemail.fish
+        dst: /usr/share/fish/vendor_completions.d/openemail.fish
+
+release:
+  github:
+    owner: openemail
+    name: openemail-cli
+  draft: false
+  prerelease: auto
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

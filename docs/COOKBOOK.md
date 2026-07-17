@@ -1,0 +1,110 @@
+# Cookbook
+
+Worked flows. Set a default mailbox first so `-m` is implicit:
+
+```sh
+openemail login
+openemail mailboxes use alice@example.com
+```
+
+## Send a message
+
+```sh
+# Compose a simple text message.
+openemail send --from alice@example.com --to bob@example.com \
+  --subject "Lunch?" --text "Are you free Thursday?"
+
+# Send a fully-formed MIME message (raw mode) and keep a Sent copy.
+openemail send --from alice@example.com --to bob@example.com --file message.eml --save
+cat message.eml | openemail send --from alice@example.com --to bob@example.com
+```
+
+The result is one of: `delivered` (stored locally), `filtered` (the recipient's
+Sieve discarded it — accepted, nothing stored), or `queued` (webhook / remote
+forward / group / relay — the final outcome shows up in the traffic log). Each
+send generates a ULID `X-Delivery-Id` and reuses it on retry, so a 5xx never
+duplicates the message.
+
+## Tail live events
+
+```sh
+# JSON lines to stdout; a reminder + status on stderr. Ctrl-C to stop.
+openemail watch
+
+# One-shot (no auto-reconnect):
+openemail watch --reconnect=false
+```
+
+Events are **signals only** (identifiers, never content). On each frame, re-sync
+via the REST commands (`messages get`, `threads get`, …). The session auto-renews
+across the 12h server TTL.
+
+## Migrate mail in with IMAP APPEND
+
+```sh
+# Import a maildir, preserving each message's original date.
+for f in ~/Maildir/cur/*; do
+  ts=$(date -r "$f" +%s)
+  openemail messages append --label Archive --internaldate "$ts" -f "$f"
+done
+```
+
+APPEND bypasses the routing ladder and never dedups — two identical appends are
+two messages. Pass `--filter` to run the mailbox's active Sieve script on the
+imported message.
+
+## Manage Sieve filters
+
+```sh
+openemail sieve capabilities                       # supported extensions + limits
+openemail sieve check -f filter.sieve              # dry-run compile (exit 1 if invalid)
+openemail sieve scripts put main -f filter.sieve   # 422 shows the line:col on error
+openemail sieve activate main
+openemail sieve active                             # which script is active
+openemail sieve scripts get main -o backup.sieve
+```
+
+## Rotate a webhook route's URL (keep the secret)
+
+```sh
+# Omitting --webhook-secret preserves the existing signing secret (write-only).
+openemail routes update hook@example.com --type webhook \
+  --webhook-url https://new.example.com/hook
+
+# Change or clear the secret explicitly:
+openemail routes update hook@example.com --type webhook \
+  --webhook-url https://new.example.com/hook --webhook-secret 's3cr3t'
+openemail routes update hook@example.com --type webhook \
+  --webhook-url https://new.example.com/hook --clear-webhook-secret
+```
+
+## Configure a POP3 pickup source
+
+```sh
+openemail pickups create --host pop.gmail.com --port 995 --username you@gmail.com \
+  --tls tls --interval 15 --name "gmail import"     # password prompted (or --password)
+openemail pickups list
+openemail pickups run <id>                          # fetch now
+openemail pickups update <id> --disabled            # pause it
+```
+
+The password is write-only — never returned, and omitted on update to keep the
+current one.
+
+## Empty the trash / purge
+
+```sh
+openemail messages list --trash                     # what's in the trash
+openemail messages restore <id>                     # undo one soft-delete
+openemail messages trash empty                       # purge all (typed confirm)
+openemail messages delete <id> --purge               # hard-delete one (typed confirm)
+```
+
+## Scripting with a system key (operator)
+
+```sh
+export OPENEMAIL_API_KEY=oek_system_…
+openemail admin verify-login alice@example.com --password …   # check IMAP/SMTP creds
+openemail admin reindex <mailboxId>                            # rebuild the FTS index
+openemail --json api GET /accounts | jq '.accounts[].id'      # any route + jq
+```

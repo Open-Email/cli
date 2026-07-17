@@ -1,0 +1,8 @@
+# Built binaries
+/openemail
+/dist/
+*.exe
+
+# Local scratch
+*.out
+bin/openemail
