@@ -8,7 +8,10 @@ LDFLAGS     := -s -w -X $(PKG)/internal/cli.Version=$(VERSION)
 OPENEMAIL_API_URL ?= http://localhost:8787
 export OPENEMAIL_API_URL
 
-.PHONY: build install test vet fmt lint tidy clean snapshot integration live completions help
+# Sibling core checkout, source of the vendored OpenAPI snapshot.
+CORE_DIR ?= ../openemail-core
+
+.PHONY: build install test vet fmt lint tidy clean snapshot sync-spec integration live completions help
 
 build: ## Build the binary into ./bin
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/openemail
@@ -35,6 +38,11 @@ clean: ## Remove build artifacts
 
 snapshot: ## Dry-run a full goreleaser build (needs goreleaser installed)
 	goreleaser release --snapshot --clean
+
+sync-spec: ## Refresh the vendored openapi.snapshot.json from core ($(CORE_DIR); run `npm run spec` there first)
+	@test -f $(CORE_DIR)/openapi.snapshot.json || { echo "not found: $(CORE_DIR)/openapi.snapshot.json (set CORE_DIR or run 'npm run spec' in core)"; exit 1; }
+	cp $(CORE_DIR)/openapi.snapshot.json ./openapi.snapshot.json
+	@echo "vendored openapi.snapshot.json from $(CORE_DIR)"
 
 completions: build ## Generate shell completions into ./completions
 	@mkdir -p completions

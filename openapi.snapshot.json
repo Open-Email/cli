@@ -1,0 +1,6596 @@
+{
+  "components": {
+    "parameters": {},
+    "schemas": {
+      "Account": {
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "maxMailboxes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "maxMailboxes",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "AccountCreated": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "maxMailboxes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "maxMailboxes"
+        ],
+        "type": "object"
+      },
+      "ApiKey": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "role": {
+            "description": "system | account",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "accountId",
+          "createdAt",
+          "lastUsedAt",
+          "revokedAt"
+        ],
+        "type": "object"
+      },
+      "ApiKeyCreated": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "description": "system | account",
+            "type": "string"
+          },
+          "token": {
+            "description": "Plaintext API key — returned exactly once",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "accountId",
+          "token"
+        ],
+        "type": "object"
+      },
+      "AppendResult": {
+        "oneOf": [
+          {
+            "properties": {
+              "duplicate": {
+                "type": "boolean"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "delivered"
+                ],
+                "type": "string"
+              },
+              "threadId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "uid": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "uidValidity": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "status",
+              "messageId",
+              "uid",
+              "uidValidity",
+              "threadId",
+              "duplicate"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "deliveryId": {
+                "type": "string"
+              },
+              "redirected": {
+                "type": "boolean"
+              },
+              "status": {
+                "enum": [
+                  "filtered"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "deliveryId",
+              "redirected"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CreatedLabel": {
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uidValidity": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "uidValidity"
+        ],
+        "type": "object"
+      },
+      "Credential": {
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "password | app_password",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revokedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "username",
+          "name",
+          "createdAt",
+          "lastUsedAt",
+          "revokedAt"
+        ],
+        "type": "object"
+      },
+      "CredentialCreated": {
+        "oneOf": [
+          {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "password"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "username",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "app_password"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "token": {
+                "description": "Plaintext app password — returned exactly once",
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "username",
+              "name",
+              "token"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "DeletedMailbox": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deletedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quotaBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "restorable": {
+            "type": "boolean"
+          },
+          "restorableUntil": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "primaryAddress",
+          "quotaBytes",
+          "deletedAt",
+          "restorable"
+        ],
+        "type": "object"
+      },
+      "DeletedResult": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "DeliverResult": {
+        "oneOf": [
+          {
+            "properties": {
+              "duplicate": {
+                "type": "boolean"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "sentCopy": {
+                "enum": [
+                  "saved",
+                  "duplicate",
+                  "over_quota"
+                ],
+                "type": "string"
+              },
+              "sentThreadId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "delivered"
+                ],
+                "type": "string"
+              },
+              "threadId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "uid": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "uidValidity": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "status",
+              "messageId",
+              "uid",
+              "uidValidity",
+              "threadId",
+              "duplicate"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "deliveryId": {
+                "type": "string"
+              },
+              "sentCopy": {
+                "enum": [
+                  "saved",
+                  "duplicate",
+                  "over_quota"
+                ],
+                "type": "string"
+              },
+              "sentThreadId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "filtered"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "deliveryId"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "deliveryId": {
+                "type": "string"
+              },
+              "sentCopy": {
+                "enum": [
+                  "saved",
+                  "duplicate",
+                  "over_quota"
+                ],
+                "type": "string"
+              },
+              "sentThreadId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "queued"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "deliveryId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "DnsStatus": {
+        "properties": {
+          "dkim": {
+            "type": "boolean"
+          },
+          "dmarc": {
+            "type": "boolean"
+          },
+          "mx": {
+            "type": "boolean"
+          },
+          "spf": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Domain": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "aliasOf": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canReceive": {
+            "type": "boolean"
+          },
+          "canSend": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "dnsCheckedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "dnsStatus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DnsStatus"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "fbl": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "domain",
+          "enabled",
+          "canSend",
+          "canReceive",
+          "aliasOf",
+          "fbl",
+          "dnsStatus",
+          "dnsCheckedAt",
+          "accountId",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "DomainTraffic": {
+        "properties": {
+          "byOutcome": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "estimated": {
+            "type": "boolean"
+          },
+          "range": {
+            "type": "string"
+          },
+          "retentionDays": {
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TrafficRow"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "properties": {
+              "bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "events": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "events",
+              "bytes"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "domain",
+          "range",
+          "totals",
+          "byOutcome",
+          "rows",
+          "estimated",
+          "retentionDays"
+        ],
+        "type": "object"
+      },
+      "EmptyTrashResult": {
+        "properties": {
+          "purged": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "purged"
+        ],
+        "type": "object"
+      },
+      "ExpungeNotice": {
+        "properties": {
+          "expunged": {
+            "type": "boolean"
+          },
+          "expungedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "purgeAfter": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expunged",
+          "expungedAt",
+          "purgeAfter"
+        ],
+        "type": "object"
+      },
+      "ExpungeResult": {
+        "properties": {
+          "expunged": {
+            "items": {
+              "$ref": "#/components/schemas/ExpungedUID"
+            },
+            "type": "array"
+          },
+          "messagesExpunged": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expunged",
+          "messagesExpunged"
+        ],
+        "type": "object"
+      },
+      "ExpungedMessageMeta": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MessageMeta"
+          },
+          {
+            "properties": {
+              "expungedAt": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "expungedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "purgeAfter": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "expungedAt",
+              "purgeAfter",
+              "expungedLabels"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ExpungedUID": {
+        "properties": {
+          "messageId": {
+            "type": "string"
+          },
+          "uid": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "uid",
+          "messageId"
+        ],
+        "type": "object"
+      },
+      "LabelInfo": {
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "messageCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uidNext": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uidValidity": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unseenCount": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "uidValidity",
+          "uidNext",
+          "messageCount",
+          "unseenCount"
+        ],
+        "type": "object"
+      },
+      "Mailbox": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quotaBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "primaryAddress",
+          "quotaBytes",
+          "accountId",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "MailboxCreated": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quotaBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "primaryAddress",
+          "quotaBytes",
+          "accountId"
+        ],
+        "type": "object"
+      },
+      "MailboxDeleteResult": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "purged": {
+            "type": "boolean"
+          },
+          "restorable": {
+            "type": "boolean"
+          },
+          "restorableUntil": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted",
+          "restorable"
+        ],
+        "type": "object"
+      },
+      "MailboxRestoreResult": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "addressChanged": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quotaBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "restored": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "restored",
+          "id",
+          "accountId",
+          "quotaBytes",
+          "primaryAddress",
+          "addressChanged"
+        ],
+        "type": "object"
+      },
+      "MailboxWithStats": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Mailbox"
+          },
+          {
+            "properties": {
+              "expungedBytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "expungedCount": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "messageCount": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "usedBytes": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
+      "MessageDeleteResult": {
+        "properties": {
+          "blobOrphaned": {
+            "type": "boolean"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "expunged": {
+            "type": "boolean"
+          },
+          "expungedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "purgeAfter": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "purged": {
+            "type": "boolean"
+          },
+          "removedFromLabel": {
+            "description": "The label detached from (its name)",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MessageLabel": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "uid": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uidValidity": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "uid",
+          "uidValidity"
+        ],
+        "type": "object"
+      },
+      "MessageMeta": {
+        "properties": {
+          "blobGen": {
+            "type": "string"
+          },
+          "blobHash": {
+            "type": "string"
+          },
+          "deliveryMeta": {
+            "additionalProperties": {},
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "envelopeFrom": {
+            "type": "string"
+          },
+          "envelopeTo": {
+            "type": "string"
+          },
+          "flags": {
+            "description": "seen | answered | flagged | draft | deleted",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inReplyTo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/MessageLabel"
+            },
+            "type": "array"
+          },
+          "messageIdHeader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "receivedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "referencesIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sentAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "threadId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uid": {
+            "description": "Per-label UID — present only in a label's UID listing",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "labels",
+          "flags",
+          "envelopeFrom",
+          "envelopeTo",
+          "subject",
+          "messageIdHeader",
+          "threadId",
+          "inReplyTo",
+          "referencesIds",
+          "sentAt",
+          "receivedAt",
+          "size",
+          "snippet",
+          "blobHash",
+          "blobGen",
+          "deliveryMeta"
+        ],
+        "type": "object"
+      },
+      "MessageRestoreResult": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/MessageMeta"
+          },
+          "restored": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "restored",
+          "message"
+        ],
+        "type": "object"
+      },
+      "MessageUpdateResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/MessageMeta"
+          },
+          {
+            "$ref": "#/components/schemas/ExpungeNotice"
+          }
+        ]
+      },
+      "MimeBatch": {
+        "properties": {
+          "mime": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MimeEntry"
+                },
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "mime"
+        ],
+        "type": "object"
+      },
+      "MimeEntry": {
+        "properties": {
+          "envelope": {},
+          "structure": {},
+          "ver": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ver"
+        ],
+        "type": "object"
+      },
+      "Pattern": {
+        "properties": {
+          "aliasAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "destinationType": {
+            "description": "mailbox | webhook | remote | alias",
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mailboxId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paced": {
+            "type": "boolean"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "remoteAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "webhookUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "pattern",
+          "priority",
+          "destinationType",
+          "mailboxId",
+          "webhookUrl",
+          "remoteAddress",
+          "aliasAddress",
+          "paced",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "PickupRunResult": {
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "PickupSource": {
+        "properties": {
+          "consecutiveFailures": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deleteAfterFetch": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intervalMinutes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastRunAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastStatus": {
+            "description": "ok | partial | auth_failed | error",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mailboxId": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "port": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tls": {
+            "description": "tls | starttls",
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mailboxId",
+          "name",
+          "host",
+          "port",
+          "tls",
+          "username",
+          "intervalMinutes",
+          "deleteAfterFetch",
+          "enabled",
+          "lastRunAt",
+          "lastStatus",
+          "lastError",
+          "consecutiveFailures",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "RecipientAccepted": {
+        "properties": {
+          "accepted": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "RenamedResult": {
+        "properties": {
+          "renamed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "renamed"
+        ],
+        "type": "object"
+      },
+      "ReplyContext": {
+        "properties": {
+          "inReplyTo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "inReplyTo",
+          "references",
+          "subject",
+          "to"
+        ],
+        "type": "object"
+      },
+      "RevokedResult": {
+        "properties": {
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "Route": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "destinationType": {
+            "description": "mailbox | webhook | remote | group",
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "mailboxId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paced": {
+            "type": "boolean"
+          },
+          "remoteAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "webhookUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "domain",
+          "destinationType",
+          "mailboxId",
+          "webhookUrl",
+          "remoteAddress",
+          "paced",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "RouteMember": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "memberAddress": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "memberAddress",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "RouteMemberRef": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "memberAddress": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "memberAddress"
+        ],
+        "type": "object"
+      },
+      "SieveActivated": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "active"
+        ],
+        "type": "object"
+      },
+      "SieveActiveName": {
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "SieveCapabilities": {
+        "properties": {
+          "implementation": {
+            "type": "string"
+          },
+          "maxScriptSize": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxScripts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sieve": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "implementation",
+          "sieve",
+          "maxScripts",
+          "maxScriptSize"
+        ],
+        "type": "object"
+      },
+      "SieveCheckResult": {
+        "properties": {
+          "col": {
+            "type": "integer"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "valid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "type": "object"
+      },
+      "SieveDeactivated": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "type": "object"
+      },
+      "SieveDeleted": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "SievePutResult": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stored": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "stored",
+          "created"
+        ],
+        "type": "object"
+      },
+      "SieveRenamed": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "renamed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "renamed"
+        ],
+        "type": "object"
+      },
+      "SieveScript": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "active",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "SieveScriptBody": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "script": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "script",
+          "active",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ThreadListItem": {
+        "properties": {
+          "exemplar": {
+            "$ref": "#/components/schemas/MessageMeta"
+          },
+          "lastReceivedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "messageCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId",
+          "messageCount",
+          "lastReceivedAt",
+          "exemplar"
+        ],
+        "type": "object"
+      },
+      "ThreadView": {
+        "properties": {
+          "canonicalThreadId": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messageCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageMeta"
+            },
+            "type": "array"
+          },
+          "replyContext": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyContext"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId",
+          "messages",
+          "cursor",
+          "messageCount",
+          "replyContext"
+        ],
+        "type": "object"
+      },
+      "TrafficRow": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "events": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "routeKind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "routeKind",
+          "events",
+          "bytes"
+        ],
+        "type": "object"
+      },
+      "VerifyResult": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canSend": {
+            "type": "boolean"
+          },
+          "credentialId": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "password | app_password",
+            "type": "string"
+          },
+          "mailboxId": {
+            "type": "string"
+          },
+          "permittedFrom": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mailboxId",
+          "accountId",
+          "credentialId",
+          "kind",
+          "canSend",
+          "permittedFrom"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "description": "API key (oek_…) or mailbox app password (oemp_…)",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Message store + routing core: mailbox Durable Objects, R2 blobs, D1 directory. Every route except GET /api/v1/health requires a bearer credential (401 unauthorized without one); mailbox-scoped app passwords are refused on directory routes with 403 insufficient_scope. Errors always answer { error: \"snake_case_code\", ... } — schema failures as { error: \"validation_failed\", issues }.",
+    "title": "openemail-core",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/accounts": {
+      "get": {
+        "operationId": "get_AccountList",
+        "parameters": [
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accounts": {
+                      "items": {
+                        "$ref": "#/components/schemas/Account"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accounts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Accounts page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "List accounts (system callers only)",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "post": {
+        "operationId": "post_AccountCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "maxMailboxes": {
+                    "description": "Cap on mailboxes this account may create (null/omitted = unlimited). Enforced for account-key callers; system callers bypass",
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "name": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCreated"
+                }
+              }
+            },
+            "description": "Created account"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Create an account (system callers only)",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}": {
+      "get": {
+        "operationId": "get_AccountGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            },
+            "description": "Account"
+          },
+          "404": {
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get an account (system, or the account itself)",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/api-keys": {
+      "get": {
+        "operationId": "get_ApiKeyList",
+        "parameters": [
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "apiKeys": {
+                      "items": {
+                        "$ref": "#/components/schemas/ApiKey"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "apiKeys"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "API keys page (newest first); nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          }
+        },
+        "summary": "List API keys (never returns tokens; account callers see only their own)",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "post": {
+        "operationId": "post_ApiKeyCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "system",
+                      "account"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            },
+            "description": "Created key with one-time plaintext token"
+          },
+          "400": {
+            "description": "validation_failed, account_id_required, or unknown_account"
+          },
+          "403": {
+            "description": "system_credentials_required or cannot_mint_for_other_account"
+          }
+        },
+        "summary": "Create an API key (plaintext returned exactly once). Account callers mint keys for their own account; only system callers may mint system keys",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/api-keys/{apiKeyId}": {
+      "delete": {
+        "operationId": "delete_ApiKeyDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "apiKeyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokedResult"
+                }
+              }
+            },
+            "description": "Revocation result"
+          },
+          "404": {
+            "description": "API key not found or not accessible to this principal"
+          }
+        },
+        "summary": "Revoke an API key",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/auth/verify": {
+      "post": {
+        "operationId": "post_AuthVerify",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "password": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "username": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResult"
+                }
+              }
+            },
+            "description": "Credential is valid; returns mailbox identity and sendability (canSend, permittedFrom). Policy (e.g. a receive-only domain) NEVER rejects a valid login — it only empties permittedFrom"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "401": {
+            "description": "invalid_credentials"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Verify a username/password against mailbox credentials (system callers only); returns mailbox identity plus permitted envelope-From addresses",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/deliver/check": {
+      "get": {
+        "operationId": "get_DeliverCheck",
+        "parameters": [
+          {
+            "description": "RCPT TO address being checked",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "RCPT TO address being checked",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "SMTP MAIL FROM (unused today — the verdict is sender-independent)",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "SMTP MAIL FROM (unused today — the verdict is sender-independent)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Connecting client IP (unused today)",
+            "in": "query",
+            "name": "ip",
+            "required": false,
+            "schema": {
+              "description": "Connecting client IP (unused today)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Client reverse-DNS name (unused today)",
+            "in": "query",
+            "name": "ptr",
+            "required": false,
+            "schema": {
+              "description": "Client reverse-DNS name (unused today)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Client HELO/EHLO hostname (unused today)",
+            "in": "query",
+            "name": "helo",
+            "required": false,
+            "schema": {
+              "description": "Client HELO/EHLO hostname (unused today)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientAccepted"
+                }
+              }
+            },
+            "description": "Recipient is deliverable — the MTA accepts the RCPT"
+          },
+          "403": {
+            "description": "receiving_disabled (address resolves but the domain is disabled or not receiving) or insufficient_scope (mailbox principals never check) — the MTA rejects permanently"
+          },
+          "404": {
+            "description": "unknown_address — no route resolves (also any recipient outside an account caller's own domains) — the MTA rejects permanently"
+          }
+        },
+        "summary": "RCPT-time recipient check (advisory pre-flight of /deliver/inbound)",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
+    "/api/v1/deliver/inbound": {
+      "post": {
+        "operationId": "post_DeliverInbound",
+        "parameters": [
+          {
+            "description": "Caller's transaction id — idempotency key",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": true,
+            "schema": {
+              "description": "Caller's transaction id — idempotency key",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "SMTP MAIL FROM. The null return path (MAIL FROM:<>) is sent as '<>' or an empty value — bounces/DSNs must be deliverable",
+            "in": "header",
+            "name": "x-envelope-from",
+            "required": true,
+            "schema": {
+              "description": "SMTP MAIL FROM. The null return path (MAIL FROM:<>) is sent as '<>' or an empty value — bounces/DSNs must be deliverable",
+              "type": "string"
+            }
+          },
+          {
+            "description": "SMTP RCPT TO",
+            "in": "header",
+            "name": "x-envelope-to",
+            "required": true,
+            "schema": {
+              "description": "SMTP RCPT TO",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Host the message was received by",
+            "in": "header",
+            "name": "x-source-host",
+            "required": false,
+            "schema": {
+              "description": "Host the message was received by",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Free-form JSON delivery context, ≤ 8 KB",
+            "in": "header",
+            "name": "x-delivery-meta",
+            "required": false,
+            "schema": {
+              "description": "Free-form JSON delivery context, ≤ 8 KB",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Body size in bytes — required (411 without it)",
+            "in": "header",
+            "name": "content-length",
+            "required": true,
+            "schema": {
+              "description": "Body size in bytes — required (411 without it)",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "message/rfc822": {
+              "schema": {
+                "description": "Raw RFC 5322 message bytes (streamed; never buffered)",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverResult"
+                }
+              }
+            },
+            "description": "Delivered to a local mailbox, or accepted-then-discarded by a Sieve filter (status: filtered)"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverResult"
+                }
+              }
+            },
+            "description": "Staged and queued for webhook, forwarding, or a Sieve redirect"
+          },
+          "400": {
+            "description": "Permanent — malformed request: missing_delivery_id, invalid delivery id, invalid_envelope, delivery_meta_too_large/_not_object/_invalid_json, empty_body"
+          },
+          "403": {
+            "description": "Permanent — insufficient_scope (mailbox principals never deliver) or receiving_disabled"
+          },
+          "404": {
+            "description": "Permanent — unknown_address (no route resolves; also any recipient outside an account caller's own domains) or mailbox_gone (deleted mid-flight)"
+          },
+          "411": {
+            "description": "Permanent — Content-Length required"
+          },
+          "413": {
+            "description": "Permanent — body exceeds MAX_MESSAGE_BYTES"
+          },
+          "500": {
+            "description": "Temporary — internal (e.g. inbox label missing)"
+          },
+          "503": {
+            "description": "Temporary — superseded/reaped: this attempt lost its pending intent; retry with the same X-Delivery-Id"
+          },
+          "507": {
+            "description": "Temporary — recipient over quota"
+          }
+        },
+        "summary": "Deliver an inbound message (raw MIME body, one recipient per call)",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
+    "/api/v1/deliver/outbound": {
+      "post": {
+        "operationId": "post_DeliverOutbound",
+        "parameters": [
+          {
+            "description": "Save a Sent copy in the sender's mailbox",
+            "in": "query",
+            "name": "save",
+            "required": false,
+            "schema": {
+              "description": "Save a Sent copy in the sender's mailbox",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "On terminal relay failure (permanent MTA rejection or retry exhaustion), deliver a bounce (DSN) into the sender's mailbox. For submission-server callers with no synchronous outcome channel; leave off if you handle relay failures yourself.",
+            "in": "query",
+            "name": "bounce",
+            "required": false,
+            "schema": {
+              "description": "On terminal relay failure (permanent MTA rejection or retry exhaustion), deliver a bounce (DSN) into the sender's mailbox. For submission-server callers with no synchronous outcome channel; leave off if you handle relay failures yourself.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller's transaction id — idempotency key",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": true,
+            "schema": {
+              "description": "Caller's transaction id — idempotency key",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sender — must resolve to a local mailbox",
+            "in": "header",
+            "name": "x-envelope-from",
+            "required": true,
+            "schema": {
+              "description": "Sender — must resolve to a local mailbox",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Recipient — exactly one",
+            "in": "header",
+            "name": "x-envelope-to",
+            "required": true,
+            "schema": {
+              "description": "Recipient — exactly one",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Host the message was submitted to",
+            "in": "header",
+            "name": "x-source-host",
+            "required": false,
+            "schema": {
+              "description": "Host the message was submitted to",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Free-form JSON delivery context, ≤ 8 KB",
+            "in": "header",
+            "name": "x-delivery-meta",
+            "required": false,
+            "schema": {
+              "description": "Free-form JSON delivery context, ≤ 8 KB",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Body size in bytes — required (411 without it)",
+            "in": "header",
+            "name": "content-length",
+            "required": true,
+            "schema": {
+              "description": "Body size in bytes — required (411 without it)",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "message/rfc822": {
+              "schema": {
+                "description": "Raw RFC 5322 message bytes (streamed; never buffered)",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverResult"
+                }
+              }
+            },
+            "description": "Recipient is local: durably delivered, or accepted-then-discarded by the recipient's Sieve filter (status: filtered)"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverResult"
+                }
+              }
+            },
+            "description": "Queued for relay, forwarding, webhook, or a recipient's Sieve redirect"
+          },
+          "400": {
+            "description": "Permanent — malformed request: missing_delivery_id, invalid delivery id, invalid_envelope, invalid_save/invalid_bounce, delivery_meta_too_large/_not_object/_invalid_json, empty_body"
+          },
+          "403": {
+            "description": "Permanent — sender_not_owned (one indistinguishable reply for every not-yours case), sender_not_local, sending_disabled, or receiving_disabled (local recipient)"
+          },
+          "404": {
+            "description": "Permanent — mailbox_gone (sender's or local recipient's mailbox deleted mid-flight)"
+          },
+          "411": {
+            "description": "Permanent — Content-Length required"
+          },
+          "413": {
+            "description": "Permanent — body exceeds MAX_MESSAGE_BYTES"
+          },
+          "500": {
+            "description": "Temporary — internal (e.g. sent/inbox label missing)"
+          },
+          "503": {
+            "description": "Temporary — superseded/reaped (lost pending intent) or staging_missing; retry with the same X-Delivery-Id"
+          },
+          "507": {
+            "description": "Temporary — local recipient over quota"
+          }
+        },
+        "summary": "Submit an outbound message (raw MIME body, one recipient per call)",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
+    "/api/v1/deliver/pickup/{sourceId}": {
+      "post": {
+        "operationId": "post_PickupDeliver",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted (delivered / duplicate / filtered) — Poppy may DELE"
+          },
+          "400": {
+            "description": "empty_body / bad length"
+          },
+          "403": {
+            "description": "system credentials required"
+          },
+          "404": {
+            "description": "unknown source / mailbox_gone — keep upstream"
+          },
+          "500": {
+            "description": "internal (inbox label missing) — keep upstream"
+          },
+          "503": {
+            "description": "superseded/reaped — keep upstream, retry"
+          },
+          "507": {
+            "description": "over_quota — keep upstream, retry"
+          }
+        },
+        "summary": "Ingest a Poppy-forwarded message into a pickup source's mailbox (system only)",
+        "tags": [
+          "Pickups"
+        ]
+      }
+    },
+    "/api/v1/domains": {
+      "get": {
+        "operationId": "get_DomainList",
+        "parameters": [
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "domains": {
+                      "items": {
+                        "$ref": "#/components/schemas/Domain"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "domains"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Domains page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          }
+        },
+        "summary": "List domains (account callers see only their own)",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "post": {
+        "operationId": "post_DomainCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "aliasOf": {
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "canReceive": {
+                    "type": "boolean"
+                  },
+                  "canSend": {
+                    "type": "boolean"
+                  },
+                  "domain": {
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "fbl": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "domain"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                }
+              }
+            },
+            "description": "Created domain"
+          },
+          "400": {
+            "description": "validation_failed, unknown_account, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+          },
+          "409": {
+            "description": "domain_exists (caller already owns it), domain_unavailable (identical for every other conflict — no tenant enumeration), or alias_conflict"
+          }
+        },
+        "summary": "Create a domain (owned by the calling account; system callers may pass accountId)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}": {
+      "delete": {
+        "operationId": "delete_DomainDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "domain_has_routes, domain_has_patterns, or domain_is_alias_target"
+          }
+        },
+        "summary": "Delete a domain (fails while routes, patterns, or alias domains reference it)",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "get": {
+        "operationId": "get_DomainGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                }
+              }
+            },
+            "description": "Domain"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get a domain",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_DomainUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "aliasOf": {
+                    "minLength": 3,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "canReceive": {
+                    "type": "boolean"
+                  },
+                  "canSend": {
+                    "type": "boolean"
+                  },
+                  "dnsStatus": {
+                    "properties": {
+                      "dkim": {
+                        "type": "boolean"
+                      },
+                      "dmarc": {
+                        "type": "boolean"
+                      },
+                      "mx": {
+                        "type": "boolean"
+                      },
+                      "spf": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "fbl": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                }
+              }
+            },
+            "description": "Updated domain"
+          },
+          "400": {
+            "description": "validation_failed, empty_patch, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "domain_in_use, domain_is_alias_target, alias_fbl_exclusive, or alias_conflict"
+          }
+        },
+        "summary": "Update domain state (enabled/canSend/canReceive/fbl/dnsStatus)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/traffic": {
+      "get": {
+        "operationId": "get_DomainTraffic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainTraffic"
+                }
+              }
+            },
+            "description": "Counts and bytes by outcome and route kind over the range"
+          },
+          "400": {
+            "description": "validation_failed — unknown range value"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          },
+          "502": {
+            "description": "analytics_query_failed — upstream Analytics Engine error"
+          },
+          "503": {
+            "description": "analytics_unavailable — no analytics token configured"
+          }
+        },
+        "summary": "Traffic aggregates for a domain (sampled estimates, ~90-day retention)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "get_Health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "enum": [
+                        true
+                      ],
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Service is up"
+          }
+        },
+        "summary": "Liveness check",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/mailboxes": {
+      "get": {
+        "operationId": "get_MailboxList",
+        "parameters": [
+          {
+            "description": "deleted: list restorable tombstones instead of live mailboxes",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "description": "deleted: list restorable tombstones instead of live mailboxes",
+              "enum": [
+                "deleted"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "mailboxes": {
+                          "items": {
+                            "$ref": "#/components/schemas/Mailbox"
+                          },
+                          "type": "array"
+                        },
+                        "nextCursor": {
+                          "description": "Opaque cursor for the next page; absent on the last page",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mailboxes"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "mailboxes": {
+                          "items": {
+                            "$ref": "#/components/schemas/DeletedMailbox"
+                          },
+                          "type": "array"
+                        },
+                        "nextCursor": {
+                          "description": "Opaque cursor for the next page; absent on the last page",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mailboxes"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Mailboxes page (live rows, or restorable tombstones when state=deleted); nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          }
+        },
+        "summary": "List mailboxes (account callers see only their own). state=deleted lists restorable tombstones instead — deleted mailboxes still inside the undo window",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "post": {
+        "operationId": "post_MailboxCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountId": {
+                    "description": "Owning account (system callers only; account callers always own their mailboxes)",
+                    "type": "string"
+                  },
+                  "primaryAddress": {
+                    "description": "Display/attribution address; must be on a non-alias directory domain owned by the mailbox's account. No route is created — bind addresses via the routes API. On update, null clears it",
+                    "format": "email",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "quotaBytes": {
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxCreated"
+                }
+              }
+            },
+            "description": "Created mailbox"
+          },
+          "400": {
+            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, or domain_is_alias"
+          },
+          "403": {
+            "description": "mailbox_limit_reached — the account's max_mailboxes cap"
+          }
+        },
+        "summary": "Create a mailbox",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}": {
+      "delete": {
+        "operationId": "delete_MailboxDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "true = purge: skip the 7-day undo window, wipe the store once the ~25 min straggler floor has elapsed, and refuse restore. Irreversible.",
+            "in": "query",
+            "name": "purge",
+            "required": false,
+            "schema": {
+              "description": "true = purge: skip the 7-day undo window, wipe the store once the ~25 min straggler floor has elapsed, and refuse restore. Irreversible.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxDeleteResult"
+                }
+              }
+            },
+            "description": "Deletion result (restorable/restorableUntil describe the undo window)"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Delete a mailbox (credentials, routes, directory row; admission closes immediately). Undoable via POST /mailboxes/:id/restore for 7 days, after which the DO's deadman wipes the message store and blobs. Pass ?purge=true to waive the undo window: the store is wiped as soon as the straggler floor (~25 min) elapses and restore is refused — not reversible",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "get": {
+        "operationId": "get_MailboxGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxWithStats"
+                }
+              }
+            },
+            "description": "Mailbox with usage stats"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get a mailbox with stats",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_MailboxUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "primaryAddress": {
+                    "description": "Display/attribution address; must be on a non-alias directory domain owned by the mailbox's account. No route is created — bind addresses via the routes API. On update, null clears it",
+                    "format": "email",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "quotaBytes": {
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mailbox"
+                }
+              }
+            },
+            "description": "Updated mailbox"
+          },
+          "400": {
+            "description": "validation_failed, invalid_address, unknown_domain, or domain_is_alias"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Update mailbox quota or primary address",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/credentials": {
+      "get": {
+        "operationId": "get_CredentialList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "credentials": {
+                      "items": {
+                        "$ref": "#/components/schemas/Credential"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "credentials"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Credentials"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List a mailbox's credentials (never returns secrets)",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "post": {
+        "operationId": "post_CredentialCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "password"
+                        ],
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "password": {
+                        "maxLength": 1024,
+                        "minLength": 8,
+                        "type": "string"
+                      },
+                      "username": {
+                        "maxLength": 320,
+                        "minLength": 3,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "password"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "app_password"
+                        ],
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "username": {
+                        "maxLength": 320,
+                        "minLength": 3,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialCreated"
+                }
+              }
+            },
+            "description": "Created credential (app_password plaintext shown once)"
+          },
+          "400": {
+            "description": "validation_failed, username_required, or username_not_mailbox_address"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Create a mailbox credential: 'password' (user-chosen, for IMAP LOGIN) or 'app_password' (generated, returned once; also a mailbox-scoped API bearer token)",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/credentials/{credentialId}": {
+      "delete": {
+        "operationId": "delete_CredentialDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credentialId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokedResult"
+                }
+              }
+            },
+            "description": "Revocation result"
+          },
+          "404": {
+            "description": "Mailbox or credential not found"
+          }
+        },
+        "summary": "Revoke a mailbox credential",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/events": {
+      "get": {
+        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.deleted, and trash.emptied. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. Signals are not a journal: there is no replay or backlog, so on every (re)connect re-sync via the list endpoints and treat each event as 'this changed, re-fetch it'. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
+        "operationId": "get_MailboxEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols — the WebSocket is established"
+          },
+          "404": {
+            "description": "Mailbox not found (or not accessible to this principal)"
+          },
+          "410": {
+            "description": "mailbox_gone — the mailbox is being deleted; stop reconnecting"
+          },
+          "426": {
+            "description": "upgrade_required — the request was not a WebSocket upgrade"
+          },
+          "429": {
+            "description": "too_many_subscribers — the per-mailbox subscriber cap is reached"
+          }
+        },
+        "summary": "Subscribe to live mailbox change events over WebSocket",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/labels": {
+      "get": {
+        "operationId": "get_LabelList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "labels": {
+                      "items": {
+                        "$ref": "#/components/schemas/LabelInfo"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "labels"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Labels"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List labels with counts, uidValidity, uidNext (IMAP LIST/STATUS)",
+        "tags": [
+          "Labels"
+        ]
+      },
+      "post": {
+        "operationId": "post_LabelCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedLabel"
+                }
+              }
+            },
+            "description": "Created label"
+          },
+          "400": {
+            "description": "validation_failed — malformed name"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "label_exists"
+          }
+        },
+        "summary": "Create a label (IMAP CREATE)",
+        "tags": [
+          "Labels"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/labels/{label}": {
+      "delete": {
+        "operationId": "delete_LabelDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "label",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "403": {
+            "description": "System labels cannot be deleted"
+          },
+          "404": {
+            "description": "Mailbox or label not found"
+          }
+        },
+        "summary": "Delete a non-system label (messages keep their other labels)",
+        "tags": [
+          "Labels"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_LabelRename",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "label",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamedResult"
+                }
+              }
+            },
+            "description": "Rename result"
+          },
+          "400": {
+            "description": "validation_failed — malformed name"
+          },
+          "403": {
+            "description": "System labels cannot be renamed"
+          },
+          "404": {
+            "description": "Mailbox or label not found"
+          },
+          "409": {
+            "description": "Target name already exists"
+          }
+        },
+        "summary": "Rename a non-system label (IMAP RENAME; UIDs and uidValidity are preserved)",
+        "tags": [
+          "Labels"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/labels/{label}/expunge": {
+      "post": {
+        "operationId": "post_LabelExpunge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "label",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpungeResult"
+                }
+              }
+            },
+            "description": "Expunged UIDs (IMAP EXPUNGE/VANISHED responses)"
+          },
+          "404": {
+            "description": "Mailbox or label not found"
+          }
+        },
+        "summary": "Expunge (IMAP EXPUNGE): atomically detach deleted-flagged messages from this label; a message left with no labels moves to the trash — restorable until purged (automatically after the retention window)",
+        "tags": [
+          "Labels"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/labels/{label}/messages": {
+      "get": {
+        "operationId": "get_LabelMessageList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "label",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uidMin",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uidMax",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "messages": {
+                      "items": {
+                        "$ref": "#/components/schemas/MessageMeta"
+                      },
+                      "type": "array"
+                    },
+                    "uidValidity": {
+                      "format": "int64",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "messages",
+                    "uidValidity"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Messages with per-label uid, plus uidValidity"
+          },
+          "400": {
+            "description": "validation_failed — malformed UID range or limit"
+          },
+          "404": {
+            "description": "Mailbox or label not found"
+          }
+        },
+        "summary": "List a label's messages UID-ascending, optionally by UID range (IMAP UID FETCH)",
+        "tags": [
+          "Labels"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages": {
+      "delete": {
+        "operationId": "delete_MessageEmptyTrash",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required — only the expunged (trash) tier is collection-deletable",
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "description": "Required — only the expunged (trash) tier is collection-deletable",
+              "enum": [
+                "expunged"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyTrashResult"
+                }
+              }
+            },
+            "description": "Purge result ({ purged: N })"
+          },
+          "400": {
+            "description": "validation_failed — state=expunged is required"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Empty the trash: permanently delete every expunged message now, freeing its quota (blobs are reclaimed by the DO's background drain). The trash is addressed exactly like its listing — state=expunged — and the parameter is REQUIRED, so a bare collection DELETE is a validation error, never a mass delete",
+        "tags": [
+          "Messages"
+        ]
+      },
+      "get": {
+        "operationId": "get_MessageList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "live (default): ordinary listing. expunged: the trash — soft-deleted messages awaiting restore or purge, with expungedAt/purgeAfter and their pre-expunge labels",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "description": "live (default): ordinary listing. expunged: the trash — soft-deleted messages awaiting restore or purge, with expungedAt/purgeAfter and their pre-expunge labels",
+              "enum": [
+                "live",
+                "expunged"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "cursor": {
+                          "description": "Keyset cursor for the next page; null on the last page",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "messages": {
+                          "items": {
+                            "$ref": "#/components/schemas/MessageMeta"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "messages",
+                        "cursor"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "cursor": {
+                          "description": "Keyset cursor for the next page; null on the last page",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "messages": {
+                          "items": {
+                            "$ref": "#/components/schemas/ExpungedMessageMeta"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "messages",
+                        "cursor"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Messages page (live rows, or trash rows when state=expunged)"
+          },
+          "400": {
+            "description": "validation_failed, or label_not_applicable (label filter with state=expunged)"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List messages newest-first with cursor pagination, optionally filtered to one label. state=expunged lists the trash (restorable messages) instead. For UID-ordered listing use GET /mailboxes/:id/labels/:label/messages.",
+        "tags": [
+          "Messages"
+        ]
+      },
+      "post": {
+        "operationId": "post_MessageAppend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target label (default INBOX)",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "description": "Target label (default INBOX)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated initial flags, e.g. seen,draft",
+            "in": "query",
+            "name": "flags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated initial flags, e.g. seen,draft",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Run the mailbox's active Sieve filter on this append (default off)",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "description": "Run the mailbox's active Sieve filter on this append (default off)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Epoch seconds recorded as receivedAt (IMAP APPEND INTERNALDATE preservation for imports/migration); default now",
+            "in": "query",
+            "name": "internaldate",
+            "required": false,
+            "schema": {
+              "description": "Epoch seconds recorded as receivedAt (IMAP APPEND INTERNALDATE preservation for imports/migration); default now",
+              "maximum": 253402300799,
+              "minimum": -62135596800,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Envelope sender to record (APPEND bypasses routing)",
+            "in": "header",
+            "name": "x-envelope-from",
+            "required": false,
+            "schema": {
+              "description": "Envelope sender to record (APPEND bypasses routing)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Envelope recipient to record",
+            "in": "header",
+            "name": "x-envelope-to",
+            "required": false,
+            "schema": {
+              "description": "Envelope recipient to record",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Optional idempotency key: import/replay tools that want dedup supply a stable id; otherwise each APPEND is its own intent",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": false,
+            "schema": {
+              "description": "Optional idempotency key: import/replay tools that want dedup supply a stable id; otherwise each APPEND is its own intent",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Body size in bytes — required (411 without it)",
+            "in": "header",
+            "name": "content-length",
+            "required": false,
+            "schema": {
+              "description": "Body size in bytes — required (411 without it)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "message/rfc822": {
+              "schema": {
+                "description": "Raw RFC 5322 message bytes (streamed; never buffered)",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppendResult"
+                }
+              }
+            },
+            "description": "Appended (uid + uidValidity answer IMAP APPENDUID; duplicate marks an idempotent replay), or status:filtered when an opted-in Sieve filter discarded/redirected it"
+          },
+          "400": {
+            "description": "validation_failed, invalid_flag, invalid delivery id, or empty_body"
+          },
+          "404": {
+            "description": "Mailbox not found/not accessible, unknown_label, or mailbox_gone"
+          },
+          "411": {
+            "description": "Content-Length required"
+          },
+          "413": {
+            "description": "Body exceeds MAX_MESSAGE_BYTES"
+          },
+          "503": {
+            "description": "superseded/reaped — lost pending intent; retry with the same X-Delivery-Id"
+          },
+          "507": {
+            "description": "over_quota"
+          }
+        },
+        "summary": "Append a raw MIME message directly under a label (bypasses routing; IMAP APPEND)",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/mime": {
+      "post": {
+        "operationId": "post_MessageMimeBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ids"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MimeBatch"
+                }
+              }
+            },
+            "description": "{ mime: { [id]: {ver, envelope, structure} | null } }"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible"
+          }
+        },
+        "summary": "Batch-read cached MIME metadata (ENVELOPE + BODYSTRUCTURE) for up to 200 messages. Each requested id maps to its opaque blob {ver, envelope, structure} or to null (absent, or not computed yet). Used by the IMAP gateway to serve metadata-only FETCHes without downloading the raw blob.",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/{messageId}": {
+      "delete": {
+        "operationId": "delete_MessageDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scope the delete to one label",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "description": "Scope the delete to one label",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Permanently delete instead of expunging (not combinable with label)",
+            "in": "query",
+            "name": "purge",
+            "required": false,
+            "schema": {
+              "description": "Permanently delete instead of expunging (not combinable with label)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageDeleteResult"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "400": {
+            "description": "validation_failed, or label_purge_exclusive (label + purge together)"
+          },
+          "404": {
+            "description": "Mailbox, message, or label not found"
+          },
+          "409": {
+            "description": "not_labeled — the message does not carry that label"
+          }
+        },
+        "summary": "Delete a message. Default: EXPUNGE — hidden everywhere but restorable (POST .../restore) until purged, automatically after the retention window. With ?label=X: detached from that label only, expunged if X was its last label. With ?purge=true: permanent removal — of an expunged message, or of a live one bypassing the trash entirely",
+        "tags": [
+          "Messages"
+        ]
+      },
+      "get": {
+        "operationId": "get_MessageGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageMeta"
+                }
+              }
+            },
+            "description": "Message metadata"
+          },
+          "404": {
+            "description": "Mailbox or message not found"
+          }
+        },
+        "summary": "Get message metadata (labels with per-label UIDs, flags, delivery meta)",
+        "tags": [
+          "Messages"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_MessageUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "flagsClear": {
+                    "items": {
+                      "enum": [
+                        "seen",
+                        "answered",
+                        "flagged",
+                        "draft",
+                        "deleted"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "flagsSet": {
+                    "items": {
+                      "enum": [
+                        "seen",
+                        "answered",
+                        "flagged",
+                        "draft",
+                        "deleted"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "labelsAdd": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "labelsRemove": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "mime": {}
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageUpdateResult"
+                }
+              }
+            },
+            "description": "Updated message metadata (new label UIDs included)"
+          },
+          "400": {
+            "description": "validation_failed, or a DO-reported patch error (e.g. unknown label)"
+          },
+          "404": {
+            "description": "Mailbox or message not found"
+          }
+        },
+        "summary": "Set/clear flags (IMAP STORE) and add/remove labels (IMAP COPY/MOVE). Additions apply before removals, so a one-call MOVE is safe; a patch whose removals leave the message with no labels EXPUNGES it (returns {expunged, expungedAt, purgeAfter})",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/raw": {
+      "get": {
+        "operationId": "get_MessageGetRaw",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "message/rfc822": {
+                "schema": {
+                  "description": "Raw message bytes, streamed from R2",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Raw message"
+          },
+          "404": {
+            "description": "Mailbox or message not found"
+          },
+          "500": {
+            "description": "blob_missing — metadata exists but the blob read failed"
+          }
+        },
+        "summary": "Stream the raw MIME blob",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/restore": {
+      "post": {
+        "operationId": "post_MessageRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageRestoreResult"
+                }
+              }
+            },
+            "description": "Restored message metadata (new label UIDs included)"
+          },
+          "404": {
+            "description": "Mailbox or message not found (or not in the trash)"
+          }
+        },
+        "summary": "Restore an expunged message from the trash: re-attached under its pre-expunge labels (fresh UIDs, as IMAP requires) or INBOX if none survive",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/pickups": {
+      "get": {
+        "operationId": "get_PickupList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    },
+                    "pickups": {
+                      "items": {
+                        "$ref": "#/components/schemas/PickupSource"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pickups"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Sources page"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible"
+          }
+        },
+        "summary": "List this mailbox's pickup sources (never returns secrets)",
+        "tags": [
+          "Pickups"
+        ]
+      },
+      "post": {
+        "operationId": "post_PickupCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "deleteAfterFetch": {
+                    "type": "boolean"
+                  },
+                  "host": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "intervalMinutes": {
+                    "maximum": 1440,
+                    "minimum": 5,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "password": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "port": {
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "tls": {
+                    "enum": [
+                      "tls",
+                      "starttls"
+                    ],
+                    "type": "string"
+                  },
+                  "username": {
+                    "maxLength": 320,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "host",
+                  "port",
+                  "username",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PickupSource"
+                }
+              }
+            },
+            "description": "Created source (no secret)"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible"
+          },
+          "409": {
+            "description": "duplicate_source (same host+username already configured for this mailbox)"
+          }
+        },
+        "summary": "Create a POP3 pickup source for this mailbox (password stored encrypted; never returned)",
+        "tags": [
+          "Pickups"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/pickups/{pickupId}": {
+      "delete": {
+        "operationId": "delete_PickupDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pickupId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found or not accessible"
+          }
+        },
+        "summary": "Delete a pickup source (stops its scheduler)",
+        "tags": [
+          "Pickups"
+        ]
+      },
+      "get": {
+        "operationId": "get_PickupGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pickupId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PickupSource"
+                }
+              }
+            },
+            "description": "Source"
+          },
+          "404": {
+            "description": "Not found or not accessible"
+          }
+        },
+        "summary": "Get one pickup source (no secret)",
+        "tags": [
+          "Pickups"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_PickupUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pickupId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "deleteAfterFetch": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "host": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "intervalMinutes": {
+                    "maximum": 1440,
+                    "minimum": 5,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "maxLength": 128,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "password": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "port": {
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "tls": {
+                    "enum": [
+                      "tls",
+                      "starttls"
+                    ],
+                    "type": "string"
+                  },
+                  "username": {
+                    "maxLength": 320,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PickupSource"
+                }
+              }
+            },
+            "description": "Updated source (no secret)"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Not found or not accessible"
+          }
+        },
+        "summary": "Update a pickup source (partial; re-rings its scheduler)",
+        "tags": [
+          "Pickups"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/pickups/{pickupId}/run": {
+      "post": {
+        "operationId": "post_PickupRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pickupId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PickupRunResult"
+                }
+              }
+            },
+            "description": "Run scheduled"
+          },
+          "404": {
+            "description": "Not found or not accessible"
+          },
+          "409": {
+            "description": "disabled (enable the source first)"
+          }
+        },
+        "summary": "Trigger a pickup run now (out of band; does not change the schedule)",
+        "tags": [
+          "Pickups"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/reindex": {
+      "post": {
+        "operationId": "post_MailboxReindex",
+        "parameters": [
+          {
+            "description": "Mailbox to backfill",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox to backfill",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 5000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Index jobs durably enqueued ({ enqueued: N }); indexing completes asynchronously"
+          },
+          "400": {
+            "description": "validation_failed — malformed limit"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Re-enqueue full-text indexing for a mailbox's un-indexed messages (system only)",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/restore": {
+      "post": {
+        "operationId": "post_MailboxRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxRestoreResult"
+                }
+              }
+            },
+            "description": "Restore result"
+          },
+          "404": {
+            "description": "No restorable tombstone accessible to this principal"
+          },
+          "409": {
+            "description": "not_deleted — the mailbox is live (already restored, or never deleted)"
+          },
+          "410": {
+            "description": "gone — window elapsed, purge delete, or store already wiped"
+          }
+        },
+        "summary": "Undo a mailbox deletion within the 7-day window: the mailbox returns with all its mail. Its address is re-bound only if still free, else {local}-restore@{domain} — a mailbox that meanwhile claimed the address is never disturbed. Credentials are not restored (re-mint them)",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/search": {
+      "get": {
+        "operationId": "get_MailboxSearch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search query (word/prefix; English stemming)",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Search query (word/prefix; English stemming)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to one label",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "description": "Restrict to one label",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          },
+          {
+            "description": "thread: collapse matches to one result per conversation (its best-ranked message). Grouped search returns the TOP PAGE ONLY — no cursor in or out",
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "description": "thread: collapse matches to one result per conversation (its best-ranked message). Grouped search returns the TOP PAGE ONLY — no cursor in or out",
+              "enum": [
+                "thread"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    },
+                    "results": {
+                      "items": {
+                        "$ref": "#/components/schemas/MessageMeta"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "results"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Ranked matches; nextCursor present when a further page exists (never in grouped mode)"
+          },
+          "400": {
+            "description": "validation_failed, empty_query, invalid_cursor, or grouped_search_unpaginated"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Full-text search a mailbox (subject, participants, body)",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/sieve/active": {
+      "delete": {
+        "operationId": "delete_SieveDeactivate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveDeactivated"
+                }
+              }
+            },
+            "description": "Deactivated (idempotent)"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Deactivate the mailbox's active filter — delivery runs unfiltered (ManageSieve SETACTIVE \"\")",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "get": {
+        "operationId": "get_SieveActiveGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveActiveName"
+                }
+              }
+            },
+            "description": "{ name } — null when no script is active"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read which script is the mailbox's active (default) filter, if any",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "put": {
+        "operationId": "put_SieveActivate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[^/\\\\]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveActivated"
+                }
+              }
+            },
+            "description": "Activated"
+          },
+          "400": {
+            "description": "validation_failed — malformed script name"
+          },
+          "404": {
+            "description": "No such script, or mailbox not accessible"
+          }
+        },
+        "summary": "Make a script the mailbox's active (default) filter (ManageSieve SETACTIVE)",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/sieve/capabilities": {
+      "get": {
+        "operationId": "get_SieveCapabilities",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveCapabilities"
+                }
+              }
+            },
+            "description": "Capabilities"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Advertise the interpreter's supported extensions + limits (ManageSieve CAPABILITY)",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/sieve/check": {
+      "post": {
+        "operationId": "post_SieveCheck",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "script": {
+                    "maxLength": 65536,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "script"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveCheckResult"
+                }
+              }
+            },
+            "description": "Validation result ({ valid } or { valid:false, message, line, col }) — a non-compiling script is a successful CHECK, not an error"
+          },
+          "400": {
+            "description": "validation_failed — malformed body"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Dry-run compile a Sieve script without storing it (ManageSieve CHECKSCRIPT)",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/sieve/scripts": {
+      "get": {
+        "operationId": "get_SieveList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "scripts": {
+                      "items": {
+                        "$ref": "#/components/schemas/SieveScript"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "scripts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Scripts (name, active, updatedAt) — no bodies"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List a mailbox's Sieve scripts with the active flag (ManageSieve LISTSCRIPTS)",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/sieve/scripts/{scriptName}": {
+      "delete": {
+        "operationId": "delete_SieveDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scriptName",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^/\\\\]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveDeleted"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "400": {
+            "description": "validation_failed — malformed script name"
+          },
+          "404": {
+            "description": "No such script, or mailbox not accessible"
+          }
+        },
+        "summary": "Delete a Sieve script (ManageSieve DELETESCRIPT)",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "get": {
+        "operationId": "get_SieveGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scriptName",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^/\\\\]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveScriptBody"
+                }
+              }
+            },
+            "description": "Script source"
+          },
+          "400": {
+            "description": "validation_failed — malformed script name"
+          },
+          "404": {
+            "description": "No such script, or mailbox not accessible"
+          }
+        },
+        "summary": "Fetch a Sieve script's source (ManageSieve GETSCRIPT)",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "put": {
+        "operationId": "put_SievePut",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scriptName",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^/\\\\]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "script": {
+                    "maxLength": 65536,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "script"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SievePutResult"
+                }
+              }
+            },
+            "description": "Stored (created distinguishes new vs replaced)"
+          },
+          "400": {
+            "description": "validation_failed — malformed name or body"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "Script limit reached"
+          },
+          "422": {
+            "description": "Script does not compile (message + line/col)"
+          }
+        },
+        "summary": "Upload/replace a Sieve script; rejected 422 with line/col if it won't compile (ManageSieve PUTSCRIPT)",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/sieve/scripts/{scriptName}/rename": {
+      "post": {
+        "operationId": "post_SieveRename",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scriptName",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^/\\\\]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "newName": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[^/\\\\]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "newName"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveRenamed"
+                }
+              }
+            },
+            "description": "Renamed"
+          },
+          "400": {
+            "description": "validation_failed — malformed name"
+          },
+          "404": {
+            "description": "No such script, or mailbox not accessible"
+          },
+          "409": {
+            "description": "A script with the new name already exists"
+          }
+        },
+        "summary": "Rename a Sieve script, preserving its active flag (ManageSieve RENAMESCRIPT)",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/threads": {
+      "get": {
+        "operationId": "get_ThreadList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only threads with ≥1 live member in this label",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "description": "Only threads with ≥1 live member in this label",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cursor": {
+                      "description": "Keyset cursor for the next page; null on the last page",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "threads": {
+                      "items": {
+                        "$ref": "#/components/schemas/ThreadListItem"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "threads",
+                    "cursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "threads: [{ threadId, messageCount, lastReceivedAt, exemplar: MessageMeta of the newest live member }]; cursor present when a further page exists. threadId is opaque and convergent, NOT stable — a merge re-stamps the losing thread (GET /threads/:threadId recovers a merged-away id)"
+          },
+          "404": {
+            "description": "Mailbox (or, as unknown_label, the label filter) not found"
+          }
+        },
+        "summary": "List conversations, newest activity first. Snapshot semantics: new activity or a thread merge between pages can skip or re-home a conversation — restart the crawl for a consistent view. label filters Gmail-style (a thread matches when ANY live member carries the label).",
+        "tags": [
+          "Threads"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/threads/{threadId}": {
+      "get": {
+        "operationId": "get_ThreadGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "threadId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadView"
+                }
+              }
+            },
+            "description": "{ threadId, canonicalThreadId?, messages: MessageMeta[] ascending, cursor, messageCount, replyContext }. Live members only — members in trash are excluded until restored (a trash-sourced threadId can 404). messageCount larger than the members a paginated crawl returned means a merge landed mid-crawl: restart from no cursor"
+          },
+          "404": {
+            "description": "Mailbox or thread not found (root purged, or thread entirely in trash)"
+          }
+        },
+        "summary": "One conversation: live members oldest-first, plus a server-built replyContext (In-Reply-To, References, Re: subject, reply target) for answering the newest message. A merged-away thread id is transparently recovered — re-cache the returned canonicalThreadId.",
+        "tags": [
+          "Threads"
+        ]
+      }
+    },
+    "/api/v1/patterns": {
+      "get": {
+        "operationId": "get_PatternList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    },
+                    "patterns": {
+                      "items": {
+                        "$ref": "#/components/schemas/Pattern"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "patterns"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Patterns page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed or invalid_cursor"
+          }
+        },
+        "summary": "List pattern routes",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "post": {
+        "operationId": "post_PatternCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "aliasAddress": {
+                    "type": "string"
+                  },
+                  "destinationType": {
+                    "enum": [
+                      "mailbox",
+                      "webhook",
+                      "remote",
+                      "alias"
+                    ],
+                    "type": "string"
+                  },
+                  "domain": {
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "mailboxId": {
+                    "type": "string"
+                  },
+                  "paced": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "pattern": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "priority": {
+                    "type": "integer"
+                  },
+                  "remoteAddress": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "webhookSecret": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "webhookUrl": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "destinationType",
+                  "domain",
+                  "pattern"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pattern"
+                }
+              }
+            },
+            "description": "Created pattern"
+          },
+          "400": {
+            "description": "validation_failed, unknown_domain, domain_is_alias, invalid_pattern, pattern_limit, unknown_mailbox, or invalid_alias_address"
+          },
+          "409": {
+            "description": "pattern_exists"
+          }
+        },
+        "summary": "Create a pattern route (local-part glob → mailbox | webhook | remote | alias)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/patterns/{patternId}": {
+      "delete": {
+        "operationId": "delete_PatternDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patternId",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "400": {
+            "description": "validation_failed — patternId must be an integer"
+          },
+          "404": {
+            "description": "Pattern not found or not accessible to this principal"
+          }
+        },
+        "summary": "Delete a pattern route",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_PatternUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patternId",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "aliasAddress": {
+                    "type": "string"
+                  },
+                  "destinationType": {
+                    "enum": [
+                      "mailbox",
+                      "webhook",
+                      "remote",
+                      "alias"
+                    ],
+                    "type": "string"
+                  },
+                  "mailboxId": {
+                    "type": "string"
+                  },
+                  "paced": {
+                    "type": "boolean"
+                  },
+                  "priority": {
+                    "type": "integer"
+                  },
+                  "remoteAddress": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "webhookSecret": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "webhookUrl": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pattern"
+                }
+              }
+            },
+            "description": "Updated pattern"
+          },
+          "400": {
+            "description": "validation_failed, empty_patch, destination_requires_type (destination fields without destinationType), unknown_mailbox, or invalid_alias_address"
+          },
+          "404": {
+            "description": "Pattern not found or not accessible to this principal"
+          }
+        },
+        "summary": "Update a pattern: priority/paced are partial fields (omitted = unchanged); destinationType with its fields atomically replaces the destination — except webhookSecret, which is preserved when omitted (write-only, can't be re-supplied) and cleared by an explicit null",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/pickups/{sourceId}/report": {
+      "post": {
+        "operationId": "post_PickupReport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "deleted": {
+                    "type": "integer"
+                  },
+                  "error": {
+                    "maxLength": 1024,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "failed": {
+                    "type": "integer"
+                  },
+                  "jobId": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "ok",
+                      "partial",
+                      "auth_failed",
+                      "error"
+                    ],
+                    "type": "string"
+                  },
+                  "uploaded": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded"
+          },
+          "403": {
+            "description": "system credentials required"
+          },
+          "404": {
+            "description": "unknown source"
+          }
+        },
+        "summary": "Poppy run-completion callback (system only)",
+        "tags": [
+          "Pickups"
+        ]
+      }
+    },
+    "/api/v1/routes": {
+      "get": {
+        "operationId": "get_RouteList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    },
+                    "routes": {
+                      "items": {
+                        "$ref": "#/components/schemas/Route"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "routes"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Routes page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          }
+        },
+        "summary": "List routes",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "post": {
+        "operationId": "post_RouteCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "destinationType": {
+                    "enum": [
+                      "mailbox",
+                      "webhook",
+                      "remote",
+                      "group"
+                    ],
+                    "type": "string"
+                  },
+                  "mailboxId": {
+                    "type": "string"
+                  },
+                  "paced": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "remoteAddress": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "webhookSecret": {
+                    "type": "string"
+                  },
+                  "webhookUrl": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "address",
+                  "destinationType"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            },
+            "description": "Created route"
+          },
+          "400": {
+            "description": "validation_failed, unknown_domain, domain_is_alias, or unknown_mailbox"
+          },
+          "409": {
+            "description": "route_exists"
+          }
+        },
+        "summary": "Create a route (address → mailbox | webhook | remote | group)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/routes/{address}": {
+      "delete": {
+        "operationId": "delete_RouteDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "404": {
+            "description": "Route not found or not accessible to this principal"
+          }
+        },
+        "summary": "Delete a route",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "get": {
+        "operationId": "get_RouteGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            },
+            "description": "Route"
+          },
+          "404": {
+            "description": "Route not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get a route",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_RouteUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "destinationType": {
+                    "enum": [
+                      "mailbox",
+                      "webhook",
+                      "remote",
+                      "group"
+                    ],
+                    "type": "string"
+                  },
+                  "mailboxId": {
+                    "type": "string"
+                  },
+                  "paced": {
+                    "description": "Pace deliveries through the paced queue — omitted means unchanged",
+                    "type": "boolean"
+                  },
+                  "remoteAddress": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "webhookSecret": {
+                    "description": "Omit to preserve the existing secret (write-only); send null to clear it",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "webhookUrl": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            },
+            "description": "Updated route"
+          },
+          "400": {
+            "description": "validation_failed, empty_patch, destination_requires_type (destination fields without destinationType), or unknown_mailbox"
+          },
+          "404": {
+            "description": "Route not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "group_has_members — empty the member list (or delete the route) first"
+          }
+        },
+        "summary": "Update a route: paced is a partial field (omitted = unchanged); destinationType with its fields atomically replaces the destination — except webhookSecret, which is preserved when omitted (write-only, can't be re-supplied) and cleared by an explicit null",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/routes/{address}/members": {
+      "get": {
+        "operationId": "get_MemberList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "members": {
+                      "items": {
+                        "$ref": "#/components/schemas/RouteMember"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "members"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Members page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Group route not found or not accessible to this principal"
+          }
+        },
+        "summary": "List a group route's members",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "post": {
+        "operationId": "post_MemberAdd",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "memberAddress": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "memberAddress"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteMemberRef"
+                }
+              }
+            },
+            "description": "Added member"
+          },
+          "400": {
+            "description": "validation_failed, member_limit, invalid_member_address, or self_membership"
+          },
+          "404": {
+            "description": "Group route not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "member_exists"
+          }
+        },
+        "summary": "Add a member to a group route",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "put": {
+        "operationId": "put_MemberReplace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "members": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "members"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "members": {
+                      "items": {
+                        "$ref": "#/components/schemas/RouteMember"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "members"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The full replaced member list"
+          },
+          "400": {
+            "description": "validation_failed, member_limit, invalid_member_address, or self_membership"
+          },
+          "404": {
+            "description": "Group route not found or not accessible to this principal"
+          }
+        },
+        "summary": "Replace a group route's member list wholesale",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/routes/{address}/members/{memberAddress}": {
+      "delete": {
+        "operationId": "delete_MemberRemove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "memberAddress",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "404": {
+            "description": "Group route or member not found"
+          }
+        },
+        "summary": "Remove a member from a group route",
+        "tags": [
+          "Directory"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "webhooks": {}
+}

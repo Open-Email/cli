@@ -10,8 +10,11 @@ package coreapi
 //   (d) a nullable spec property mapped to a non-nilable Go type (a null would
 //       fail to decode).
 // It resolves allOf (extend), oneOf/anyOf (unions → field superset), and $ref.
-// Regenerate the snapshot with `npm run spec` in core after any response-schema
-// change; a stale snapshot makes this test the drift alarm.
+//
+// The snapshot is vendored into this repo (openapi.snapshot.json at the module
+// root) so CI is self-contained. After any response-schema change in core, run
+// `npm run spec` there, then `make sync-spec` here to re-vendor it; a stale
+// snapshot makes this test the drift alarm.
 
 import (
 	"encoding/json"
@@ -413,9 +416,9 @@ func loadSnapshot(t *testing.T) map[string]any {
 	return spec
 }
 
-// snapshotPath locates openapi.snapshot.json: an explicit override, then a copy
-// vendored at the module root, then core's copy one level up (the CLI is nested
-// in the core repo today).
+// snapshotPath locates openapi.snapshot.json: an explicit override, then the
+// copy vendored at the module root (the CI path; refresh with `make sync-spec`),
+// then a sibling core checkout one level up as a dev-convenience fallback.
 func snapshotPath(t *testing.T) string {
 	t.Helper()
 	if p := os.Getenv("OPENEMAIL_OPENAPI_SPEC"); p != "" {
@@ -424,8 +427,8 @@ func snapshotPath(t *testing.T) string {
 	_, file, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(file) // internal/coreapi
 	candidates := []string{
-		filepath.Join(dir, "..", "..", "openapi.snapshot.json"),       // module root
-		filepath.Join(dir, "..", "..", "..", "openapi.snapshot.json"), // core repo root
+		filepath.Join(dir, "..", "..", "openapi.snapshot.json"),                         // vendored at module root
+		filepath.Join(dir, "..", "..", "..", "openemail-core", "openapi.snapshot.json"), // sibling core checkout
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {
