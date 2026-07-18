@@ -7,6 +7,37 @@ openemail login
 openemail mailboxes use alice@example.com
 ```
 
+## Provision a new mailbox that receives mail
+
+```sh
+# 1. The domain (receive-active by default; add --can-send for outbound too).
+openemail domains create example.com
+
+# 2. The mailbox — passing --address CLAIMS it: the address→mailbox route and
+#    the label are created atomically, so the mailbox receives mail from this
+#    one call. A taken address answers `address_taken` and creates nothing.
+openemail mailboxes create --address alice@example.com
+
+# 3. (Optional) An IMAP/SMTP login. The username defaults to the primary
+#    address, which already routes to the mailbox after step 2.
+openemail credentials create <mailboxId> --kind app-password
+
+# Verify the chain end-to-end — 200 means mail to alice@ is deliverable.
+openemail deliver check --to alice@example.com
+```
+
+`--address` is the whole provisioning step; there's no separate route to create.
+Give a mailbox **additional** addresses (aliases, `+tags`, a second domain) with
+the routes API — and it's idempotent, so re-running a bind is a safe no-op:
+
+```sh
+openemail routes create sales@example.com --type mailbox --mailbox <mailboxId>
+openemail mailboxes update <mailboxId> --address sales@example.com   # relabel to a routed address
+```
+
+Omit `--address` on create for a bare store (POP3 pickup target, APPEND-only
+archive) that receives nothing until you bind a route.
+
 ## Send a message
 
 ```sh

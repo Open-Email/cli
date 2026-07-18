@@ -117,6 +117,27 @@ func newVersionCmd(a *app) *cobra.Command {
 	}
 }
 
+// errorHint returns a one-line remedy for the error codes whose bare name
+// doesn't tell a user what to do next. Empty when the code speaks for itself.
+func errorHint(ae *coreapi.APIError) string {
+	addr, _ := ae.Extra["address"].(string)
+	switch ae.Code {
+	case "address_taken":
+		// Create-and-bind: the address is already routed to some mailbox.
+		if addr != "" {
+			return fmt.Sprintf("%s is already routed — choose another address, or delete its route to reassign it", addr)
+		}
+		return "that address is already routed — choose another, or delete its route to reassign it"
+	case "address_not_routed":
+		// The primary-address label must name a route to THIS mailbox first.
+		if addr != "" {
+			return fmt.Sprintf("bind it first: openemail routes create %s --type mailbox --mailbox <id>", addr)
+		}
+		return "bind the address to this mailbox first (openemail routes create … --type mailbox --mailbox <id>)"
+	}
+	return ""
+}
+
 func (a *app) printError(err error) {
 	if errors.Is(err, errSilent) {
 		return // the command already rendered its report; only the exit code matters
@@ -137,6 +158,9 @@ func (a *app) printError(err error) {
 		// existence leaks), so be honest about the ambiguity.
 		if ae.Status == 404 {
 			fmt.Fprintln(os.Stderr, p.Dim("  (the resource does not exist, or is not accessible with this key)"))
+		}
+		if h := errorHint(ae); h != "" {
+			fmt.Fprintln(os.Stderr, p.Dim("  "+h))
 		}
 		if a.flagDebug && len(ae.Body) > 0 {
 			fmt.Fprintf(os.Stderr, "%s\n", p.Dim(string(ae.Body)))

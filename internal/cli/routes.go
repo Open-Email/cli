@@ -85,7 +85,7 @@ func newRouteCreateCmd(a *app) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "create <address>",
-		Short: "Create a route (address → mailbox | webhook | remote | group)",
+		Short: "Create a route (address → mailbox | webhook | remote | group); idempotent for an identical binding, 409 only on a conflicting one",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()

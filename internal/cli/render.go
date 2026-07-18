@@ -3,36 +3,67 @@ package cli
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
-	"text/tabwriter"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 )
 
-// printTable renders headers + rows aligned. Headers are dimmed when color is on.
-func printTable(w io.Writer, p *Printer, headers []string, rows [][]string) {
-	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	hdr := make([]string, len(headers))
-	for i, h := range headers {
-		hdr[i] = p.Dim(h)
-	}
-	fmt.Fprintln(tw, joinTab(hdr))
-	for _, r := range rows {
-		fmt.Fprintln(tw, joinTab(r))
-	}
-	tw.Flush()
+// tableGap is the number of spaces between columns.
+const tableGap = 2
+
+// ansiSeq matches SGR color escapes. Column widths are measured on the VISIBLE
+// text (escapes stripped) so colored cells — e.g. the dimmed header — align with
+// plain ones. text/tabwriter can't do this: it counts the invisible color bytes
+// as width, so every column drifted by the length of the header's dim codes.
+var ansiSeq = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// visibleWidth is the on-screen rune count of s, ignoring color escapes.
+func visibleWidth(s string) int {
+	return utf8.RuneCountInString(ansiSeq.ReplaceAllString(s, ""))
 }
 
-func joinTab(cols []string) string {
-	out := ""
-	for i, c := range cols {
-		if i > 0 {
-			out += "\t"
+// printTable renders headers + rows aligned. Headers are dimmed when color is on.
+func printTable(w io.Writer, p *Printer, headers []string, rows [][]string) {
+	cols := len(headers)
+	widths := make([]int, cols)
+	measure := func(cells []string) {
+		for i := 0; i < cols && i < len(cells); i++ {
+			if n := visibleWidth(cells[i]); n > widths[i] {
+				widths[i] = n
+			}
 		}
-		out += c
 	}
-	return out
+	measure(headers)
+	for _, r := range rows {
+		measure(r)
+	}
+
+	writeRow := func(cells []string, header bool) {
+		var b strings.Builder
+		for i := 0; i < cols; i++ {
+			cell := ""
+			if i < len(cells) {
+				cell = cells[i]
+			}
+			if header {
+				b.WriteString(p.Dim(cell))
+			} else {
+				b.WriteString(cell)
+			}
+			if i < cols-1 {
+				b.WriteString(strings.Repeat(" ", widths[i]-visibleWidth(cell)+tableGap))
+			}
+		}
+		fmt.Fprintln(w, b.String())
+	}
+	writeRow(headers, true)
+	for _, r := range rows {
+		writeRow(r, false)
+	}
 }
 
 // fmtEpoch renders epoch seconds as a local timestamp.

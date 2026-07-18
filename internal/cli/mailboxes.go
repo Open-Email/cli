@@ -95,7 +95,7 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&address, "address", "", "primary address (must have a matching route to receive)")
+	cmd.Flags().StringVar(&address, "address", "", "claim this address: the route is created atomically with the mailbox, which receives mail immediately (address_taken if already routed)")
 	cmd.Flags().StringVar(&quota, "quota", "", "quota in bytes, or 'unlimited'")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system callers only)")
 	return cmd
@@ -257,7 +257,7 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&address, "address", "", "new primary address")
+	cmd.Flags().StringVar(&address, "address", "", "new primary address (must already route to this mailbox — bind via 'routes create' first; empty is not a clear)")
 	cmd.Flags().StringVar(&quota, "quota", "", "new quota in bytes, or 'unlimited'")
 	return cmd
 }

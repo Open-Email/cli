@@ -3053,7 +3053,7 @@
                     "type": "string"
                   },
                   "primaryAddress": {
-                    "description": "Display/attribution address; must be on a non-alias directory domain owned by the mailbox's account. No route is created — bind addresses via the routes API. On update, null clears it",
+                    "description": "On create: CLAIMS the address — the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be on a non-alias directory domain owned by the mailbox's account. On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
                     "format": "email",
                     "type": [
                       "string",
@@ -3089,9 +3089,12 @@
           },
           "403": {
             "description": "mailbox_limit_reached — the account's max_mailboxes cap"
+          },
+          "409": {
+            "description": "address_taken — the address is already routed; nothing was created (the create-and-bind batch rolled back)"
           }
         },
-        "summary": "Create a mailbox",
+        "summary": "Create a mailbox. With primaryAddress, the address is CLAIMED atomically — mailbox, address→mailbox route, and label land in one transaction, so the mailbox receives mail immediately and a taken address answers 409 address_taken with nothing created. Without it, a bare store (bind addresses later via the routes API)",
         "tags": [
           "Mailboxes"
         ]
@@ -3197,7 +3200,7 @@
               "schema": {
                 "properties": {
                   "primaryAddress": {
-                    "description": "Display/attribution address; must be on a non-alias directory domain owned by the mailbox's account. No route is created — bind addresses via the routes API. On update, null clears it",
+                    "description": "On create: CLAIMS the address — the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be on a non-alias directory domain owned by the mailbox's account. On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
                     "format": "email",
                     "type": [
                       "string",
@@ -3229,13 +3232,13 @@
             "description": "Updated mailbox"
           },
           "400": {
-            "description": "validation_failed, invalid_address, unknown_domain, or domain_is_alias"
+            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, or address_not_routed (the label must name an address already routed to this mailbox)"
           },
           "404": {
             "description": "Mailbox not found or not accessible to this principal"
           }
         },
-        "summary": "Update mailbox quota or primary address",
+        "summary": "Update mailbox quota or primary address. The primary address must be an EXACT route to this mailbox (bind via POST /routes first — it is idempotent; deliberately narrower than the credentials username rule, which accepts any ladder form — the label is the one canonical concrete address); null clears the label",
         "tags": [
           "Mailboxes"
         ]
@@ -6188,16 +6191,16 @@
                 }
               }
             },
-            "description": "Created route"
+            "description": "Created route — or, when the binding is identical, the EXISTING route unchanged (idempotent create: the replay's paced/webhookSecret are not applied)"
           },
           "400": {
             "description": "validation_failed, unknown_domain, domain_is_alias, or unknown_mailbox"
           },
           "409": {
-            "description": "route_exists"
+            "description": "route_exists — the address is bound to a DIFFERENT destination"
           }
         },
-        "summary": "Create a route (address → mailbox | webhook | remote | group)",
+        "summary": "Create a route (address → mailbox | webhook | remote | group). Idempotent for an identical binding: re-creating a route whose destination type and target already match answers 200 with the existing route (retries and provisioning re-runs converge); only a CONFLICTING binding answers 409. On such a replay the request's tuning fields (paced, webhookSecret) are IGNORED, never applied — PATCH owns changes to an existing route",
         "tags": [
           "Directory"
         ]
