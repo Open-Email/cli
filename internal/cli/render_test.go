@@ -75,10 +75,10 @@ func equalInts(a, b []int) bool {
 
 func TestVisibleWidthIgnoresColorAndCountsRunes(t *testing.T) {
 	cases := map[string]int{
-		"ID":              2,
+		"ID":               2,
 		"\x1b[2mID\x1b[0m": 2,
-		"—":               1, // em dash is one rune, not three bytes
-		"":                0,
+		"—":                1, // em dash is one rune, not three bytes
+		"":                 0,
 	}
 	for in, want := range cases {
 		if got := visibleWidth(in); got != want {
