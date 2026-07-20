@@ -112,6 +112,94 @@ func printMessageMeta(w io.Writer, p *Printer, m *coreapi.MessageMeta) {
 	printTable(w, p, []string{"FIELD", "VALUE"}, rows)
 }
 
+// fmtContentAddrs renders a header address-list as "Name <email>, …".
+func fmtContentAddrs(addrs []coreapi.ContentAddress) string {
+	if len(addrs) == 0 {
+		return "—"
+	}
+	parts := make([]string, len(addrs))
+	for i, a := range addrs {
+		if a.Name != nil && *a.Name != "" {
+			parts[i] = fmt.Sprintf("%s <%s>", *a.Name, a.Email)
+		} else {
+			parts[i] = a.Email
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// bodySummary describes a body slot for the header table.
+func bodySummary(b *coreapi.ContentBody) string {
+	if b == nil {
+		return "—"
+	}
+	if b.Truncated || b.Content == nil {
+		return fmt.Sprintf("section %s, %s (truncated — fetch the part)", b.Section, fmtBytes(b.Size))
+	}
+	return fmt.Sprintf("section %s, %s", b.Section, fmtBytes(b.Size))
+}
+
+// printContent renders the structured content view (headers + bodies +
+// attachments) in the FIELD/VALUE + table house style.
+func printContent(w io.Writer, p *Printer, mbx, id string, c *coreapi.ContentResult) {
+	h := c.Headers
+	rows := [][]string{
+		{"From", fmtContentAddrs(h.From)},
+		{"To", fmtContentAddrs(h.To)},
+	}
+	if len(h.Cc) > 0 {
+		rows = append(rows, []string{"Cc", fmtContentAddrs(h.Cc)})
+	}
+	if len(h.ReplyTo) > 0 {
+		rows = append(rows, []string{"Reply-To", fmtContentAddrs(h.ReplyTo)})
+	}
+	rows = append(rows, []string{"Subject", derefOr(h.Subject, "(none)")})
+	if h.Date != nil {
+		rows = append(rows, []string{"Date", fmtEpoch(*h.Date)})
+	}
+	if h.MessageIDHeader != nil && *h.MessageIDHeader != "" {
+		rows = append(rows, []string{"Message-ID", *h.MessageIDHeader})
+	}
+	if h.InReplyTo != nil && *h.InReplyTo != "" {
+		rows = append(rows, []string{"In-Reply-To", *h.InReplyTo})
+	}
+	rows = append(rows,
+		[]string{"Text", bodySummary(c.Text)},
+		[]string{"HTML", bodySummary(c.HTML)},
+	)
+	printTable(w, p, []string{"FIELD", "VALUE"}, rows)
+
+	// Print the plain-text body in full when it is present and inlined.
+	if c.Text != nil && !c.Text.Truncated && c.Text.Content != nil {
+		fmt.Fprintf(w, "\n── Text (section %s) ──\n%s\n", c.Text.Section, strings.TrimRight(*c.Text.Content, "\r\n"))
+	}
+
+	if len(c.Attachments) > 0 {
+		fmt.Fprintln(w)
+		arows := make([][]string, 0, len(c.Attachments))
+		for _, at := range c.Attachments {
+			kind := "attachment"
+			if at.Inline {
+				kind = "inline"
+			}
+			if at.Degraded {
+				kind += " (degraded)"
+			}
+			arows = append(arows, []string{at.Section, truncate(at.Filename, 32), at.ContentType, fmtBytes(at.Size), kind})
+		}
+		printTable(w, p, []string{"SECTION", "FILENAME", "TYPE", "SIZE", "KIND"}, arows)
+		p.Msgf("  fetch a part:  openemail message part %s <section> -o <file>", id)
+	}
+}
+
+// derefOr returns *s or a fallback when s is nil/empty.
+func derefOr(s *string, fallback string) string {
+	if s == nil || *s == "" {
+		return fallback
+	}
+	return *s
+}
+
 // labelMembershipDisplay renders labels with their per-label UIDs.
 func labelMembershipDisplay(m *coreapi.MessageMeta) string {
 	if len(m.Labels) == 0 {

@@ -56,6 +56,29 @@ forward / group / relay — the final outcome shows up in the traffic log). Each
 send generates a ULID `X-Delivery-Id` and reuses it on retry, so a 5xx never
 duplicates the message.
 
+## Read a message and download an attachment
+
+```sh
+# Metadata only (flags, labels, envelope):
+openemail message get 01MSGID…
+
+# The email-client view: decoded headers, the text/html body, and an
+# attachment list (each with a `section` handle).
+openemail message content 01MSGID…
+
+# Pull one part by its section number (from the attachments list). Decoded by
+# default; -o dir/ saves it under the server-suggested filename.
+openemail message part 01MSGID… 2 -o ./downloads/
+openemail message part 01MSGID… 2 --raw -o invoice.b64   # the stored encoded slice
+
+# The whole raw RFC822 message:
+openemail message raw 01MSGID… -o message.eml
+```
+
+`content` and `part` serve **live** messages (a trashed message is `404`, like
+`raw`); over-large messages answer `413` with `raw` as the fallback. Add `--json`
+to `content` for the structured object.
+
 ## Tail live events
 
 ```sh

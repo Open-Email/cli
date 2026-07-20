@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/openemail/openemail-cli/internal/coreapi"
 	"github.com/spf13/cobra"
@@ -22,6 +25,8 @@ func newMessagesCmd(a *app) *cobra.Command {
 		newMessageListCmd(a),
 		newMessageGetCmd(a),
 		newMessageRawCmd(a),
+		newMessageContentCmd(a),
+		newMessagePartCmd(a),
 		newMessageAppendCmd(a),
 		newMessageFlagCmd(a),
 		newMessageLabelCmd(a),
@@ -186,6 +191,101 @@ func newMessageRawCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&output, "output", "o", "", "write to this file instead of stdout")
 	return cmd
+}
+
+func newMessageContentCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:     "content <messageId>",
+		Aliases: []string{"view"},
+		Short:   "Show the structured content view: decoded headers, text/html bodies, and attachment list",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
+			if err != nil {
+				return err
+			}
+			c, err := client.GetContent(cmd.Context(), mbx, args[0])
+			if err != nil {
+				return err
+			}
+			a.out.Emit(c, func(w io.Writer) { printContent(w, a.out, mbx, args[0], c) })
+			return nil
+		},
+	}
+}
+
+func newMessagePartCmd(a *app) *cobra.Command {
+	var (
+		output string
+		raw    bool
+	)
+	cmd := &cobra.Command{
+		Use:   "part <messageId> <section>",
+		Short: "Download one MIME part by section number (decoded by default; --raw for the encoded slice)",
+		Long: "Download one MIME part by its IMAP section number (from `message content` attachments). " +
+			"Decoded by default; --raw serves the stored encoded bytes. Writes to stdout, to a file (-o file), " +
+			"or into a directory (-o dir/) under the server-suggested filename.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
+			if err != nil {
+				return err
+			}
+			rc, hdr, err := client.GetPart(cmd.Context(), mbx, args[0], args[1], raw)
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+
+			// Resolve the destination: stdout, an explicit file, or (when -o is an
+			// existing directory) the server-suggested filename inside it.
+			dst := io.Writer(os.Stdout)
+			path := output
+			if output != "" {
+				if info, statErr := os.Stat(output); statErr == nil && info.IsDir() {
+					path = filepath.Join(output, partFilename(hdr, args[1]))
+				}
+				f, ferr := os.Create(path)
+				if ferr != nil {
+					return ferr
+				}
+				defer f.Close()
+				dst = f
+			}
+			n, err := io.Copy(dst, rc)
+			if err != nil {
+				return err
+			}
+			if output != "" {
+				a.out.Successf("Wrote %s (%s, %d bytes)", path, strOrEmpty(hdr.Get("Content-Type"), "application/octet-stream"), n)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&output, "output", "o", "", "write to this file, or into this directory (uses the server filename)")
+	cmd.Flags().BoolVar(&raw, "raw", false, "serve the stored encoded slice instead of decoding the transfer encoding")
+	return cmd
+}
+
+// partFilename derives a save name from the response's Content-Disposition
+// filename, falling back to part-<section>.
+func partFilename(hdr http.Header, section string) string {
+	if cd := hdr.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil {
+			if name := filepath.Base(params["filename"]); name != "" && name != "." && name != "/" {
+				return name
+			}
+		}
+	}
+	return "part-" + section
 }
 
 func newMessageAppendCmd(a *app) *cobra.Command {

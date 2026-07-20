@@ -69,6 +69,12 @@ func contractPairings() []pairing {
 		{val: CreatedLabel{}, comp: "CreatedLabel"},
 		{val: ExpungedUID{}, comp: "ExpungedUID"},
 		{val: MimeEntry{}, comp: "MimeEntry"},
+		// Structured content view (GET .../content).
+		{val: ContentResult{}, comp: "ContentResult"},
+		{val: ContentHeaders{}, comp: "ContentHeaders"},
+		{val: ContentBody{}, comp: "ContentBody"},
+		{val: AttachmentRef{}, comp: "AttachmentRef"},
+		{val: ContentAddress{}, comp: "ContentAddress"},
 		{val: ThreadListItem{}, comp: "ThreadListItem"},
 		{val: ReplyContext{}, comp: "ReplyContext"},
 		// GetThread decodes the top-level `cursor` in an anonymous wrapper, not on
