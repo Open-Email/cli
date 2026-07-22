@@ -167,6 +167,9 @@ func mailboxesDesc() resourceDesc {
 			{key: "D", label: "D deleted", run: func(ctx context.Context, ui *Options, _ any) pane {
 				return newScreenPane(ctx, ui, deletedMailboxesDesc())
 			}},
+			{key: "C", label: "C credentials", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return newScreenPane(ctx, ui, credentialsDesc(item.(coreapi.Mailbox)))
+			}},
 		},
 	}
 }
@@ -584,6 +587,77 @@ func deletedMailboxesDesc() resourceDesc {
 	}
 }
 
+// credKindLabel renders a credential's wire kind for display (app_password →
+// app-password); passwords pass through unchanged.
+func credKindLabel(kind string) string {
+	if kind == "app_password" {
+		return "app-password"
+	}
+	return kind
+}
+
+// credentialsDesc is the dynamic listing of one mailbox's IMAP/POP3/SMTP login
+// credentials (the secrets a mail client authenticates with — distinct from the
+// API keys this console uses). Management is admin-gated in core (account owner
+// or system); a mailbox principal can't reach it. Built at drill-down time so
+// the whole screenPane machinery works over the nested resource.
+func credentialsDesc(mbx coreapi.Mailbox) resourceDesc {
+	label := mailboxLabel(&mbx)
+	return resourceDesc{
+		key:  "credentials:" + mbx.ID,
+		name: "Credentials — " + label,
+		columns: []column{
+			{title: "KIND", width: 13},
+			{title: "USERNAME", flex: true},
+			{title: "LABEL", width: 18},
+			{title: "CREATED", width: 16},
+			{title: "LAST USED", width: 16},
+			{title: "REVOKED", width: 7},
+		},
+		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
+			creds, err := c.ListCredentials(ctx, mbx.ID)
+			if err != nil {
+				return nil, "", err
+			}
+			rows := make([]rowData, len(creds))
+			for i, cr := range creds {
+				rows[i] = rowData{
+					cells: []string{
+						credKindLabel(cr.Kind), cr.Username, strOr(cr.Name, "—"),
+						fmtEpoch(cr.CreatedAt), fmtEpochPtr(cr.LastUsedAt), yn(cr.RevokedAt != nil),
+					},
+					item: cr,
+				}
+			}
+			return rows, "", nil // credentials are unpaginated
+		},
+		detail: func(item any) []kv {
+			cr := item.(coreapi.Credential)
+			return []kv{
+				{k: "id", v: cr.ID},
+				{k: "kind", v: credKindLabel(cr.Kind)},
+				{k: "username", v: cr.Username},
+				{k: "label", v: strOr(cr.Name, "—")},
+				{k: "created", v: fmtEpoch(cr.CreatedAt)},
+				{k: "last used", v: fmtEpochPtr(cr.LastUsedAt)},
+				{k: "revoked", v: fmtEpochPtr(cr.RevokedAt)},
+			}
+		},
+		actions: []action{
+			{key: "n", label: "n new", run: func(ctx context.Context, ui *Options, _ any) pane {
+				return credentialFormPane(ctx, ui, mbx)
+			}},
+			{key: "d", label: "d revoke", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				cr := item.(coreapi.Credential)
+				if cr.RevokedAt != nil {
+					return nil // already revoked
+				}
+				return credentialRevokeConfirm(ctx, ui, mbx, cr)
+			}},
+		},
+	}
+}
+
 // trafficRanges is the window vocabulary the core endpoint accepts, in cycle
 // order (GET /domains/:domain/traffic ?range).
 var trafficRanges = []string{"1h", "6h", "24h", "7d", "30d"}
@@ -609,9 +683,9 @@ func (t *trafficState) rng() string   { return trafficRanges[int(t.i.Load())%len
 func (t *trafficState) cycle() string { t.i.Add(1); return t.rng() }
 
 // trafficPickerDesc is the Traffic sidebar screen: a domain list whose enter
-// drills into that domain's sampled traffic. Traffic is indexed by the
-// canonical local-party domain (core src/lib/traffic.ts), so an alias domain
-// drills into an empty window — its ALIAS OF column says why.
+// drills into that domain's per-event log. Traffic is indexed by the canonical
+// local-party domain (core src/lib/traffic.ts), so an alias domain drills into
+// an empty window — its ALIAS OF column says why.
 func trafficPickerDesc() resourceDesc {
 	return resourceDesc{
 		key:  "traffic",
@@ -636,9 +710,98 @@ func trafficPickerDesc() resourceDesc {
 		},
 		open: func(ctx context.Context, ui *Options, item any) pane {
 			d := item.(coreapi.Domain)
-			return newScreenPane(ctx, ui, trafficDesc(d.Domain))
+			return newScreenPane(ctx, ui, trafficEventsDesc(d.Domain))
 		},
 	}
+}
+
+// eventsFreshness is the persistent caveat on the per-event log: it is the
+// durable audit record queried from the Iceberg store (near-real-time, minutes
+// of lag), NOT the live message stream (that's the mailbox events WebSocket).
+const eventsFreshness = "durable audit log · updates within a few minutes · not the live message stream"
+
+// trafficEventsDesc is one domain's per-event traffic log: individual delivery
+// attempts, newest first, with REAL server-side keyset pagination (unlike the
+// single-shot aggregate). R cycles the range in place; enter opens the full
+// event detail; s opens the sampled aggregate summary (trafficDesc). `/`
+// client-filters the rows already loaded.
+func trafficEventsDesc(domain string) resourceDesc {
+	st := newTrafficState()
+	return resourceDesc{
+		key:     "events:" + domain,
+		name:    "Traffic — " + domain,
+		caption: eventsFreshness,
+		columns: []column{
+			{title: "TIME", width: 19},
+			{title: "SOURCE", width: 10},
+			{title: "OUTCOME", width: 14},
+			{title: "FROM", flex: true},
+			{title: "TO", flex: true},
+			{title: "SUBJECT", flex: true},
+		},
+		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
+			de, err := c.GetDomainEvents(ctx, domain, st.rng(), "", "", pageLimit, cursor)
+			if err != nil {
+				return nil, "", err
+			}
+			rows := make([]rowData, len(de.Events))
+			for i, e := range de.Events {
+				rows[i] = rowData{
+					cells: []string{
+						fmtEpoch(e.EventTime), e.Source, e.Outcome,
+						strOr(e.EnvelopeFrom, "—"), strOr(e.EnvelopeTo, "—"), strOr(e.Subject, "—"),
+					},
+					item: e,
+				}
+			}
+			return rows, strOr(de.Cursor, ""), nil
+		},
+		detail: func(item any) []kv {
+			e := item.(coreapi.TrafficEvent)
+			return []kv{
+				{k: "time", v: fmtEpoch(e.EventTime)},
+				{k: "source", v: e.Source},
+				{k: "outcome", v: e.Outcome},
+				{k: "detail", v: strOr(e.Detail, "—")},
+				{},
+				{k: "from", v: strOr(e.EnvelopeFrom, "—")},
+				{k: "to", v: strOr(e.EnvelopeTo, "—")},
+				{k: "original", v: strOr(e.OriginalAddress, "—")},
+				{k: "subject", v: strOr(e.Subject, "—")},
+				{},
+				{k: "matched by", v: strOr(e.MatchedBy, "—")},
+				{k: "route kind", v: strOr(e.RouteKind, "—")},
+				{k: "route target", v: strOr(e.RouteTarget, "—")},
+				{k: "mailbox", v: strOr(e.MailboxID, "—")},
+				{},
+				{k: "delivery id", v: strOr(e.DeliveryID, "—")},
+				{k: "message id", v: strOr(e.MessageID, "—")},
+				{k: "message-id hdr", v: strOr(e.MessageIDHeader, "—")},
+				{k: "size", v: int64Or(e.SizeBytes, "—")},
+				{k: "blob hash", v: strOr(e.BlobHash, "—")},
+				{k: "attempt", v: int32Ptr(e.Attempt)},
+				{k: "response", v: strOr(e.Response, "—")},
+				{},
+				{v: eventsFreshness},
+			}
+		},
+		actions: []action{
+			{key: "R", label: "R range", do: func(ctx context.Context, c *coreapi.Client, _ any) (string, error) {
+				return "range: " + st.cycle(), nil
+			}},
+			{key: "s", label: "s summary", run: func(ctx context.Context, ui *Options, _ any) pane {
+				return newScreenPane(ctx, ui, trafficDesc(domain))
+			}},
+		},
+	}
+}
+
+// int32Ptr renders a nullable queue-attempt counter (null → dash on endpoint rows).
+func int32Ptr(p *int32) string {
+	if p == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%d", *p)
 }
 
 // trafficDesc is one domain's traffic window: outcome × route-kind rows sorted

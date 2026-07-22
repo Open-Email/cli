@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -98,16 +99,16 @@ func (p *confirmPane) setSize(w, h int) { p.w, p.h = w, h }
 
 func (p *confirmPane) view() string {
 	var b strings.Builder
-	b.WriteString(" " + stTitle.Render(p.spec.title) + "\n\n")
-	b.WriteString(indent(wrapPlain(p.spec.body, max(20, p.w-4)), "  ") + "\n\n")
+	fmt.Fprintf(&b, " %s\n\n", stTitle.Render(p.spec.title))
+	fmt.Fprintf(&b, "%s\n\n", indent(wrapPlain(p.spec.body, max(20, p.w-4)), "  "))
 	switch {
 	case p.submitting:
-		b.WriteString("  " + p.spin.View() + stMeta.Render(" working…"))
+		fmt.Fprintf(&b, "  %s%s", p.spin.View(), stMeta.Render(" working…"))
 	default:
-		b.WriteString("  " + stErr.Render("[y] "+p.spec.verb) + stMeta.Render("   [esc] cancel"))
+		fmt.Fprintf(&b, "  %s%s", stErr.Render("[y] "+p.spec.verb), stMeta.Render("   [esc] cancel"))
 	}
 	if p.errMsg != "" {
-		b.WriteString("\n\n  " + stErr.Render(truncate(p.errMsg, max(8, p.w-6))))
+		fmt.Fprintf(&b, "\n\n  %s", stErr.Render(truncate(p.errMsg, max(8, p.w-6))))
 	}
 	return b.String()
 }

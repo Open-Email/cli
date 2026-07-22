@@ -23,6 +23,7 @@ func newDomainsCmd(a *app) *cobra.Command {
 		newDomainUpdateCmd(a),
 		newDomainDeleteCmd(a),
 		newDomainTrafficCmd(a),
+		newDomainEventsCmd(a),
 	)
 	return cmd
 }
@@ -268,6 +269,72 @@ func newDomainTrafficCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&rng, "range", "24h", "time range: 1h|6h|24h|7d|30d")
+	return cmd
+}
+
+func newDomainEventsCmd(a *app) *cobra.Command {
+	var (
+		rng, outcome, source, cursor string
+		limit                        int
+		all                          bool
+	)
+	cmd := &cobra.Command{
+		Use:   "events <domain>",
+		Short: "Browse the per-event traffic log for a domain (authoritative, near-real-time)",
+		Long: "List individual traffic events (from/to/time/outcome/subject/detail), newest first, " +
+			"from the durable Iceberg log — distinct from the sampled `traffic` aggregate and from the " +
+			"live mailbox event stream. Updated within a few minutes of delivery.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			domain := args[0]
+			var events []coreapi.TrafficEvent
+			next := ""
+			if all {
+				events, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.TrafficEvent], error) {
+					de, e := client.GetDomainEvents(ctx, domain, rng, outcome, source, limit, cur)
+					if e != nil {
+						return coreapi.Page[coreapi.TrafficEvent]{}, e
+					}
+					return coreapi.Page[coreapi.TrafficEvent]{Items: de.Events, NextCursor: strOr(de.Cursor, "")}, nil
+				})
+			} else {
+				var de *coreapi.DomainEvents
+				de, err = client.GetDomainEvents(ctx, domain, rng, outcome, source, limit, cursor)
+				if err == nil {
+					events, next = de.Events, strOr(de.Cursor, "")
+				}
+			}
+			if err != nil {
+				return err
+			}
+			a.out.Emit(map[string]any{"events": events, "cursor": next}, func(w io.Writer) {
+				rows := make([][]string, 0, len(events))
+				for _, e := range events {
+					rows = append(rows, []string{
+						fmtEpoch(e.EventTime), e.Source, e.Outcome,
+						truncate(strOr(e.EnvelopeFrom, "—"), 24),
+						truncate(strOr(e.EnvelopeTo, "—"), 24),
+						truncate(strOr(e.Subject, "—"), 32),
+						truncate(strOr(e.Detail, "—"), 20),
+					})
+				}
+				printTable(w, a.out, []string{"TIME", "SOURCE", "OUTCOME", "FROM", "TO", "SUBJECT", "DETAIL"}, rows)
+				a.moreHint(next)
+			})
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&rng, "range", "24h", "time range: 1h|6h|24h|7d|30d")
+	cmd.Flags().StringVar(&outcome, "outcome", "", "filter by outcome (e.g. delivered, bounced, relayed)")
+	cmd.Flags().StringVar(&source, "source", "", "filter by source (e.g. inbound, outbound, relay, webhook)")
+	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–200)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor")
+	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
 	return cmd
 }
 

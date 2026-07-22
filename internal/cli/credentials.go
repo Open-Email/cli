@@ -28,7 +28,7 @@ func newCredentialCreateCmd(a *app) *cobra.Command {
 	var kind, username, password, name string
 	cmd := &cobra.Command{
 		Use:   "create <mailboxId>",
-		Short: "Create a mailbox credential (app-password token shown once, or a password)",
+		Short: "Create a mailbox credential: generate an app password (shown once) or set a password",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -75,7 +75,7 @@ func newCredentialCreateCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "app-password", "credential kind: app-password|password")
+	cmd.Flags().StringVar(&kind, "kind", "app-password", "app-password (generated, shown once) | password (you set it)")
 	cmd.Flags().StringVar(&username, "username", "", "login username (defaults to the mailbox's primary address)")
 	cmd.Flags().StringVar(&password, "password", "", "password (kind=password; prompted if omitted on a TTY)")
 	cmd.Flags().StringVar(&name, "name", "", "human label for the credential")

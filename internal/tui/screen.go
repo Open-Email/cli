@@ -40,6 +40,7 @@ type rowData struct {
 type resourceDesc struct {
 	key     string
 	name    string
+	caption string // optional persistent dim line under the header (e.g. a freshness caveat)
 	columns []column
 	fetch   func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error)
 	detail  func(item any) []kv
@@ -330,7 +331,7 @@ func (s *screenPane) setSize(w, h int) {
 		inner = 20
 	}
 	s.tbl.SetColumns(layoutColumns(s.desc.columns, inner))
-	th := h - 1 - s.filterLines()
+	th := h - 1 - s.filterLines() - s.captionLines()
 	if th < 3 {
 		th = 3
 	}
@@ -341,6 +342,13 @@ func (s *screenPane) setSize(w, h int) {
 
 func (s *screenPane) filterLines() int {
 	if s.filtering || s.filter.Value() != "" {
+		return 1
+	}
+	return 0
+}
+
+func (s *screenPane) captionLines() int {
+	if s.desc.caption != "" {
 		return 1
 	}
 	return 0
@@ -364,6 +372,9 @@ func (s *screenPane) view() string {
 		head += "  " + stErr.Render(truncate(s.errMsg, s.w-lipglossSafeWidth(head)-4))
 	}
 	parts := []string{head}
+	if s.desc.caption != "" {
+		parts = append(parts, " "+stMeta.Render(truncate(s.desc.caption, max(8, s.w-2))))
+	}
 	if s.filterLines() > 0 {
 		parts = append(parts, " "+s.filter.View())
 	}

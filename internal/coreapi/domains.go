@@ -65,6 +65,45 @@ type DomainTraffic struct {
 	RetentionDays int              `json:"retentionDays"`
 }
 
+// TrafficEvent is one row of the per-attempt traffic log (GET
+// /domains/:domain/events) — the authoritative Iceberg record, unlike the
+// sampled TrafficRow aggregate. Nullable columns are pointers so a JSON null
+// round-trips (the drift contract test enforces this). EventTime is epoch
+// seconds; Attempt is null on endpoint (non-queue) rows.
+type TrafficEvent struct {
+	EventTime       int64   `json:"eventTime"`
+	Source          string  `json:"source"`
+	Outcome         string  `json:"outcome"`
+	Detail          *string `json:"detail"`
+	DeliveryID      *string `json:"deliveryId"`
+	EnvelopeFrom    *string `json:"envelopeFrom"`
+	EnvelopeTo      *string `json:"envelopeTo"`
+	OriginalAddress *string `json:"originalAddress"`
+	MatchedBy       *string `json:"matchedBy"`
+	RouteKind       *string `json:"routeKind"`
+	RouteTarget     *string `json:"routeTarget"`
+	MailboxID       *string `json:"mailboxId"`
+	MessageID       *string `json:"messageId"`
+	MessageIDHeader *string `json:"messageIdHeader"`
+	Subject         *string `json:"subject"`
+	SizeBytes       *int64  `json:"sizeBytes"`
+	BlobHash        *string `json:"blobHash"`
+	Attempt         *int32  `json:"attempt"`
+	Response        *string `json:"response"`
+}
+
+// DomainEvents is GET /domains/:domain/events — a keyset-paginated page of the
+// per-event traffic log. Cursor rides the response's `cursor` field (string or
+// null; null on the last page). Estimated is always false (this is the
+// unsampled durable record, unlike DomainTraffic).
+type DomainEvents struct {
+	Domain    string         `json:"domain"`
+	Range     string         `json:"range"`
+	Events    []TrafficEvent `json:"events"`
+	Cursor    *string        `json:"cursor"`
+	Estimated bool           `json:"estimated"`
+}
+
 func (c *Client) ListDomains(ctx context.Context, limit int, cursor string) (Page[Domain], error) {
 	var out struct {
 		Domains    []Domain `json:"domains"`
@@ -131,6 +170,39 @@ func (c *Client) GetDomainTraffic(ctx context.Context, domain, rng string) (*Dom
 	var out DomainTraffic
 	err := c.doJSON(ctx, request{
 		method: http.MethodGet, path: "/domains/" + escapeSegment(domain) + "/traffic",
+		query: q, idempotent: true,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetDomainEvents returns one keyset page of the per-event traffic log. rng is
+// one of 1h|6h|24h|7d|30d (empty → core default 24h); outcome/source are
+// optional closed-enum filters (empty → omitted); cursor is the opaque token
+// from a prior page's Cursor (empty → first page). Follow *DomainEvents.Cursor
+// (null on the last page) to paginate; --all callers thread it via Depaginate.
+func (c *Client) GetDomainEvents(ctx context.Context, domain, rng, outcome, source string, limit int, cursor string) (*DomainEvents, error) {
+	q := url.Values{}
+	if rng != "" {
+		q.Set("range", rng)
+	}
+	if outcome != "" {
+		q.Set("outcome", outcome)
+	}
+	if source != "" {
+		q.Set("source", source)
+	}
+	if limit > 0 {
+		q.Set("limit", itoa(limit))
+	}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	var out DomainEvents
+	err := c.doJSON(ctx, request{
+		method: http.MethodGet, path: "/domains/" + escapeSegment(domain) + "/events",
 		query: q, idempotent: true,
 	}, &out)
 	if err != nil {

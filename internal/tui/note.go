@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,7 +23,11 @@ func (p *notePane) init() tea.Cmd { return nil }
 
 func (p *notePane) update(msg tea.Msg) (pane, tea.Cmd) {
 	if k, ok := msg.(tea.KeyMsg); ok && (k.String() == "esc" || k.String() == "enter") {
-		return p, popPane
+		// A reveal note sits over the listing of the resource just created; its
+		// refetch was issued while this note was on top, so its result was routed
+		// here and dropped. Refresh the revealed listing on dismiss (when it is
+		// top again) so the new row appears without a manual refresh.
+		return p, popRefresh("")
 	}
 	return p, nil
 }
@@ -31,9 +36,9 @@ func (p *notePane) setSize(w, h int) { p.w, p.h = w, h }
 
 func (p *notePane) view() string {
 	var b strings.Builder
-	b.WriteString(" " + stTitle.Render(p.heading) + "\n\n")
+	fmt.Fprintf(&b, " %s\n\n", stTitle.Render(p.heading))
 	for _, l := range p.lines {
-		b.WriteString(indent(wrapPlain(l, max(20, p.w-4)), "  ") + "\n")
+		fmt.Fprintf(&b, "%s\n", indent(wrapPlain(l, max(20, p.w-4)), "  "))
 	}
 	return b.String()
 }

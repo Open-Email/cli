@@ -62,6 +62,8 @@ func contractPairings() []pairing {
 		{val: PickupSource{}, comp: "PickupSource"},
 		{val: DomainTraffic{}, comp: "DomainTraffic"},
 		{val: TrafficRow{}, comp: "TrafficRow"},
+		{val: TrafficEvent{}, comp: "TrafficEvent"},
+		{val: DomainEvents{}, comp: "DomainEvents"},
 		// Data plane.
 		{val: MessageLabel{}, comp: "MessageLabel"},
 		{val: MessageMeta{}, comp: "MessageMeta"},

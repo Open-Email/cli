@@ -101,7 +101,12 @@ func (p *formPane) update(msg tea.Msg) (pane, tea.Cmd) {
 			return p, p.form.Init()
 		}
 		if msg.after != nil {
-			return p, tea.Sequence(popRefresh(msg.flash), pushPane(msg.after))
+			// Pop this form and show the after-pane (e.g. the one-time token
+			// reveal). Do NOT refresh the revealed listing here: it would issue a
+			// fetch whose result is routed to the after-pane (now on top) and
+			// dropped, leaving the listing stale AND stuck loading. The after-pane
+			// refreshes the listing when it is dismissed and back on top.
+			return p, tea.Sequence(popPane, pushPane(msg.after))
 		}
 		return p, popRefresh(msg.flash)
 

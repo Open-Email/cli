@@ -254,6 +254,93 @@ func mailboxPurgeConfirm(ctx context.Context, ui *Options, m coreapi.DeletedMail
 	})
 }
 
+// buildCredentialInput assembles a create request from the form fields,
+// enforcing that a password credential carries a password. Username/label are
+// trimmed; an empty username is omitted so core defaults it to the primary
+// address; a password is only sent for kind=password.
+func buildCredentialInput(kind, username, password, name string) (coreapi.CredentialCreateInput, error) {
+	in := coreapi.CredentialCreateInput{Kind: kind, Username: strings.TrimSpace(username)}
+	if l := strings.TrimSpace(name); l != "" {
+		in.Name = &l
+	}
+	if kind == "password" {
+		if strings.TrimSpace(password) == "" {
+			return coreapi.CredentialCreateInput{}, errors.New("a password credential needs a password")
+		}
+		in.Password = password
+	}
+	return in, nil
+}
+
+// credentialFormPane creates an IMAP/POP3/SMTP login credential on a mailbox.
+// app-password mints a token revealed exactly once; password sets a plaintext
+// the caller supplies. Username defaults to the mailbox primary address.
+func credentialFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox) pane {
+	kind := "app_password"
+	username := strOr(mbx.PrimaryAddress, "")
+	var password, name string
+	build := func() *huh.Form {
+		return huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().Title("Kind").
+				Description("app passwords are generated high-entropy tokens (also usable as a mailbox API token); passwords are ones you choose, for IMAP/SMTP login").
+				Options(
+					huh.NewOption("Generate an app password (shown once)", "app_password"),
+					huh.NewOption("Set a password (IMAP/SMTP login)", "password"),
+				).
+				Value(&kind),
+			huh.NewInput().Title("Username").
+				Description("login username (defaults to the mailbox primary address)").
+				Placeholder("alice@example.com").Value(&username),
+			huh.NewInput().Title("Password").
+				DescriptionFunc(func() string {
+					if kind == "password" {
+						return "required for a password credential"
+					}
+					return "ignored for app-password — a token is generated"
+				}, &kind).
+				EchoMode(huh.EchoModePassword).Value(&password),
+			huh.NewInput().Title("Label").Placeholder("optional — e.g. Thunderbird").Value(&name),
+		))
+	}
+	submit := func(sctx context.Context, c *coreapi.Client) (string, pane, error) {
+		in, err := buildCredentialInput(kind, username, password, name)
+		if err != nil {
+			return "", nil, err
+		}
+		cred, err := c.CreateCredential(sctx, mbx.ID, in)
+		if err != nil {
+			return "", nil, err
+		}
+		if cred.Token != "" {
+			reveal := newNotePane("Credential created", []string{
+				credKindLabel(cred.Kind) + " · username " + cred.Username,
+				"",
+				"App-password token — shown ONCE, copy it now:",
+				"",
+				cred.Token,
+			})
+			return "credential created for " + cred.Username, reveal, nil
+		}
+		return "password credential created for " + cred.Username, nil, nil
+	}
+	return newFormPane(ctx, ui, formSpec{title: "New credential — " + mailboxLabel(&mbx), build: build, submit: submit})
+}
+
+func credentialRevokeConfirm(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cred coreapi.Credential) pane {
+	return newConfirmPane(ctx, ui, confirmSpec{
+		title: "Revoke credential " + strOr(cred.Name, cred.Username),
+		body: "This credential stops authenticating immediately. Any IMAP/POP3/SMTP client using " +
+			"it will fail to log in until reconfigured with a new one. Not undoable — mint a new credential to restore access.",
+		verb: "revoke credential",
+		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
+			if err := c.RevokeCredential(sctx, mbx.ID, cred.ID); err != nil {
+				return "", err
+			}
+			return "credential revoked", nil
+		},
+	})
+}
+
 // --- routes / patterns (shared destination plumbing) ---
 
 func destDescription(typ *string) func() string {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -157,14 +158,14 @@ func renderKVs(kvs []kv, w int) string {
 		case e.k == "" && e.v == "":
 			b.WriteByte('\n')
 		case e.k == "":
-			b.WriteString(" " + stSection.Render(e.v) + "\n")
+			fmt.Fprintf(&b, " %s\n", stSection.Render(e.v))
 		default:
 			pad := strings.Repeat(" ", keyW-len(e.k))
 			val := e.v
 			if max := w - keyW - 5; max > 8 {
 				val = truncate(val, max)
 			}
-			b.WriteString("  " + stKey.Render(e.k) + pad + "  " + stVal.Render(val) + "\n")
+			fmt.Fprintf(&b, "  %s%s  %s\n", stKey.Render(e.k), pad, stVal.Render(val))
 		}
 	}
 	return b.String()

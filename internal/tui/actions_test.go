@@ -223,20 +223,42 @@ func TestFormOutcomes(t *testing.T) {
 		t.Fatalf("success should pop-refresh, got %#v", cmd())
 	}
 
-	// A submit with an after-pane pops then pushes it (token reveal).
+	// A submit with an after-pane pops the form then pushes it (token reveal).
+	// It must NOT pop-refresh here — the after-pane refreshes the revealed
+	// listing on dismiss instead (a refresh now would misroute its result to the
+	// after-pane and leave the listing stale).
 	_, cmd = p.update(formDoneMsg{paneID: p.id, flash: "created", after: newNotePane("reveal", nil)})
 	msgs := collectMsgs(cmd)
 	var sawPop, sawPush bool
 	for _, m := range msgs {
 		switch m.(type) {
-		case popRefreshMsg:
+		case popPaneMsg:
 			sawPop = true
+		case popRefreshMsg:
+			t.Fatalf("after-pane submit must not pop-refresh (misroutes the fetch), got %#v", msgs)
 		case pushPaneMsg:
 			sawPush = true
 		}
 	}
 	if !sawPop || !sawPush {
-		t.Fatalf("after-pane submit should pop-refresh AND push, got %#v", msgs)
+		t.Fatalf("after-pane submit should pop AND push, got %#v", msgs)
+	}
+}
+
+// A reveal note (one-time token) sits over the listing of the resource just
+// created. Its refetch was misrouted to the note while the note was on top, so
+// dismissing the note must refresh the revealed listing — otherwise the new row
+// only appears after a manual refresh (the reported credentials-list bug).
+func TestNotePaneDismissRefreshesRevealedList(t *testing.T) {
+	p := newNotePane("Credential created", []string{"token: abc123"})
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyEsc}, {Type: tea.KeyEnter}} {
+		_, cmd := p.update(key)
+		if cmd == nil {
+			t.Fatalf("%v should produce a command", key)
+		}
+		if _, ok := cmd().(popRefreshMsg); !ok {
+			t.Fatalf("note dismiss (%v) should pop-refresh the revealed listing, got %#v", key, cmd())
+		}
 	}
 }
 

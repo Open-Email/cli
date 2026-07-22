@@ -119,30 +119,30 @@ func (p *previewPane) setContent() {
 		if v == "" {
 			return
 		}
-		b.WriteString("  " + stKey.Render(fmt.Sprintf("%-8s", k)) + stVal.Render(truncate(v, w-12)) + "\n")
+		fmt.Fprintf(&b, "  %s%s\n", stKey.Render(fmt.Sprintf("%-8s", k)), stVal.Render(truncate(v, w-12)))
 	}
 	hdr("From", fmtAddrs(c.Headers.From))
 	hdr("To", fmtAddrs(c.Headers.To))
 	hdr("Cc", fmtAddrs(c.Headers.Cc))
 	hdr("Date", fmtEpochPtr(c.Headers.Date))
 	hdr("Subject", strOr(c.Headers.Subject, "(no subject)"))
-	b.WriteString("\n" + stDim.Render(strings.Repeat("─", max(4, w-2))) + "\n\n")
+	fmt.Fprintf(&b, "\n%s\n\n", stDim.Render(strings.Repeat("─", max(4, w-2))))
 
 	switch {
 	case c.Text != nil && c.Text.Content != nil:
 		b.WriteString(indent(wrapPlain(*c.Text.Content, w-4), "  "))
 		b.WriteByte('\n')
 	case c.Text != nil && c.Text.Truncated:
-		b.WriteString("  " + stDim.Render(fmt.Sprintf("(text body too large to inline — %s; fetch with `openemail messages content`)", fmtBytes(c.Text.Size))) + "\n")
+		fmt.Fprintf(&b, "  %s\n", stDim.Render(fmt.Sprintf("(text body too large to inline — %s; fetch with `openemail messages content`)", fmtBytes(c.Text.Size))))
 	case c.HTML != nil:
-		b.WriteString("  " + stDim.Render(fmt.Sprintf("(no text body — HTML body, %s)", fmtBytes(c.HTML.Size))) + "\n")
+		fmt.Fprintf(&b, "  %s\n", stDim.Render(fmt.Sprintf("(no text body — HTML body, %s)", fmtBytes(c.HTML.Size))))
 	default:
-		b.WriteString("  " + stDim.Render("(no body)") + "\n")
+		fmt.Fprintf(&b, "  %s\n", stDim.Render("(no body)"))
 	}
 
 	if len(c.Attachments) > 0 {
-		b.WriteString("\n" + stDim.Render(strings.Repeat("─", max(4, w-2))) + "\n")
-		b.WriteString(" " + stSection.Render(fmt.Sprintf("Attachments (%d)", len(c.Attachments))) + "\n")
+		fmt.Fprintf(&b, "\n%s\n", stDim.Render(strings.Repeat("─", max(4, w-2))))
+		fmt.Fprintf(&b, " %s\n", stSection.Render(fmt.Sprintf("Attachments (%d)", len(c.Attachments))))
 		for _, a := range c.Attachments {
 			name := a.Filename
 			if name == "" {
@@ -152,7 +152,7 @@ func (p *previewPane) setContent() {
 			if a.Inline {
 				line += "  inline"
 			}
-			b.WriteString(stVal.Render(line) + stDim.Render("  [part "+a.Section+"]") + "\n")
+			fmt.Fprintf(&b, "%s%s\n", stVal.Render(line), stDim.Render("  [part "+a.Section+"]"))
 		}
 	}
 	p.vp.SetContent(b.String())
