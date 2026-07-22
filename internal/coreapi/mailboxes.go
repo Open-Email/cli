@@ -126,3 +126,18 @@ func (c *Client) RestoreMailbox(ctx context.Context, mailboxID string) (*Mailbox
 	}
 	return &out, nil
 }
+
+// PurgeMailbox expedites an already-soft-deleted mailbox: it waives the rest of
+// the undo window (tombstone → non-restorable, wipe at the ~25 min floor).
+// Idempotent. 404 no accessible tombstone, 409 not_deleted (the mailbox is live).
+func (c *Client) PurgeMailbox(ctx context.Context, mailboxID string) (*MailboxPurgeResult, error) {
+	var out MailboxPurgeResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost,
+		path:   "/mailboxes/" + escapeSegment(mailboxID) + "/purge",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

@@ -54,6 +54,7 @@ func contractPairings() []pairing {
 		{val: Mailbox{}, comp: "MailboxWithStats"},
 		{val: DeletedMailbox{}, comp: "DeletedMailbox"},
 		{val: MailboxDeleteResult{}, comp: "MailboxDeleteResult"},
+		{val: MailboxPurgeResult{}, comp: "MailboxPurgeResult"},
 		{val: MailboxRestoreResult{}, comp: "MailboxRestoreResult"},
 		{val: Credential{}, comp: "Credential"},
 		{val: CreatedCredential{}, comp: "CredentialCreated"},

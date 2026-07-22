@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/openemail/openemail-cli/internal/coreapi"
@@ -20,10 +21,14 @@ func newAccountsCmd(a *app) *cobra.Command {
 
 func newAccountCreateCmd(a *app) *cobra.Command {
 	var maxMailboxes int
+	var withKey bool
+	var keyName string
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a tenant account (system callers only)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Create a tenant account. A fresh account has no credentials — pass --with-key\n" +
+			"to also mint its first account API key (the token prints ONCE).",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -38,14 +43,39 @@ func newAccountCreateCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			a.out.Emit(acc, func(w io.Writer) {
+			if !withKey {
+				a.out.Emit(acc, func(w io.Writer) {
+					a.out.Successf("Created account %s", acc.ID)
+					printAccount(w, a.out, acc)
+				})
+				return nil
+			}
+			key, kerr := client.CreateAPIKey(cmd.Context(), keyName, coreapi.PrincipalAccount, acc.ID)
+			if kerr != nil {
+				// The account exists; report the partial state loudly rather
+				// than pretending the whole call failed.
+				a.out.Emit(acc, func(w io.Writer) {
+					a.out.Successf("Created account %s", acc.ID)
+					printAccount(w, a.out, acc)
+				})
+				return fmt.Errorf("account created, but the key mint failed: %w — retry with `openemail keys create %s --account %s`", kerr, keyName, acc.ID)
+			}
+			out := struct {
+				Account *coreapi.Account       `json:"account"`
+				Key     *coreapi.CreatedAPIKey `json:"key"`
+			}{acc, key}
+			a.out.Emit(out, func(w io.Writer) {
 				a.out.Successf("Created account %s", acc.ID)
 				printAccount(w, a.out, acc)
+				a.out.Successf("Created key %q (role %s)", key.Name, key.Role)
+				a.out.Msgf("  token (shown once): %s", key.Token)
 			})
 			return nil
 		},
 	}
 	cmd.Flags().IntVar(&maxMailboxes, "max-mailboxes", 0, "cap on mailboxes (omit = unlimited)")
+	cmd.Flags().BoolVar(&withKey, "with-key", false, "also mint the account's first API key and print its token")
+	cmd.Flags().StringVar(&keyName, "key-name", "bootstrap", "name for the minted key (with --with-key)")
 	return cmd
 }
 

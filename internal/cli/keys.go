@@ -91,7 +91,7 @@ func newKeysListCmd(a *app) *cobra.Command {
 						status = "revoked"
 					}
 					rows = append(rows, []string{
-						k.ID, k.Name, k.Role, strOr(k.AccountID, "—"),
+						k.ID, k.Name, k.Role, strOr(k.AccountName, strOr(k.AccountID, "—")),
 						fmtEpoch(k.CreatedAt), fmtEpochPtr(k.LastUsedAt), status,
 					})
 				}

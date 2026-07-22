@@ -76,6 +76,7 @@ func newRootCmd(a *app) *cobra.Command {
 		newLogoutCmd(a),
 		newWhoamiCmd(a),
 		newStatusCmd(a),
+		newUICmd(a),
 		newKeysCmd(a),
 		newMailboxesCmd(a),
 		newAccountsCmd(a),

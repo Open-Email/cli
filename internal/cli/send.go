@@ -3,13 +3,10 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
-	"mime"
 	"os"
-	"strings"
-	"time"
 
+	"github.com/openemail/openemail-cli/internal/compose"
 	"github.com/openemail/openemail-cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
@@ -129,32 +126,8 @@ func renderDeliverResult(p *Printer, res *coreapi.DeliverResult, withSent bool) 
 	}
 }
 
-// composeMIME builds a minimal RFC 5322 text/plain message.
+// composeMIME builds a minimal RFC 5322 text/plain message (shared impl in
+// internal/compose, also used by the console's compose form).
 func composeMIME(from, to, subject, body string) []byte {
-	var b bytes.Buffer
-	fmt.Fprintf(&b, "From: %s\r\n", from)
-	fmt.Fprintf(&b, "To: %s\r\n", to)
-	if subject != "" {
-		fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject))
-	}
-	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
-	fmt.Fprintf(&b, "Message-ID: <%s@%s>\r\n", newDeliveryID(), hostFromAddress(from))
-	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	b.WriteString("Content-Transfer-Encoding: 8bit\r\n")
-	b.WriteString("\r\n")
-	// Normalize line endings to CRLF.
-	body = strings.ReplaceAll(body, "\r\n", "\n")
-	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
-	if !strings.HasSuffix(body, "\n") {
-		b.WriteString("\r\n")
-	}
-	return b.Bytes()
-}
-
-func hostFromAddress(addr string) string {
-	if i := strings.LastIndex(addr, "@"); i >= 0 && i < len(addr)-1 {
-		return addr[i+1:]
-	}
-	return "openemail.local"
+	return compose.TextMessage(from, to, subject, body)
 }

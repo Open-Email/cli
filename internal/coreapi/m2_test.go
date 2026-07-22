@@ -9,6 +9,26 @@ import (
 	"testing"
 )
 
+// PurgeMailbox POSTs to /mailboxes/:id/purge and decodes {purged,restorable}.
+func TestPurgeMailboxHitsPurgePath(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		w.Write([]byte(`{"purged":true,"restorable":false}`))
+	}))
+	defer srv.Close()
+	res, err := testClient(t, srv.URL).PurgeMailbox(context.Background(), "01ABC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/api/v1/mailboxes/01ABC/purge" {
+		t.Fatalf("hit %s %s, want POST /api/v1/mailboxes/01ABC/purge", gotMethod, gotPath)
+	}
+	if !res.Purged || res.Restorable {
+		t.Fatalf("bad decode: %+v", res)
+	}
+}
+
 // Domains return real booleans (core's present() converts 0/1); routes/patterns
 // return paced as a raw 0/1 integer. Decoding must honor both.
 func TestDomainDecodesBooleans(t *testing.T) {

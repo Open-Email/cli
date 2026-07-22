@@ -6,13 +6,14 @@ package coreapi
 
 // APIKey is one row of GET /api-keys (tokens are never returned by list).
 type APIKey struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Role       string  `json:"role"`
-	AccountID  *string `json:"accountId"`
-	CreatedAt  int64   `json:"createdAt"`
-	LastUsedAt *int64  `json:"lastUsedAt"`
-	RevokedAt  *int64  `json:"revokedAt"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Role        string  `json:"role"`
+	AccountID   *string `json:"accountId"`
+	AccountName *string `json:"accountName"` // owning account's name; null for system keys
+	CreatedAt   int64   `json:"createdAt"`
+	LastUsedAt  *int64  `json:"lastUsedAt"`
+	RevokedAt   *int64  `json:"revokedAt"`
 }
 
 // CreatedAPIKey is POST /api-keys — the only place the plaintext token appears.
@@ -72,6 +73,13 @@ type MailboxDeleteResult struct {
 	Purged          bool   `json:"purged,omitempty"`
 	Restorable      bool   `json:"restorable"`
 	RestorableUntil *int64 `json:"restorableUntil,omitempty"`
+}
+
+// MailboxPurgeResult is the POST /mailboxes/:id/purge body. Restorable is
+// always false (the tombstone is now non-restorable).
+type MailboxPurgeResult struct {
+	Purged     bool `json:"purged"`
+	Restorable bool `json:"restorable"`
 }
 
 // MailboxRestoreResult is the POST /mailboxes/:id/restore body.

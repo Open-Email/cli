@@ -25,6 +25,7 @@ func newMailboxesCmd(a *app) *cobra.Command {
 		newMailboxUpdateCmd(a),
 		newMailboxDeleteCmd(a),
 		newMailboxRestoreCmd(a),
+		newMailboxPurgeCmd(a),
 		newMailboxUseCmd(a),
 	)
 	return cmd
@@ -336,6 +337,39 @@ func newMailboxRestoreCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newMailboxPurgeCmd(a *app) *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "purge <mailboxId>",
+		Short: "Purge an already-soft-deleted mailbox now (waive the rest of the undo window)",
+		Long: "Expedite a mailbox that was already soft-deleted: waive the rest of its 7-day undo " +
+			"window and wipe it at the ~25 min straggler floor. The tombstone becomes non-restorable — " +
+			"restore then fails. Irreversible. To purge at delete time instead, use `delete --purge`.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			id := args[0]
+			if !yes && !confirmTyped(
+				fmt.Sprintf("PURGE deleted mailbox %s — this waives the remaining undo window and is irreversible.", id), id) {
+				return usageError(errors.New("aborted (type the mailbox id to confirm, or pass --yes)"))
+			}
+			res, err := client.PurgeMailbox(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			a.out.Emit(res, func(w io.Writer) {
+				a.out.Successf("Purged mailbox %s (not restorable — wiping shortly)", id)
+			})
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	return cmd
 }
 
 // parseQuotaFlag parses a --quota value: "unlimited"/"none" → (nil, true), a

@@ -1,4 +1,4 @@
-package cli
+package compose
 
 import (
 	"strings"
@@ -8,12 +8,12 @@ import (
 func TestNewDeliveryIDShape(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 1000; i++ {
-		id := newDeliveryID()
+		id := NewDeliveryID()
 		if len(id) != 26 {
 			t.Fatalf("ULID length: got %d (%q)", len(id), id)
 		}
 		for _, r := range id {
-			if !strings.ContainsRune(crockford, r) {
+			if !strings.ContainsRune(Crockford, r) {
 				t.Fatalf("non-Crockford char %q in %q", r, id)
 			}
 		}

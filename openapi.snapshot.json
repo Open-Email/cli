@@ -27,29 +27,16 @@
         ],
         "type": "object"
       },
-      "AccountCreated": {
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "maxMailboxes": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "maxMailboxes"
-        ],
-        "type": "object"
-      },
       "ApiKey": {
         "properties": {
           "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountName": {
+            "description": "owning account's name; null for system keys",
             "type": [
               "string",
               "null"
@@ -83,6 +70,7 @@
           "name",
           "role",
           "accountId",
+          "accountName",
           "createdAt",
           "lastUsedAt",
           "revokedAt"
@@ -699,6 +687,138 @@
           }
         ]
       },
+      "DkimCname": {
+        "properties": {
+          "host": {
+            "description": "Record to create on the customer domain (relative form shown with <domain>)",
+            "type": "string"
+          },
+          "target": {
+            "description": "CNAME target on the platform zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "target"
+        ],
+        "type": "object"
+      },
+      "DkimKey": {
+        "properties": {
+          "activatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "publicTxt": {
+            "description": "The published TXT value (\"v=DKIM1; k=rsa; p=…\")",
+            "type": "string"
+          },
+          "publishedAt": {
+            "description": "TXT upsert confirmed; null = publish pending/retrying",
+            "format": "int64",
+            "type": "integer"
+          },
+          "recordName": {
+            "description": "TXT host on the platform zone (<selector>.<DKIM_DNS_ROOT>)",
+            "type": "string"
+          },
+          "selector": {
+            "description": "oe1 | oe2 — the two alternate across rotations",
+            "type": "string"
+          },
+          "state": {
+            "description": "staged | active | retired",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "state",
+          "recordName",
+          "publicTxt",
+          "createdAt",
+          "publishedAt",
+          "activatedAt"
+        ],
+        "type": "object"
+      },
+      "DkimRotated": {
+        "properties": {
+          "activeSelector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bootstrapped": {
+            "description": "True when this call created the very first key (active immediately)",
+            "type": "boolean"
+          },
+          "stagedSelector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "bootstrapped",
+          "activeSelector",
+          "stagedSelector"
+        ],
+        "type": "object"
+      },
+      "DkimStatus": {
+        "properties": {
+          "activeSelector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cnames": {
+            "items": {
+              "$ref": "#/components/schemas/DkimCname"
+            },
+            "type": "array"
+          },
+          "configured": {
+            "description": "Zone id, DNS root, DNS token and KEK all present",
+            "type": "boolean"
+          },
+          "dnsRoot": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/DkimKey"
+            },
+            "type": "array"
+          },
+          "nextRunAt": {
+            "description": "Next rotation-alarm firing (ms epoch); null = not armed",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "configured",
+          "dnsRoot",
+          "activeSelector",
+          "nextRunAt",
+          "keys",
+          "cnames"
+        ],
+        "type": "object"
+      },
       "DnsStatus": {
         "properties": {
           "dkim": {
@@ -1014,36 +1134,6 @@
         ],
         "type": "object"
       },
-      "MailboxCreated": {
-        "properties": {
-          "accountId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "primaryAddress": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "quotaBytes": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "primaryAddress",
-          "quotaBytes",
-          "accountId"
-        ],
-        "type": "object"
-      },
       "MailboxDeleteResult": {
         "properties": {
           "deleted": {
@@ -1062,6 +1152,21 @@
         },
         "required": [
           "deleted",
+          "restorable"
+        ],
+        "type": "object"
+      },
+      "MailboxPurgeResult": {
+        "properties": {
+          "purged": {
+            "type": "boolean"
+          },
+          "restorable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "purged",
           "restorable"
         ],
         "type": "object"
@@ -2104,7 +2209,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AccountCreated"
+                  "$ref": "#/components/schemas/Account"
                 }
               }
             },
@@ -2707,10 +2812,10 @@
             "description": "Queued for relay, forwarding, webhook, or a recipient's Sieve redirect"
           },
           "400": {
-            "description": "Permanent — malformed request: missing_delivery_id, invalid delivery id, invalid_envelope, invalid_save/invalid_bounce, delivery_meta_too_large/_not_object/_invalid_json, empty_body"
+            "description": "Permanent — malformed request: missing_delivery_id, invalid delivery id, invalid_envelope, invalid_save/invalid_bounce, delivery_meta_too_large/_not_object/_invalid_json, empty_body, invalid_from (missing or unparseable RFC5322 From header — non-system callers)"
           },
           "403": {
-            "description": "Permanent — sender_not_owned (one indistinguishable reply for every not-yours case), sender_not_local, sending_disabled, or receiving_disabled (local recipient)"
+            "description": "Permanent — sender_not_owned (one indistinguishable reply for every not-yours case), sender_not_local, sending_disabled, from_not_owned (an RFC5322 From address is not an identity of the sending mailbox — collapsed like sender_not_owned), from_sending_disabled (a From identity's domain cannot send), or receiving_disabled (local recipient)"
           },
           "404": {
             "description": "Permanent — mailbox_gone (sender's or local recipient's mailbox deleted mid-flight)"
@@ -2776,6 +2881,106 @@
         "summary": "Ingest a Poppy-forwarded message into a pickup source's mailbox (system only)",
         "tags": [
           "Pickups"
+        ]
+      }
+    },
+    "/api/v1/dkim": {
+      "get": {
+        "operationId": "get_DkimGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DkimStatus"
+                }
+              }
+            },
+            "description": "DKIM status"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Platform DKIM status: key generations, active selector, customer CNAME targets (system callers only)",
+        "tags": [
+          "DKIM"
+        ]
+      }
+    },
+    "/api/v1/dkim/activate": {
+      "post": {
+        "operationId": "post_DkimActivate",
+        "parameters": [
+          {
+            "description": "Skip the resolver-visibility check (signing with an unfetchable key breaks DMARC — use only when the DoH view is known-stale)",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "description": "Skip the resolver-visibility check (signing with an unfetchable key breaks DMARC — use only when the DoH view is known-stale)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DkimRotated"
+                }
+              }
+            },
+            "description": "Activated"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "409": {
+            "description": "no_staged_key | dkim_dns_not_ready"
+          },
+          "503": {
+            "description": "dkim_not_configured"
+          }
+        },
+        "summary": "Flip the staged key to active now, skipping the remaining soak (system callers only). Refuses while the staged TXT is not resolver-visible unless ?force=true",
+        "tags": [
+          "DKIM"
+        ]
+      }
+    },
+    "/api/v1/dkim/rotate": {
+      "post": {
+        "operationId": "post_DkimRotate",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DkimRotated"
+                }
+              }
+            },
+            "description": "Rotation started / bootstrapped"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "409": {
+            "description": "rotation_in_progress — a staged key is already soaking"
+          },
+          "503": {
+            "description": "dkim_not_configured — DKIM_ZONE_ID / DKIM_DNS_ROOT / CF_DNS_API_TOKEN / DKIM_KEK missing"
+          }
+        },
+        "summary": "Start a key rotation now (system callers only): generates the next keypair on the inactive selector and publishes its TXT; signing flips automatically after the 7-day soak. On a fresh deployment this bootstraps the first key (active immediately)",
+        "tags": [
+          "DKIM"
         ]
       }
     },
@@ -3286,7 +3491,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MailboxCreated"
+                  "$ref": "#/components/schemas/Mailbox"
                 }
               }
             },
@@ -3638,7 +3843,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/events": {
       "get": {
-        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.deleted, and trash.emptied. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. Signals are not a journal: there is no replay or backlog, so on every (re)connect re-sync via the list endpoints and treat each event as 'this changed, re-fetch it'. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
+        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.deleted, and trash.emptied. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. Signals are not a journal: there is no replay or backlog, so on every (re)connect re-sync via the list endpoints and treat each event as 'this changed, re-fetch it'. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
         "operationId": "get_MailboxEvents",
         "parameters": [
           {
@@ -4650,7 +4855,7 @@
             "description": "message_too_large — no index and the blob exceeds the lazy-walk ceiling"
           },
           "422": {
-            "description": "unparseable_message — a terminal parse sentinel"
+            "description": "unparseable_message | message_too_complex — a terminal parse/index-cap sentinel"
           },
           "500": {
             "description": "blob_missing — a body part's R2 range read failed"
@@ -4804,7 +5009,7 @@
             "description": "message_too_large — no index and the blob exceeds the lazy-walk ceiling"
           },
           "422": {
-            "description": "unparseable_message — a terminal parse sentinel"
+            "description": "unparseable_message | message_too_complex — a terminal parse/index-cap sentinel"
           },
           "500": {
             "description": "blob_missing — index present but the R2 range read failed"
@@ -5295,6 +5500,43 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/purge": {
+      "post": {
+        "operationId": "post_MailboxPurge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxPurgeResult"
+                }
+              }
+            },
+            "description": "Purge scheduled (or already in progress)"
+          },
+          "404": {
+            "description": "No tombstone accessible to this principal — never deleted, already fully purged/wiped, or another tenant's"
+          },
+          "409": {
+            "description": "not_deleted — the mailbox is live (a delete that crashed mid-flight, or already restored); delete it with ?purge=true instead"
+          }
+        },
+        "summary": "Purge an already-soft-deleted mailbox now, waiving the rest of its undo window. The tombstone becomes non-restorable (restore then answers 410) and the store is wiped once the ~25 min straggler floor elapses — the same teardown a ?purge=true delete runs, applied after the fact. Irreversible. Idempotent: a mailbox already purging returns purged:true.",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/reindex": {
       "post": {
         "operationId": "post_MailboxReindex",
@@ -5396,6 +5638,7 @@
             "required": true,
             "schema": {
               "description": "Search query (word/prefix; English stemming)",
+              "maxLength": 512,
               "type": "string"
             }
           },

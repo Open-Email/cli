@@ -58,9 +58,10 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | Group | What it does |
 |---|---|
 | `login` / `logout` / `whoami` / `status` | auth lifecycle and identity |
+| `ui` (alias `console`) | full-screen console: sidebar + tables for mailboxes/domains/routes/patterns/keys/accounts with create/edit forms, confirm-gated deletes, and group-member editing; drill into a mailbox for a live message list (events WebSocket), compose-and-send, previews, flag toggles, label editing, and a trash view with restore |
 | `mailboxes` | create/list/get/update/delete/restore, `use` (set default) |
 | `keys` | account API keys: create/list/revoke |
-| `accounts` | accounts (create/list are system-only), get |
+| `accounts` | accounts (create/list are system-only), get; `create --with-key` also mints the account's first API key |
 | `domains` | domains + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d` |
 | `routes` | address routes + `members list\|add\|remove\|replace` |
 | `patterns` | per-domain pattern routes |

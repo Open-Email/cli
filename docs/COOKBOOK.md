@@ -79,6 +79,27 @@ openemail message raw 01MSGID… -o message.eml
 `raw`); over-large messages answer `413` with `raw` as the fallback. Add `--json`
 to `content` for the structured object.
 
+## Work in the console
+
+```sh
+# Full-screen console: sidebar of resources, tables, detail views, and forms.
+# `n` creates, `e` edits, `d` deletes (always behind a y/esc confirm), `/`
+# filters, `esc` backs out, `q` quits. `M` on a group route edits its members;
+# `D` on the Mailboxes screen shows restorable tombstones, where `u` restores.
+# Open a mailbox for a LIVE message list (fed by the events WebSocket): enter
+# previews, `c` composes a message FROM that mailbox (same semantics as
+# `openemail send` compose mode, with a Save-to-Sent toggle), `t` toggles read,
+# `!` toggles flagged, `l` edits labels (a move is one atomic patch), `d` moves
+# to trash, `T` opens the trash view where `u` restores.
+openemail ui
+```
+
+Console mutations mirror the flag commands' semantics exactly — create-and-bind
+for mailbox addresses, atomic destination replace for routes/patterns, webhook
+secrets preserved when left empty on edit. The rare destructive operations
+(domain delete, purges, trash empty) stay CLI-only on purpose. Needs an account
+or system key (a mailbox app-password can't browse the directory).
+
 ## Tail live events
 
 ```sh
