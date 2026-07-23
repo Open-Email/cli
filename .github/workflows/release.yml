@@ -26,5 +26,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # A PAT with `contents:write` on the tap/bucket repos, for brew/scoop pushes.
+          # PAT with contents:write on Open-Email/homebrew-tap, for the brew formula push.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

@@ -46,10 +46,10 @@ brews:
   - name: openemail
     ids: [default]
     repository:
-      owner: openemail
+      owner: Open-Email
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/openemail/openemail-cli
+    homepage: https://github.com/Open-Email/cli
     description: Command-line client for the OpenEmail platform
     license: MIT
     test: |
@@ -60,20 +60,14 @@ brews:
       zsh_completion.install "completions/openemail.zsh" => "_openemail"
       fish_completion.install "completions/openemail.fish"
 
-scoops:
-  - repository:
-      owner: openemail
-      name: scoop-bucket
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/openemail/openemail-cli
-    description: Command-line client for the OpenEmail platform
-    license: MIT
+# Scoop bucket publishing is still omitted (needs an Open-Email/scoop-bucket repo).
+# Re-add a `scoops:` block once that exists; it reuses TAP_GITHUB_TOKEN.
 
 nfpms:
   - id: packages
     package_name: openemail
     vendor: OpenEmail
-    homepage: https://github.com/openemail/openemail-cli
+    homepage: https://github.com/Open-Email/cli
     maintainer: OpenEmail <dev@open.email>
     description: Command-line client for the OpenEmail platform
     license: MIT
@@ -88,8 +82,8 @@ nfpms:
 
 release:
   github:
-    owner: openemail
-    name: openemail-cli
+    owner: Open-Email
+    name: cli
   draft: false
   prerelease: auto
 
