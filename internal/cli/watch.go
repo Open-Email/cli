@@ -198,6 +198,9 @@ func (a *app) watchOnce(ctx context.Context, client *coreapi.Client, mbx string,
 			case 4401:
 				a.out.Warnf("session expired — reconnecting with a fresh session")
 				return true, false, nil
+			case 4403:
+				// credential_revoked: core says do NOT reconnect with this bearer.
+				return false, false, authRequired("credential revoked — re-authenticate with `openemail login`")
 			case 4410:
 				a.out.Msgf("mailbox gone — stopping")
 				return false, false, nil

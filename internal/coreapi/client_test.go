@@ -1,7 +1,9 @@
 package coreapi
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,6 +165,70 @@ func TestDepaginate(t *testing.T) {
 	}
 	if len(all) != 3 || all[0].ID != "1" || all[2].ID != "3" {
 		t.Fatalf("got %+v", all)
+	}
+}
+
+// TestStreamingUploadNotBoundedByRequestTimeout guards the fix that exempts
+// streaming uploads (getBody) from the short per-request timeout. The server
+// stalls far longer than RequestTimeout but the upload must still succeed —
+// otherwise a large/slow send would abort mid-body and (being idempotent) retry
+// and fail the same way.
+func TestStreamingUploadNotBoundedByRequestTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		time.Sleep(250 * time.Millisecond) // longer than RequestTimeout below
+		w.WriteHeader(200)
+		w.Write([]byte(`{"status":"queued"}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Config{
+		BaseURL:         srv.URL,
+		Token:           "oek_test",
+		RequestTimeout:  60 * time.Millisecond, // far shorter than the server stall
+		RetryBackoffMin: time.Millisecond,
+		RetryBackoffMax: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	body := []byte("From: a@x\r\nTo: b@y\r\n\r\nhi\r\n")
+	getBody := func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
+	res, _, err := c.DeliverInbound(context.Background(),
+		InboundOptions{EnvelopeFrom: "a@x", EnvelopeTo: "b@y", DeliveryID: "01TESTDELIVERY000000000000"},
+		getBody, int64(len(body)))
+	if err != nil {
+		t.Fatalf("streaming upload must not be bounded by RequestTimeout, got: %v", err)
+	}
+	if res.Status != "queued" {
+		t.Fatalf("status = %q, want queued", res.Status)
+	}
+}
+
+// TestOrdinaryCallStillBoundedByRequestTimeout is the control: a plain buffered
+// GET must still honor the per-request timeout, so the upload exemption did not
+// disable timeouts everywhere.
+func TestOrdinaryCallStillBoundedByRequestTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(250 * time.Millisecond)
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":"x","primaryAddress":null,"quotaBytes":null,"accountId":null,"createdAt":0}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Config{
+		BaseURL:         srv.URL,
+		Token:           "oek_test",
+		RequestTimeout:  60 * time.Millisecond,
+		RetryBackoffMin: time.Millisecond,
+		RetryBackoffMax: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := c.GetMailbox(context.Background(), "x"); err == nil {
+		t.Fatal("want a timeout error for a stalled ordinary call, got nil")
 	}
 }
 

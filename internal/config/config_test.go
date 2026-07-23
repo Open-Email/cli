@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -54,5 +56,42 @@ func TestRoundTrip(t *testing.T) {
 	}
 	if g.ResolveProfileName("other") != "other" {
 		t.Fatalf("ResolveProfileName explicit failed")
+	}
+}
+
+// TestConcurrentSaveNoCorruption guards the unique-temp-file fix: several CLI
+// processes persisting config at once must never publish a corrupt interleaving
+// of two encoders — whichever rename wins, the file must remain parseable.
+func TestConcurrentSaveNoCorruption(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	const writers = 8
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			f := &File{}
+			f.SetProfile("default", Profile{APIURL: "http://x", KeyID: fmt.Sprintf("k%d", n)})
+			f.DefaultProfile = "default"
+			if err := f.Save(); err != nil {
+				errs <- err
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent Save: %v", err)
+	}
+
+	g, err := Load()
+	if err != nil {
+		t.Fatalf("published config not parseable after concurrent writes: %v", err)
+	}
+	if _, ok := g.Profile("default"); !ok {
+		t.Fatalf("expected a default profile, got %+v", g.Profiles)
 	}
 }

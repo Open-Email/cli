@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"io"
 
+	"github.com/openemail/openemail-cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 
@@ -13,6 +15,7 @@ func newSearchCmd(a *app) *cobra.Command {
 		limit       int
 		cursor      string
 		groupThread bool
+		all         bool
 	)
 	cmd := &cobra.Command{
 		Use:   "search <query>",
@@ -23,13 +26,34 @@ func newSearchCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if groupThread && cursor != "" {
-				return usageError(errors.New("--cursor is not allowed with --group-thread (grouped search is single-page)"))
+			if groupThread && (cursor != "" || all) {
+				return usageError(errors.New("--cursor/--all are not allowed with --group-thread (grouped search is single-page)"))
+			}
+			if all && cursor != "" {
+				return usageError(errors.New("--all cannot be combined with --cursor"))
 			}
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
 				return err
 			}
+
+			if all {
+				results, derr := coreapi.Depaginate(cmd.Context(), func(ctx context.Context, cur string) (coreapi.Page[coreapi.MessageMeta], error) {
+					r, e := client.Search(ctx, mbx, args[0], label, limit, cur, false)
+					if e != nil {
+						return coreapi.Page[coreapi.MessageMeta]{}, e
+					}
+					return coreapi.Page[coreapi.MessageMeta]{Items: r.Results, NextCursor: r.NextCursor}, nil
+				})
+				if derr != nil {
+					return derr
+				}
+				a.out.Emit(map[string]any{"results": results, "nextCursor": ""}, func(w io.Writer) {
+					printTable(w, a.out, messageListHeaders, messageListRows(results))
+				})
+				return nil
+			}
+
 			res, err := client.Search(cmd.Context(), mbx, args[0], label, limit, cursor, groupThread)
 			if err != nil {
 				return err
@@ -46,5 +70,6 @@ func newSearchCmd(a *app) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 0, "max results (1–100, default 25)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous page")
 	cmd.Flags().BoolVar(&groupThread, "group-thread", false, "collapse matches to one result per thread (single page)")
+	cmd.Flags().BoolVar(&all, "all", false, "fetch every page (drains the cursor; not allowed with --group-thread)")
 	return cmd
 }

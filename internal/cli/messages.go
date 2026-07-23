@@ -308,7 +308,7 @@ func newMessageAppendCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := validateFlags(flags); err != nil {
+			if err := normalizeFlags(flags); err != nil {
 				return usageError(err)
 			}
 			getBody, length, cleanup, err := openRawBody(file)
@@ -369,10 +369,10 @@ func newMessageFlagCmd(a *app) *cobra.Command {
 			if len(set) == 0 && len(clear) == 0 {
 				return usageError(errors.New("nothing to do — pass --set and/or --clear"))
 			}
-			if err := validateFlags(set); err != nil {
+			if err := normalizeFlags(set); err != nil {
 				return usageError(err)
 			}
-			if err := validateFlags(clear); err != nil {
+			if err := normalizeFlags(clear); err != nil {
 				return usageError(err)
 			}
 			return a.patchMessage(cmd, args[0], coreapi.PatchInput{FlagsSet: set, FlagsClear: clear})

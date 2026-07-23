@@ -21,13 +21,62 @@ const tableGap = 2
 // as width, so every column drifted by the length of the header's dim codes.
 var ansiSeq = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
+// ansiEscape matches ANSI/VT escape sequences — CSI (\x1b[ … final), OSC
+// (\x1b] … BEL/ST), and the two-byte ESC-Fe forms — for stripping control
+// sequences out of untrusted cell data (a decoded Subject from inbound mail
+// could otherwise clear the screen, spoof the terminal title, or move the
+// cursor, and would desync every following column). CSI is listed first so
+// "\x1b[" prefers it over the bare ESC-Fe alternative.
+var ansiEscape = regexp.MustCompile("\x1b(?:\\[[0-9;:<=>?]*[ -/]*[@-~]|\\][^\x07\x1b]*(?:\x07|\x1b\\\\)?|[@-_])")
+
 // visibleWidth is the on-screen rune count of s, ignoring color escapes.
 func visibleWidth(s string) int {
 	return utf8.RuneCountInString(ansiSeq.ReplaceAllString(s, ""))
 }
 
+// isCtl reports whether r is a C0/DEL/C1 control code point.
+func isCtl(r rune) bool { return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) }
+
+// sanitizeCell neutralizes untrusted control data in a table cell so a value
+// such as a decoded Subject/From from inbound mail cannot inject terminal escape
+// sequences or desync column widths. It strips ANSI/VT escape sequences and every
+// C0/DEL/C1 control rune (including tab/newline, which would break the layout).
+// Table cells never legitimately carry ANSI — styling is applied by the renderer
+// — so this is loss-free for well-formed data.
+func sanitizeCell(s string) string {
+	if strings.IndexByte(s, 0x1b) < 0 && strings.IndexFunc(s, isCtl) < 0 {
+		return s // fast path: nothing to strip
+	}
+	s = ansiEscape.ReplaceAllString(s, "")
+	return strings.Map(func(r rune) rune {
+		if isCtl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// sanitizeCells returns a copy of cells with sanitizeCell applied to each.
+func sanitizeCells(cells []string) []string {
+	out := make([]string, len(cells))
+	for i, c := range cells {
+		out[i] = sanitizeCell(c)
+	}
+	return out
+}
+
 // printTable renders headers + rows aligned. Headers are dimmed when color is on.
+// Every cell is sanitized first (see sanitizeCell) so untrusted values can't
+// inject terminal escapes or throw off column alignment.
 func printTable(w io.Writer, p *Printer, headers []string, rows [][]string) {
+	headers = sanitizeCells(headers)
+	if len(rows) > 0 {
+		clean := make([][]string, len(rows))
+		for i, r := range rows {
+			clean[i] = sanitizeCells(r)
+		}
+		rows = clean
+	}
 	cols := len(headers)
 	widths := make([]int, cols)
 	measure := func(cells []string) {

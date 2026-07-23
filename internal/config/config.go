@@ -98,11 +98,15 @@ func (f *File) Save() error {
 		return fmt.Errorf("config: mkdir %s: %w", f.dir, err)
 	}
 	path := filepath.Join(f.dir, "config.toml")
-	tmp := path + ".tmp"
-	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	// A UNIQUE temp per invocation (not a fixed config.toml.tmp): two concurrent
+	// CLI processes that both persist would otherwise open and interleave their
+	// encoders into the same file, and the winning rename would publish a corrupt
+	// document. os.CreateTemp mints an unpredictable name with 0600 perms.
+	out, err := os.CreateTemp(f.dir, "config-*.toml.tmp")
 	if err != nil {
-		return fmt.Errorf("config: open %s: %w", tmp, err)
+		return fmt.Errorf("config: create temp in %s: %w", f.dir, err)
 	}
+	tmp := out.Name()
 	if err := toml.NewEncoder(out).Encode(f); err != nil {
 		out.Close()
 		os.Remove(tmp)

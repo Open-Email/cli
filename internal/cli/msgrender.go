@@ -13,13 +13,17 @@ var validFlags = map[string]bool{
 	"seen": true, "answered": true, "flagged": true, "draft": true, "deleted": true,
 }
 
-// validateFlags rejects any flag name outside the five-name set (a client-side
-// nicety; core also answers 400 invalid_flag).
-func validateFlags(flags []string) error {
-	for _, f := range flags {
-		if !validFlags[strings.ToLower(f)] {
+// normalizeFlags rejects any flag name outside the five-name set and, on success,
+// lowercases each entry IN PLACE so the wire value matches core's case-sensitive
+// enum. Without the lowercasing, `--set Seen` would pass this client-side check
+// (which is case-insensitive) yet be rejected server-side with 400 invalid_flag.
+func normalizeFlags(flags []string) error {
+	for i, f := range flags {
+		lower := strings.ToLower(f)
+		if !validFlags[lower] {
 			return fmt.Errorf("invalid flag %q: expected one of seen, answered, flagged, draft, deleted", f)
 		}
+		flags[i] = lower
 	}
 	return nil
 }

@@ -109,6 +109,9 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 				in.AliasOf = &aliasOf
 			}
 			if cmd.Flags().Changed("account") {
+				if account == "" {
+					return usageError(errors.New("--account must not be empty"))
+				}
 				in.AccountID = &account
 			}
 			d, err := client.CreateDomain(cmd.Context(), in)

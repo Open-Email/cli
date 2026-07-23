@@ -73,6 +73,40 @@ func equalInts(a, b []int) bool {
 	return true
 }
 
+func TestSanitizeCellStripsEscapesAndControls(t *testing.T) {
+	cases := map[string]string{
+		"plain":                "plain",
+		"\x1b[2Jclear":         "clear",   // CSI (non-SGR) escape removed
+		"\x1b]0;title\x07oops": "oops",    // OSC (title) sequence removed
+		"a\x1b[31mb\x1b[0mc":   "abc",     // SGR stripped from cell data too
+		"tab\there":            "tabhere", // C0 control removed
+		"line\nbreak":          "linebreak",
+		"\x1bMreverse":         "reverse", // ESC-Fe removed
+		"ünïcöde":              "ünïcöde", // multibyte runes preserved
+	}
+	for in, want := range cases {
+		if got := sanitizeCell(in); got != want {
+			t.Errorf("sanitizeCell(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestPrintTableSanitizesUntrustedCells(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{color: false, out: &buf, err: &buf}
+	// A hostile decoded Subject from inbound mail: clear-screen + cursor-home.
+	printTable(&buf, p, []string{"ID", "SUBJECT"}, [][]string{
+		{"01ABC", "\x1b[2J\x1b[Hpwned"},
+	})
+	out := buf.String()
+	if strings.ContainsRune(out, 0x1b) {
+		t.Fatalf("escape sequence leaked to terminal output: %q", out)
+	}
+	if !strings.Contains(out, "pwned") {
+		t.Fatalf("visible text lost during sanitization: %q", out)
+	}
+}
+
 func TestVisibleWidthIgnoresColorAndCountsRunes(t *testing.T) {
 	cases := map[string]int{
 		"ID":               2,

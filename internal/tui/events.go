@@ -161,6 +161,8 @@ func (s *subscription) session(ctx context.Context, apiURL, token, mailboxID str
 			switch websocket.CloseStatus(rerr) {
 			case 4401:
 				return true, nil // session expiry: re-dial promptly
+			case 4403:
+				return false, errors.New("credential revoked") // do not reconnect
 			case 4410:
 				return false, errors.New("mailbox gone")
 			}

@@ -182,6 +182,13 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		p.loading, p.more = false, false
 		if msg.err != nil {
 			p.errMsg = msg.err.Error()
+			// A live event that arrived mid-fetch queued a re-sync; honor it even
+			// though this fetch failed, so the list doesn't stay stale until the
+			// next event or manual refresh. The retry clears errMsg on success.
+			if p.refreshQd {
+				p.refreshQd = false
+				return p, p.refresh()
+			}
 			return p, nil
 		}
 		p.errMsg = ""

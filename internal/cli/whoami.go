@@ -21,14 +21,22 @@ func newWhoamiCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// keyId/keyName/keyStorage describe the STORED profile credential; they
+			// are meaningful only when the live token actually came from that profile.
+			// An --api-key/env override authenticates as a different key with no local
+			// record, so report blanks rather than the unrelated stored key.
+			keyID, keyName, keyStore := "", "", ""
+			if a.tokenSource == "profile" {
+				keyID, keyName, keyStore = a.profile.KeyID, a.profile.KeyName, a.profile.KeyStorage
+			}
 			a.out.Emit(map[string]any{
 				"profile":     a.profileName,
 				"apiUrl":      a.apiURL,
 				"principal":   id.Type,
 				"accountId":   id.AccountID,
-				"keyId":       a.profile.KeyID,
-				"keyName":     a.profile.KeyName,
-				"keyStorage":  a.profile.KeyStorage,
+				"keyId":       keyID,
+				"keyName":     keyName,
+				"keyStorage":  keyStore,
 				"tokenSource": a.tokenSource,
 			}, func(w io.Writer) {
 				a.printIdentity(w, id)
@@ -47,7 +55,10 @@ func (a *app) printIdentity(w io.Writer, id coreapi.Identity) {
 	if id.AccountID != "" {
 		rows = append(rows, []string{"Account", id.AccountID})
 	}
-	if a.profile.KeyName != "" {
+	// The stored key id/name belong to the profile credential — show them only when
+	// the active token came from the profile (an --api-key/env override has none).
+	fromProfile := a.tokenSource == "profile"
+	if fromProfile && a.profile.KeyName != "" {
 		rows = append(rows, []string{"Key", a.profile.KeyName + " (" + a.profile.KeyID + ")"})
 	}
 	if a.profile.DefaultMailbox != "" {
@@ -57,9 +68,9 @@ func (a *app) printIdentity(w io.Writer, id coreapi.Identity) {
 	if src == "" {
 		src = "none"
 	}
-	store := a.profile.KeyStorage
-	if store == "" {
-		store = src
+	store := src
+	if fromProfile && a.profile.KeyStorage != "" {
+		store = a.profile.KeyStorage
 	}
 	rows = append(rows, []string{"Key source", src + " / " + store})
 	printTable(w, a.out, []string{"FIELD", "VALUE"}, rows)

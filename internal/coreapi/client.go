@@ -150,13 +150,16 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 
 	var resp *http.Response
 	err := c.retryP.do(ctx, func(attempt int) (bool, error) {
-		// A streamResult read is bounded by the caller's ctx, not our per-request
-		// timeout — applying `timeout` to the whole response would abort a large
-		// download after `timeout` elapsed. Non-streaming calls buffer the body
+		// A streaming download (streamResult) and a streaming upload (getBody) are
+		// both bounded by the caller's ctx, not our per-request timeout: a fixed
+		// deadline would abort a large transfer partway through purely because it is
+		// big — a 50 MB message on a slow uplink can need far longer than the 30s
+		// default, and being idempotent it would then retry and fail the same way.
+		// Ordinary calls have a small/absent request body and buffer the response
 		// within do(), so the timeout correctly spans the whole exchange.
 		var reqCtx context.Context
 		var cancel context.CancelFunc
-		if r.streamResult {
+		if r.streamResult || r.getBody != nil {
 			reqCtx, cancel = context.WithCancel(ctx)
 		} else {
 			reqCtx, cancel = context.WithTimeout(ctx, timeout)

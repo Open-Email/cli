@@ -41,6 +41,14 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	if err := secrets.Delete(a.cfg.ConfigDir(), a.profileName, a.profile.KeyStorage); err != nil {
 		a.out.Warnf("could not remove stored key: %v", err)
 	}
+	// Also sweep any residual plaintext file left by an older backend switch
+	// (Delete(File) is a no-op when the file is absent, so this stays quiet in the
+	// common keychain case and never touches another profile's file).
+	if a.profile.KeyStorage != secrets.File {
+		if err := secrets.Delete(a.cfg.ConfigDir(), a.profileName, secrets.File); err != nil {
+			a.out.Warnf("could not remove residual key file: %v", err)
+		}
+	}
 
 	// Clear auth fields; keep the API URL so the profile remains usable for login.
 	prof := a.profile

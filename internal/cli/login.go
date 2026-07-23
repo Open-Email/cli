@@ -72,7 +72,9 @@ func (a *app) runLogin(cmd *cobra.Command, name string, noMint bool, mailbox str
 
 	// Whatever key this profile held before — revoked only once the new login is
 	// fully committed, so a re-login doesn't leave the old key alive on the server.
-	oldKeyID, oldRole := a.profile.KeyID, a.profile.Role
+	// oldBackend lets us delete a stale secret if this login lands in a different
+	// store (e.g. a keychain outage forced a file fallback last time).
+	oldKeyID, oldRole, oldBackend := a.profile.KeyID, a.profile.Role, a.profile.KeyStorage
 
 	var (
 		finalToken = inputKey
@@ -153,6 +155,16 @@ func (a *app) runLogin(cmd *cobra.Command, name string, noMint bool, mailbox str
 		return err
 	}
 	committed = true
+
+	// If the secret landed in a different store than the profile used before,
+	// delete the stale copy so a switched credential never lingers on disk — in
+	// particular a plaintext file left behind by a past keychain outage that a
+	// later keychain login would otherwise never clean up. Best-effort.
+	if oldBackend != "" && oldBackend != backend {
+		if derr := secrets.Delete(a.cfg.ConfigDir(), a.profileName, oldBackend); derr != nil {
+			a.out.Warnf("could not remove the previous credential store (%s): %v", oldBackend, derr)
+		}
+	}
 
 	// Now that a freshly minted key is stored and recorded, revoke the device key
 	// it replaced (best-effort). Gated on mintedID so a --no-mint login — where we
