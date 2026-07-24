@@ -81,19 +81,25 @@ func newDomainListCmd(a *app) *cobra.Command {
 
 func newDomainCreateCmd(a *app) *cobra.Command {
 	var (
-		enabled, canSend, canReceive, fbl bool
-		aliasOf, account                  string
+		enabled, canSend, canReceive, fbl, platform bool
+		aliasOf, account                            string
 	)
 	cmd := &cobra.Command{
 		Use:   "create <domain>",
 		Short: "Create a domain",
 		Long: "Create a domain. Booleans default to core's values when omitted " +
-			"(enabled/can-receive true, can-send/fbl false); pass e.g. --can-send or --enabled=false to override.",
+			"(enabled/can-receive true, can-send/fbl false); pass e.g. --can-send or --enabled=false to override.\n\n" +
+			"System keys must choose ownership explicitly: --account <id> for a tenant domain, or " +
+			"--platform for a platform domain owned by no account (operator-only; invisible to every tenant). " +
+			"Account keys need neither — they always own what they create.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
 				return err
+			}
+			if platform && cmd.Flags().Changed("account") {
+				return usageError(errors.New("--account and --platform are mutually exclusive"))
 			}
 			in := coreapi.DomainCreateInput{
 				Domain:     args[0],
@@ -101,6 +107,7 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 				CanSend:    boolPtrIfChanged(cmd, "can-send", canSend),
 				CanReceive: boolPtrIfChanged(cmd, "can-receive", canReceive),
 				FBL:        boolPtrIfChanged(cmd, "fbl", fbl),
+				Platform:   platform,
 			}
 			if cmd.Flags().Changed("alias-of") {
 				if aliasOf == "" {
@@ -130,7 +137,8 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&canReceive, "can-receive", true, "domain may receive")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "FBL ingestion domain (parses DSN/ARF reports; mutually exclusive with alias)")
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
-	cmd.Flags().StringVar(&account, "account", "", "owning account id (system callers only)")
+	cmd.Flags().StringVar(&account, "account", "", "owning account id (system keys; account keys always own their domains)")
+	cmd.Flags().BoolVar(&platform, "platform", false, "platform domain owned by no account (system keys only; invisible to tenants)")
 	return cmd
 }
 
@@ -349,7 +357,7 @@ func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 		{"Can receive", boolYN(d.CanReceive)},
 		{"FBL", boolYN(d.FBL)},
 		{"Alias of", strOr(d.AliasOf, "—")},
-		{"Account", strOr(d.AccountID, "—")},
+		{"Account", strOr(d.AccountID, "platform (no account)")},
 		{"Created", fmtEpoch(d.CreatedAt)},
 	}
 	if d.DNSStatus != nil {

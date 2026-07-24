@@ -59,7 +59,7 @@ func domainsDesc() resourceDesc {
 				{k: "can receive", v: yn(d.CanReceive)},
 				{k: "alias of", v: strOr(d.AliasOf, "—")},
 				{k: "fbl", v: yn(d.FBL)},
-				{k: "account", v: strOr(d.AccountID, "—")},
+				{k: "account", v: strOr(d.AccountID, "platform (no account)")},
 				{k: "created", v: fmtEpoch(d.CreatedAt)},
 				{},
 				{v: "DNS"},

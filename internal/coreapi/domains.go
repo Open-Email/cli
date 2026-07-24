@@ -2,6 +2,7 @@ package coreapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 )
@@ -41,6 +42,28 @@ type DomainCreateInput struct {
 	AliasOf    *string `json:"aliasOf,omitempty"`
 	FBL        *bool   `json:"fbl,omitempty"`
 	AccountID  *string `json:"accountId,omitempty"`
+	// Platform marks a platform-owned domain (no tenant): marshals as an
+	// explicit `"accountId": null`, which core's system-caller contract
+	// requires — an omitted accountId answers 400 account_required so an
+	// operator-only domain can never be minted by accident. Mutually
+	// exclusive with AccountID.
+	Platform bool `json:"-"`
+}
+
+// MarshalJSON emits the explicit `"accountId": null` a Platform create needs
+// (a nil *string with omitempty can only omit, never null).
+func (in DomainCreateInput) MarshalJSON() ([]byte, error) {
+	type plain DomainCreateInput
+	b, err := json.Marshal(plain(in))
+	if err != nil || !in.Platform {
+		return b, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	m["accountId"] = nil
+	return json.Marshal(m)
 }
 
 // TrafficRow is one (outcome, routeKind) aggregate.

@@ -74,6 +74,7 @@ func boolField(title, desc string, v *bool) huh.Field {
 func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) pane {
 	var (
 		domain  string
+		owner   string
 		enabled = true
 		canSend = false
 		canRecv = true
@@ -90,9 +91,19 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 	build := func() *huh.Form {
 		var fields []huh.Field
 		if existing == nil {
-			fields = append(fields, huh.NewInput().
-				Title("Domain").Placeholder("example.com").
-				Value(&domain).Validate(required("domain")))
+			fields = append(fields,
+				huh.NewInput().
+					Title("Domain").Placeholder("example.com").
+					Value(&domain).Validate(required("domain")),
+				// Ownership is create-only (core has no accountId patch). The
+				// explicit empty-for-platform choice mirrors core's contract:
+				// system keys must name an owner or deliberately mint a
+				// platform domain; account keys always own their domains.
+				huh.NewInput().
+					Title("Owner account").
+					Description("owning account id — empty mints a PLATFORM domain owned by no tenant (system keys; ignored for account keys, which always own their domains)").
+					Value(&owner),
+			)
 		}
 		fields = append(fields,
 			boolField("Enabled", "", &enabled),
@@ -111,6 +122,11 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 			in := coreapi.DomainCreateInput{
 				Domain: strings.TrimSpace(domain), Enabled: &enabled,
 				CanSend: &canSend, CanReceive: &canRecv, FBL: &fbl,
+			}
+			if o := strings.TrimSpace(owner); o != "" {
+				in.AccountID = &o
+			} else {
+				in.Platform = true
 			}
 			if alias != "" {
 				in.AliasOf = &alias

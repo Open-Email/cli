@@ -3227,7 +3227,11 @@
               "schema": {
                 "properties": {
                   "accountId": {
-                    "type": "string"
+                    "description": "Owning account. Ignored for account callers (ownership is forced). Required for system callers: an account id, or an explicit null for a platform domain no tenant can see",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "aliasOf": {
                     "minLength": 3,
@@ -3270,13 +3274,13 @@
             "description": "Created domain"
           },
           "400": {
-            "description": "validation_failed, unknown_account, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+            "description": "validation_failed, account_required (system caller omitted accountId — pass an account id or an explicit null), unknown_account, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
           },
           "409": {
             "description": "domain_exists (caller already owns it), domain_unavailable (identical for every other conflict — no tenant enumeration), or alias_conflict"
           }
         },
-        "summary": "Create a domain (owned by the calling account; system callers may pass accountId)",
+        "summary": "Create a domain (owned by the calling account; system callers must pass accountId — an account id, or null for a platform domain)",
         "tags": [
           "Directory"
         ]

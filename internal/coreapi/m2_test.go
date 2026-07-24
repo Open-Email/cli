@@ -49,6 +49,34 @@ func TestDomainDecodesBooleans(t *testing.T) {
 	}
 }
 
+// Core's system-caller contract distinguishes an omitted accountId (400
+// account_required) from an explicit null (platform domain) — so the three
+// marshal shapes must stay distinct on the wire.
+func TestDomainCreateMarshalsExplicitOwnership(t *testing.T) {
+	body := func(in DomainCreateInput) map[string]json.RawMessage {
+		b, err := json.Marshal(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	if v, ok := body(DomainCreateInput{Domain: "x.example", Platform: true})["accountId"]; !ok || string(v) != "null" {
+		t.Fatalf("platform create must send an explicit accountId null, got %q (present=%v)", v, ok)
+	}
+	acc := "a1"
+	if v := body(DomainCreateInput{Domain: "x.example", AccountID: &acc})["accountId"]; string(v) != `"a1"` {
+		t.Fatalf("owned create must send the account id, got %q", v)
+	}
+	if _, ok := body(DomainCreateInput{Domain: "x.example"})["accountId"]; ok {
+		t.Fatal("neither AccountID nor Platform: accountId must be omitted, not sent")
+	}
+}
+
 func TestRouteDecodesPacedAsBool(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`{"routes":[{"address":"u@x.example","domain":"x.example","destinationType":"mailbox","mailboxId":"m1","webhookUrl":null,"remoteAddress":null,"paced":true,"createdAt":5}],"nextCursor":""}`))

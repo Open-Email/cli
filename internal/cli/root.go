@@ -135,6 +135,10 @@ func errorHint(ae *coreapi.APIError) string {
 			return fmt.Sprintf("bind it first: openemail routes create %s --type mailbox --mailbox <id>", addr)
 		}
 		return "bind the address to this mailbox first (openemail routes create … --type mailbox --mailbox <id>)"
+	case "account_required":
+		// System keys must choose domain ownership explicitly (core refuses to
+		// mint a tenant-invisible platform domain by omission).
+		return "system keys must choose ownership: pass --account <id>, or --platform for a domain owned by no account"
 	}
 	return ""
 }
