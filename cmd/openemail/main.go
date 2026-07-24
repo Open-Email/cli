@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/openemail/openemail-cli/internal/cli"
+	"github.com/Open-Email/cli/internal/cli"
 )
 
 func main() {

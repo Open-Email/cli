@@ -1,6 +1,6 @@
 # openemail CLI — developer targets.
 BINARY      := openemail
-PKG         := github.com/openemail/openemail-cli
+PKG         := github.com/Open-Email/cli
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS     := -s -w -X $(PKG)/internal/cli.Version=$(VERSION)
 

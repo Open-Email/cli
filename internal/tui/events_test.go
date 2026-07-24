@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 // eventsServer stubs GET /domains/:domain/events, recording the ?range and

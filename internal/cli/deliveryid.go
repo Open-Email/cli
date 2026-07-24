@@ -1,6 +1,6 @@
 package cli
 
-import "github.com/openemail/openemail-cli/internal/compose"
+import "github.com/Open-Email/cli/internal/compose"
 
 // newDeliveryID mints a fresh ULID X-Delivery-Id. The implementation lives in
 // internal/compose (shared with the console); this forwarder keeps the many

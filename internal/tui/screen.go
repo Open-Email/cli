@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 const pageLimit = 50

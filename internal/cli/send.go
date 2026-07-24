@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/openemail/openemail-cli/internal/compose"
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/compose"
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 

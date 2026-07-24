@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 // confirmSpec declares one guarded destructive action: what it is, what will

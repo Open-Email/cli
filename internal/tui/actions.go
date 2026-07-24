@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Open-Email/cli/internal/compose"
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/huh"
-	"github.com/openemail/openemail-cli/internal/compose"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 // The v2 mutations: every action opens a form (huh) or a confirm gate. The

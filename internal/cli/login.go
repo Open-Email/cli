@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openemail/openemail-cli/internal/config"
-	"github.com/openemail/openemail-cli/internal/coreapi"
-	"github.com/openemail/openemail-cli/internal/secrets"
+	"github.com/Open-Email/cli/internal/config"
+	"github.com/Open-Email/cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/secrets"
 	"github.com/spf13/cobra"
 )
 

@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 // formSpec declares one mutation form. build constructs the huh form over

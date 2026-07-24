@@ -15,7 +15,7 @@ import (
 )
 
 // releasesURL is the GitHub latest-release endpoint; overridable in tests.
-var releasesURL = "https://api.github.com/repos/openemail/openemail-cli/releases/latest"
+var releasesURL = "https://api.github.com/repos/Open-Email/cli/releases/latest"
 
 const updateCheckInterval = 24 * time.Hour
 

@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 const (

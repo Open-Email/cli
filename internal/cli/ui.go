@@ -5,8 +5,8 @@ import (
 	"errors"
 	"os"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
-	"github.com/openemail/openemail-cli/internal/tui"
+	"github.com/Open-Email/cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/tui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

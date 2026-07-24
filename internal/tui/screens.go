@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 // allDescriptors declares every listing screen. Sidebar gating (Accounts is

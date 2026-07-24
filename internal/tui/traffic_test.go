@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 // trafficServer returns a stub core that answers GET

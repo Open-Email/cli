@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 func credClient(t *testing.T, handler http.HandlerFunc) (*coreapi.Client, func()) {

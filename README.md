@@ -12,26 +12,26 @@ labels, threads, search, sieve, pickups), and the workflow verbs (`send`,
 
 ```sh
 # Homebrew (macOS / Linux)
-brew install openemail/tap/openemail
-
-# Scoop (Windows)
-scoop bucket add openemail https://github.com/openemail/scoop-bucket
-scoop install openemail
+brew install Open-Email/tap/openemail
+# Homebrew 6+ gates third-party taps — if prompted, trust it once:
+#   brew trust --tap open-email/tap
 
 # Debian / Ubuntu / Fedora — download the .deb/.rpm from Releases, then:
 sudo dpkg -i openemail_*.deb      # or: sudo rpm -i openemail_*.rpm
 
+# Windows — download the .zip from Releases and put openemail.exe on your PATH.
+
 # Go
-go install github.com/openemail/openemail-cli/cmd/openemail@latest
+go install github.com/Open-Email/cli/cmd/openemail@latest
 
 # From source
-git clone https://github.com/openemail/openemail-cli && cd openemail-cli
+git clone https://github.com/Open-Email/cli && cd cli
 make build && ./bin/openemail version
 ```
 
-Shell completions ship in the release archives (bash/zsh/fish/powershell) and are
+Shell completions ship in the release archives (bash/zsh/fish) and are
 installed automatically by brew/apt/dnf. Generate them yourself with
-`openemail completion <shell>`.
+`openemail completion <shell>` (also supports powershell).
 
 ## Quick start
 

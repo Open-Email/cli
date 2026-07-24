@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 func strptr(s string) *string { return &s }

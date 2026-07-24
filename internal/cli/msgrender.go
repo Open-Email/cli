@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 // validFlags is the message-flag vocabulary core accepts (STORE and APPEND).

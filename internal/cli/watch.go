@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/coder/websocket"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 

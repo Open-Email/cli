@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 // contentMsg is the fetched email-client view of one message.

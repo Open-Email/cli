@@ -20,8 +20,8 @@ func newUpgradeCmd(a *app) *cobra.Command {
 			fmt.Fprintln(os.Stderr, "  Scoop:     scoop update openemail")
 			fmt.Fprintln(os.Stderr, "  apt/deb:   apt-get update && apt-get install --only-upgrade openemail")
 			fmt.Fprintln(os.Stderr, "  rpm/dnf:   dnf upgrade openemail")
-			fmt.Fprintln(os.Stderr, "  go:        go install github.com/openemail/openemail-cli/cmd/openemail@latest")
-			fmt.Fprintln(os.Stderr, "  manual:    download from https://github.com/openemail/openemail-cli/releases")
+			fmt.Fprintln(os.Stderr, "  go:        go install github.com/Open-Email/cli/cmd/openemail@latest")
+			fmt.Fprintln(os.Stderr, "  manual:    download from https://github.com/Open-Email/cli/releases")
 			return nil
 		},
 	}

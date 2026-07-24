@@ -7,8 +7,8 @@ package tui
 import (
 	"context"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 // Options wires the console to an authenticated session. Role gates the

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 // msgsPageMsg is one fetched page of the mailbox's live messages.

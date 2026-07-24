@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 func TestLayoutColumns(t *testing.T) {

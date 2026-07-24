@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Open-Email/cli/internal/compose"
+	"github.com/Open-Email/cli/internal/coreapi"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/openemail/openemail-cli/internal/compose"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 func TestParseBytes(t *testing.T) {

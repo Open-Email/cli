@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 

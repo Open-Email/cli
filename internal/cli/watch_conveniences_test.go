@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Open-Email/cli/internal/config"
 	"github.com/coder/websocket"
-	"github.com/openemail/openemail-cli/internal/config"
 )
 
 const testMbx = "01MBXWATCHTEST00000000000"

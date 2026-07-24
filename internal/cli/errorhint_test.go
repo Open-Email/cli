@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openemail/openemail-cli/internal/coreapi"
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 func TestErrorHint(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/openemail/openemail-cli/internal/coreapi"
 )
 
 // loadedPaneMsg is a loader's outcome: the pane to swap in, or an error.
