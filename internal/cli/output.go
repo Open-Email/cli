@@ -97,9 +97,12 @@ func (p *Printer) paint(code, s string) string {
 }
 
 // Bold / Dim helpers for human renderers.
-func (p *Printer) Bold(s string) string { return p.paint(colBold, s) }
-func (p *Printer) Dim(s string) string  { return p.paint(colDim, s) }
-func (p *Printer) Cyan(s string) string { return p.paint(colCyan, s) }
+func (p *Printer) Bold(s string) string   { return p.paint(colBold, s) }
+func (p *Printer) Dim(s string) string    { return p.paint(colDim, s) }
+func (p *Printer) Cyan(s string) string   { return p.paint(colCyan, s) }
+func (p *Printer) Green(s string) string  { return p.paint(colGreen, s) }
+func (p *Printer) Yellow(s string) string { return p.paint(colYellow, s) }
+func (p *Printer) Red(s string) string    { return p.paint(colRed, s) }
 
 // promptTTY reports whether we can interactively prompt (stdin + stderr TTYs).
 func promptTTY() bool {

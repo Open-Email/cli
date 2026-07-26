@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -59,6 +60,7 @@ func domainsDesc() resourceDesc {
 				{k: "can receive", v: yn(d.CanReceive)},
 				{k: "alias of", v: strOr(d.AliasOf, "—")},
 				{k: "fbl", v: yn(d.FBL)},
+				{k: "dmarc ingestion", v: yn(d.DMARC)},
 				{k: "account", v: strOr(d.AccountID, "platform (no account)")},
 				{k: "created", v: fmtEpoch(d.CreatedAt)},
 				{},
@@ -85,26 +87,59 @@ func domainsDesc() resourceDesc {
 				d := item.(coreapi.Domain)
 				return domainFormPane(ctx, ui, &d)
 			}},
+			{key: "D", label: "D dmarc", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				d := item.(coreapi.Domain)
+				return newScreenPane(ctx, ui, dmarcDesc(d.Domain))
+			}},
 		},
 		extra: func(ctx context.Context, c *coreapi.Client, item any) ([]kv, error) {
 			d := item.(coreapi.Domain)
-			t, err := c.GetDomainTraffic(ctx, d.Domain, "24h")
-			if err != nil {
-				return nil, err
+			// Two independent reads for one pane — issue them together rather
+			// than making the detail wait on a round trip it does not need.
+			var (
+				wg      sync.WaitGroup
+				t       *coreapi.DomainTraffic
+				tErr    error
+				dm      *coreapi.DomainDmarc
+				dmErr   error
+				kvs     []kv
+				window  = coreapi.DmarcWindowDefault
+				outcome []string
+			)
+			wg.Add(2)
+			go func() { defer wg.Done(); t, tErr = c.GetDomainTraffic(ctx, d.Domain, "24h") }()
+			go func() { defer wg.Done(); dm, dmErr = c.GetDomainDmarc(ctx, d.Domain, window) }()
+			wg.Wait()
+			if tErr != nil {
+				return nil, tErr
 			}
-			kvs := []kv{
+			kvs = []kv{
 				{},
 				{v: "Traffic (24h, sampled)"},
 				{k: "events", v: fmt.Sprintf("%d", t.Totals.Events)},
 				{k: "bytes", v: fmtBytes(t.Totals.Bytes)},
 			}
-			outcomes := make([]string, 0, len(t.ByOutcome))
+			outcome = make([]string, 0, len(t.ByOutcome))
 			for o := range t.ByOutcome {
-				outcomes = append(outcomes, o)
+				outcome = append(outcome, o)
 			}
-			sort.Strings(outcomes)
-			for _, o := range outcomes {
+			sort.Strings(outcome)
+			for _, o := range outcome {
 				kvs = append(kvs, kv{k: o, v: fmt.Sprintf("%d", t.ByOutcome[o])})
+			}
+			// The readiness line is a courtesy, not the pane's subject: a
+			// domain nobody reports on must still show its traffic, so a DMARC
+			// failure is swallowed rather than failing the whole extra.
+			if dmErr == nil && dm.Totals.Reports > 0 {
+				kvs = append(kvs,
+					kv{},
+					kv{v: fmt.Sprintf("DMARC readiness (%dd)", dm.WindowDays)},
+					kv{k: "verdict", v: dmarcVerdictCell(dm.Readiness.Verdict)},
+					kv{k: "aligned", v: fmtRate(dm.Readiness.AlignedRate)},
+					kv{k: "policy", v: dmarcPolicyCell(dm.Readiness)},
+					kv{k: "blockers", v: fmt.Sprintf("%d", len(dm.Readiness.Blockers))},
+					kv{k: "detail", v: "press D on the listing for the full DMARC screen"},
+				)
 			}
 			return kvs, nil
 		},

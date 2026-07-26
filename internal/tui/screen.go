@@ -41,6 +41,15 @@ type resourceDesc struct {
 	key     string
 	name    string
 	caption string // optional persistent dim line under the header (e.g. a freshness caveat)
+	// summary (optional) renders lines above the table, re-read on every view.
+	// It exists for screens whose point is a computed verdict rather than the
+	// row set (DMARC readiness): fetch stashes the lines in the desc's captured
+	// state and this reads them back. Returns nil when there is nothing to show.
+	//
+	// It receives the available width and must do its own truncation: the lines
+	// may carry lipgloss styling, and cutting a styled string here would slice
+	// an escape sequence in half.
+	summary func(width int) []string
 	columns []column
 	fetch   func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error)
 	detail  func(item any) []kv
@@ -184,6 +193,11 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		}
 		s.next = msg.next
 		s.applyFilter()
+		// A summary block's height is only known once the fetch that produced
+		// it lands, so re-run the layout with the table height it leaves.
+		if s.desc.summary != nil && s.w > 0 && s.h > 0 {
+			s.setSize(s.w, s.h)
+		}
 		return s, nil
 
 	case tea.KeyMsg:
@@ -331,7 +345,7 @@ func (s *screenPane) setSize(w, h int) {
 		inner = 20
 	}
 	s.tbl.SetColumns(layoutColumns(s.desc.columns, inner))
-	th := h - 1 - s.filterLines() - s.captionLines()
+	th := h - 1 - s.filterLines() - s.captionLines() - s.summaryLines()
 	if th < 3 {
 		th = 3
 	}
@@ -354,6 +368,23 @@ func (s *screenPane) captionLines() int {
 	return 0
 }
 
+// summaryLines is the height the summary block currently occupies (0 before the
+// first fetch lands, so a screen that will grow one starts with a full table and
+// re-lays out once the data arrives).
+func (s *screenPane) summaryLines() int {
+	if s.desc.summary == nil {
+		return 0
+	}
+	return len(s.desc.summary(s.summaryWidth()))
+}
+
+func (s *screenPane) summaryWidth() int {
+	if w := s.w - 2; w > 8 {
+		return w
+	}
+	return 8
+}
+
 func (s *screenPane) view() string {
 	head := " " + stTitle.Render(s.desc.name) + stMeta.Render(fmt.Sprintf("  %d loaded", len(s.all)))
 	if s.filter.Value() != "" && !s.filtering {
@@ -374,6 +405,11 @@ func (s *screenPane) view() string {
 	parts := []string{head}
 	if s.desc.caption != "" {
 		parts = append(parts, " "+stMeta.Render(truncate(s.desc.caption, max(8, s.w-2))))
+	}
+	if s.desc.summary != nil {
+		for _, line := range s.desc.summary(s.summaryWidth()) {
+			parts = append(parts, " "+line)
+		}
 	}
 	if s.filterLines() > 0 {
 		parts = append(parts, " "+s.filter.View())

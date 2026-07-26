@@ -24,6 +24,9 @@ func newDomainsCmd(a *app) *cobra.Command {
 		newDomainDeleteCmd(a),
 		newDomainTrafficCmd(a),
 		newDomainEventsCmd(a),
+		newDomainDmarcCmd(a),
+		newDomainDmarcSourcesCmd(a),
+		newDomainDmarcReportsCmd(a),
 	)
 	return cmd
 }
@@ -64,10 +67,10 @@ func newDomainListCmd(a *app) *cobra.Command {
 				for _, d := range items {
 					rows = append(rows, []string{
 						d.Domain, boolYN(d.Enabled), boolYN(d.CanSend), boolYN(d.CanReceive),
-						boolYN(d.FBL), strOr(d.AliasOf, "—"),
+						boolYN(d.FBL), boolYN(d.DMARC), strOr(d.AliasOf, "—"),
 					})
 				}
-				printTable(w, a.out, []string{"DOMAIN", "ENABLED", "SEND", "RECEIVE", "FBL", "ALIAS OF"}, rows)
+				printTable(w, a.out, []string{"DOMAIN", "ENABLED", "SEND", "RECEIVE", "FBL", "DMARC RUA", "ALIAS OF"}, rows)
 				a.moreHint(next)
 			})
 			return nil
@@ -81,14 +84,14 @@ func newDomainListCmd(a *app) *cobra.Command {
 
 func newDomainCreateCmd(a *app) *cobra.Command {
 	var (
-		enabled, canSend, canReceive, fbl, platform bool
-		aliasOf, account                            string
+		enabled, canSend, canReceive, fbl, dmarc, platform bool
+		aliasOf, account                                   string
 	)
 	cmd := &cobra.Command{
 		Use:   "create <domain>",
 		Short: "Create a domain",
 		Long: "Create a domain. Booleans default to core's values when omitted " +
-			"(enabled/can-receive true, can-send/fbl false); pass e.g. --can-send or --enabled=false to override.\n\n" +
+			"(enabled/can-receive true, can-send/fbl/dmarc false); pass e.g. --can-send or --enabled=false to override.\n\n" +
 			"System keys must choose ownership explicitly: --account <id> for a tenant domain, or " +
 			"--platform for a platform domain owned by no account (operator-only; invisible to every tenant). " +
 			"Account keys need neither — they always own what they create.",
@@ -107,6 +110,7 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 				CanSend:    boolPtrIfChanged(cmd, "can-send", canSend),
 				CanReceive: boolPtrIfChanged(cmd, "can-receive", canReceive),
 				FBL:        boolPtrIfChanged(cmd, "fbl", fbl),
+				DMARC:      boolPtrIfChanged(cmd, "dmarc", dmarc),
 				Platform:   platform,
 			}
 			if cmd.Flags().Changed("alias-of") {
@@ -136,6 +140,7 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&canSend, "can-send", false, "domain may send")
 	cmd.Flags().BoolVar(&canReceive, "can-receive", true, "domain may receive")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "FBL ingestion domain (parses DSN/ARF reports; mutually exclusive with alias)")
+	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "DMARC report-ingestion domain: swallows every local part and parses arriving aggregate (RUA) reports — NOT the _dmarc DNS record")
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system keys; account keys always own their domains)")
 	cmd.Flags().BoolVar(&platform, "platform", false, "platform domain owned by no account (system keys only; invisible to tenants)")
@@ -164,9 +169,9 @@ func newDomainGetCmd(a *app) *cobra.Command {
 
 func newDomainUpdateCmd(a *app) *cobra.Command {
 	var (
-		enabled, canSend, canReceive, fbl bool
-		aliasOf                           string
-		clearAlias                        bool
+		enabled, canSend, canReceive, fbl, dmarc bool
+		aliasOf                                  string
+		clearAlias                               bool
 	)
 	cmd := &cobra.Command{
 		Use:   "update <domain>",
@@ -193,6 +198,9 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 			if cmd.Flags().Changed("fbl") {
 				patch["fbl"] = fbl
 			}
+			if cmd.Flags().Changed("dmarc") {
+				patch["dmarc"] = dmarc
+			}
 			if clearAlias {
 				patch["aliasOf"] = nil
 			} else if cmd.Flags().Changed("alias-of") {
@@ -218,7 +226,8 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "set enabled")
 	cmd.Flags().BoolVar(&canSend, "can-send", false, "set send capability")
 	cmd.Flags().BoolVar(&canReceive, "can-receive", false, "set receive capability")
-	cmd.Flags().BoolVar(&fbl, "fbl", false, "set FBL ingestion flag")
+	cmd.Flags().BoolVar(&fbl, "fbl", false, "set the FBL ingestion flag")
+	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "set the DMARC report-ingestion flag (aggregate/RUA parsing — NOT the _dmarc DNS record)")
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().BoolVar(&clearAlias, "clear-alias", false, "clear the alias (make it a normal domain)")
 	return cmd
@@ -356,6 +365,7 @@ func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 		{"Can send", boolYN(d.CanSend)},
 		{"Can receive", boolYN(d.CanReceive)},
 		{"FBL", boolYN(d.FBL)},
+		{"DMARC ingestion", boolYN(d.DMARC)},
 		{"Alias of", strOr(d.AliasOf, "—")},
 		{"Account", strOr(d.AccountID, "platform (no account)")},
 		{"Created", fmtEpoch(d.CreatedAt)},

@@ -62,7 +62,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `mailboxes` | create/list/get/update/delete/restore, `use` (set default) |
 | `keys` | account API keys: create/list/revoke |
 | `accounts` | accounts (create/list are system-only), get; `create --with-key` also mints the account's first API key |
-| `domains` | domains + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d` |
+| `domains` | domains + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness), `dmarc-sources <domain>`, `dmarc-reports <domain>` — all `--window 7d\|30d\|90d` |
 | `routes` | address routes + `members list\|add\|remove\|replace` |
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's IMAP/SMTP credentials (app-passwords) |
@@ -105,6 +105,11 @@ id=$(openemail watch -m alice@example.com --until 'message.new' --timeout 30s | 
 
 # Run a handler per event (frame JSON on stdin) and hydrate message frames.
 openemail watch -m alice@example.com --fetch --exec 'jq -r .message.subject'
+
+# "Can I move this domain to p=reject yet?" — readiness, blockers, top sources.
+openemail domains dmarc example.com --window 30d
+openemail domains dmarc-sources example.com   # every sender, unaligned ones first
+openemail domains dmarc-reports example.com   # the raw ingest log (empty ⇒ check rua=)
 
 # Manage Sieve filters.
 openemail sieve check -f filter.sieve            # dry-run compile (exit 1 if invalid)

@@ -64,6 +64,16 @@ func contractPairings() []pairing {
 		{val: TrafficRow{}, comp: "TrafficRow"},
 		{val: TrafficEvent{}, comp: "TrafficEvent"},
 		{val: DomainEvents{}, comp: "DomainEvents"},
+		// DMARC aggregate-report views. DmarcTotals has no named component
+		// (core inlines it under DomainDmarc.totals) — TestDmarcTotalsMatchesInlineSchema
+		// pins it separately.
+		{val: DomainDmarc{}, comp: "DomainDmarc"},
+		{val: DmarcReadiness{}, comp: "DmarcReadiness"},
+		{val: DmarcBlocker{}, comp: "DmarcBlocker"},
+		{val: DmarcSource{}, comp: "DmarcSource"},
+		{val: DomainDmarcSources{}, comp: "DomainDmarcSources"},
+		{val: DomainDmarcReports{}, comp: "DomainDmarcReports"},
+		{val: DmarcReport{}, comp: "DmarcReport"},
 		// Data plane.
 		{val: MessageLabel{}, comp: "MessageLabel"},
 		{val: MessageMeta{}, comp: "MessageMeta"},

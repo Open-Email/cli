@@ -819,6 +819,368 @@
         ],
         "type": "object"
       },
+      "DmarcBlocker": {
+        "properties": {
+          "code": {
+            "enum": [
+              "no_reports",
+              "low_volume",
+              "short_window",
+              "sampled_policy",
+              "platform_source_failing",
+              "unaligned_source",
+              "pass_rate_below_threshold"
+            ],
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "DmarcReadiness": {
+        "properties": {
+          "alignedRate": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/DmarcBlocker"
+            },
+            "type": "array"
+          },
+          "currentPolicy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "observedDays": {
+            "type": "integer"
+          },
+          "recommendedPolicy": {
+            "enum": [
+              "quarantine",
+              "reject"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reporters": {
+            "type": "integer"
+          },
+          "sampled": {
+            "type": "boolean"
+          },
+          "verdict": {
+            "enum": [
+              "no_data",
+              "insufficient_data",
+              "not_ready",
+              "ready_for_quarantine",
+              "ready_for_reject",
+              "at_enforcement"
+            ],
+            "type": "string"
+          },
+          "windowDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "verdict",
+          "currentPolicy",
+          "recommendedPolicy",
+          "alignedRate",
+          "windowDays",
+          "observedDays",
+          "messages",
+          "reporters",
+          "sampled",
+          "blockers"
+        ],
+        "type": "object"
+      },
+      "DmarcReport": {
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "orgEmail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "orgName": {
+            "type": "string"
+          },
+          "passing": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "policyDomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "policyP": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "policyPct": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "policySp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rangeBegin": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "rangeEnd": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "receivedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reportId": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "policyDomain",
+          "orgName",
+          "orgEmail",
+          "reportId",
+          "rangeBegin",
+          "rangeEnd",
+          "policyP",
+          "policySp",
+          "policyPct",
+          "receivedAt",
+          "messages",
+          "passing",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "DmarcSource": {
+        "properties": {
+          "class": {
+            "enum": [
+              "platform",
+              "aligned_third_party",
+              "unaligned"
+            ],
+            "type": "string"
+          },
+          "dkimDomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dkimPass": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "dkimSelector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "firstSeen": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "headerFrom": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeen": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "passRate": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "passing": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "quarantined": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "rejected": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "share": {
+            "type": "number"
+          },
+          "sourceIp": {
+            "type": "string"
+          },
+          "spfDomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spfPass": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sourceIp",
+          "messages",
+          "passing",
+          "passRate",
+          "share",
+          "dkimPass",
+          "spfPass",
+          "quarantined",
+          "rejected",
+          "class",
+          "dkimDomain",
+          "dkimSelector",
+          "spfDomain",
+          "headerFrom",
+          "firstSeen",
+          "lastSeen"
+        ],
+        "type": "object"
+      },
+      "DnsRecord": {
+        "properties": {
+          "kind": {
+            "description": "mx | spf | dkim | dmarc",
+            "type": "string"
+          },
+          "name": {
+            "description": "Fully-qualified record name to create",
+            "type": "string"
+          },
+          "priority": {
+            "description": "MX preference",
+            "type": "integer"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "required": {
+            "description": "false = recommended (DMARC), mail flows without it",
+            "type": "boolean"
+          },
+          "type": {
+            "description": "MX | TXT | CNAME",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "type",
+          "name",
+          "value",
+          "purpose",
+          "required"
+        ],
+        "type": "object"
+      },
+      "DnsRecordCheck": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DnsRecord"
+          },
+          {
+            "properties": {
+              "found": {
+                "description": "Normalized values seen at `name`; empty when absent",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "ok": {
+                "description": "Absent = liveness unknown (resolver unreachable), distinct from false",
+                "type": "boolean"
+              },
+              "policy": {
+                "description": "DMARC only: the published p= value (none | quarantine | reject)",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reportingToUs": {
+                "description": "DMARC only: the published rua sends aggregate reports to this platform",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "found"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "DnsStatus": {
         "properties": {
           "dkim": {
@@ -860,6 +1222,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "dmarc": {
+            "type": "boolean"
+          },
           "dnsCheckedAt": {
             "format": "int64",
             "type": "integer"
@@ -894,10 +1259,206 @@
           "canReceive",
           "aliasOf",
           "fbl",
+          "dmarc",
           "dnsStatus",
           "dnsCheckedAt",
           "accountId",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "DomainDmarc": {
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/DmarcReadiness"
+          },
+          "topSources": {
+            "items": {
+              "$ref": "#/components/schemas/DmarcSource"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "properties": {
+              "dkimAligned": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "firstSeen": {
+                "anyOf": [
+                  {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lastSeen": {
+                "anyOf": [
+                  {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "messages": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "passing": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "quarantined": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "rejected": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "reporters": {
+                "type": "integer"
+              },
+              "reports": {
+                "type": "integer"
+              },
+              "sources": {
+                "type": "integer"
+              },
+              "spfAligned": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "reports",
+              "reporters",
+              "sources",
+              "messages",
+              "passing",
+              "dkimAligned",
+              "spfAligned",
+              "quarantined",
+              "rejected",
+              "firstSeen",
+              "lastSeen"
+            ],
+            "type": "object"
+          },
+          "windowDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domain",
+          "windowDays",
+          "totals",
+          "readiness",
+          "topSources"
+        ],
+        "type": "object"
+      },
+      "DomainDmarcReports": {
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/DmarcReport"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain",
+          "reports",
+          "cursor"
+        ],
+        "type": "object"
+      },
+      "DomainDmarcSources": {
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/DmarcSource"
+            },
+            "type": "array"
+          },
+          "windowDays": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domain",
+          "windowDays",
+          "messages",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "DomainDnsCheck": {
+        "properties": {
+          "cached": {
+            "description": "true = a stored verdict, not a fresh query",
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "records": {
+            "description": "The records this domain needs, plus liveness where known",
+            "items": {
+              "$ref": "#/components/schemas/DnsRecordCheck"
+            },
+            "type": "array"
+          },
+          "resolverUnavailable": {
+            "description": "true = DNS could not be queried; records are still returned, nothing stored",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DnsStatus"
+          }
+        },
+        "required": [
+          "domain",
+          "checkedAt",
+          "cached",
+          "status",
+          "records"
         ],
         "type": "object"
       },
@@ -1811,6 +2372,64 @@
         ],
         "type": "object"
       },
+      "SendRecipientResult": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "error": {
+            "description": "Present only when status is failed, e.g. receiving_disabled, over_quota",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "delivered",
+              "queued",
+              "filtered",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "status"
+        ],
+        "type": "object"
+      },
+      "SendResult": {
+        "properties": {
+          "deliveryId": {
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/SendRecipientResult"
+            },
+            "type": "array"
+          },
+          "sentCopy": {
+            "description": "Fate of the single Sent copy; over_quota means sending proceeded without one",
+            "enum": [
+              "saved",
+              "duplicate",
+              "over_quota"
+            ],
+            "type": "string"
+          },
+          "sentThreadId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "deliveryId",
+          "recipients"
+        ],
+        "type": "object"
+      },
       "SieveActivated": {
         "properties": {
           "active": {
@@ -1989,6 +2608,76 @@
           "script",
           "active",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "Suppression": {
+        "properties": {
+          "address": {
+            "description": "Normalized (lowercased) recipient address",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Diagnostic snippet or ARF feedback type, verbatim from the report",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventCount": {
+            "description": "Distinct reports recorded for this address",
+            "format": "int64",
+            "type": "integer"
+          },
+          "firstEventAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastEventAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "complaint",
+              "hard_bounce"
+            ],
+            "type": "string"
+          },
+          "sourceDeliveryId": {
+            "description": "X-Delivery-Id of the most recent report that wrote this row",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "reason",
+          "detail",
+          "sourceDeliveryId",
+          "eventCount",
+          "firstEventAt",
+          "lastEventAt"
+        ],
+        "type": "object"
+      },
+      "SuppressionList": {
+        "properties": {
+          "nextCursor": {
+            "description": "Opaque cursor for the next page; absent on the last page",
+            "type": "string"
+          },
+          "suppressions": {
+            "items": {
+              "$ref": "#/components/schemas/Suppression"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "suppressions"
         ],
         "type": "object"
       },
@@ -2264,6 +2953,55 @@
           "kind",
           "canSend",
           "permittedFrom"
+        ],
+        "type": "object"
+      },
+      "WhoamiResult": {
+        "properties": {
+          "accountId": {
+            "description": "Owning account; null for a system key, which is not tenant-scoped",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "credentialId": {
+            "description": "App-password id for a mailbox bearer",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keyId": {
+            "description": "API key id for system/account bearers; null for a mailbox app password",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mailboxId": {
+            "description": "Mailbox a mailbox-scoped app password is bound to",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "description": "Credential scope",
+            "enum": [
+              "system",
+              "account",
+              "mailbox"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "keyId",
+          "accountId",
+          "mailboxId",
+          "credentialId"
         ],
         "type": "object"
       }
@@ -2634,6 +3372,27 @@
           }
         },
         "summary": "Verify a username/password against mailbox credentials (system callers only); returns mailbox identity plus permitted envelope-From addresses",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/auth/whoami": {
+      "get": {
+        "operationId": "get_AuthWhoami",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoamiResult"
+                }
+              }
+            },
+            "description": "The resolved principal behind the bearer token"
+          }
+        },
+        "summary": "Describe the calling credential (scope, account, mailbox)",
         "tags": [
           "Credentials"
         ]
@@ -3243,6 +4002,9 @@
                   "canSend": {
                     "type": "boolean"
                   },
+                  "dmarc": {
+                    "type": "boolean"
+                  },
                   "domain": {
                     "minLength": 3,
                     "type": "string"
@@ -3384,6 +4146,9 @@
                   "canSend": {
                     "type": "boolean"
                   },
+                  "dmarc": {
+                    "type": "boolean"
+                  },
                   "dnsStatus": {
                     "properties": {
                       "dkim": {
@@ -3443,6 +4208,229 @@
         ]
       }
     },
+    "/api/v1/domains/{domain}/dmarc": {
+      "get": {
+        "operationId": "get_DomainDmarc",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reporting window",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "30d",
+              "description": "Reporting window",
+              "enum": [
+                "7d",
+                "30d",
+                "90d"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainDmarc"
+                }
+              }
+            },
+            "description": "Totals, readiness verdict, and the busiest sources over the window"
+          },
+          "400": {
+            "description": "validation_failed — unknown window value"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "DMARC aggregate-report summary for a domain: authentication totals, the busiest sending sources, and whether the domain is safe to move to p=quarantine or p=reject",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/dmarc/reports": {
+      "get": {
+        "operationId": "get_DomainDmarcReports",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainDmarcReports"
+                }
+              }
+            },
+            "description": "One row per ingested report"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Aggregate reports ingested for this domain, newest reporting window first",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/dmarc/sources": {
+      "get": {
+        "operationId": "get_DomainDmarcSources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reporting window",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "30d",
+              "description": "Reporting window",
+              "enum": [
+                "7d",
+                "30d",
+                "90d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainDmarcSources"
+                }
+              }
+            },
+            "description": "Per-source aggregates, busiest first"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Every source IP that sent mail claiming this domain over the window, classified as platform / aligned third party / unaligned",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/dns/check": {
+      "post": {
+        "operationId": "post_DomainDnsCheck",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bypass the cached verdict and re-query DNS now",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "description": "Bypass the cached verdict and re-query DNS now",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainDnsCheck"
+                }
+              }
+            },
+            "description": "Required records with liveness where known, and the stored per-kind verdict"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "The DNS records this domain needs (MX, SPF, the two permanent DKIM CNAMEs, recommended DMARC) plus whether each is live; stores the verdict. Cached briefly — ?force=true re-queries",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
     "/api/v1/domains/{domain}/events": {
       "get": {
         "operationId": "get_DomainEvents",
@@ -3485,6 +4473,7 @@
                 "deferred",
                 "relayed",
                 "relay_rejected",
+                "relay_suppressed",
                 "relay_content_lost",
                 "webhook_delivered",
                 "webhook_route_gone",
@@ -3492,6 +4481,11 @@
                 "member_failed",
                 "fbl_recorded",
                 "fbl_content_lost",
+                "dmarc_recorded",
+                "dmarc_content_lost",
+                "dmarc_unreadable",
+                "dmarc_unparseable",
+                "dmarc_rejected",
                 "dead_lettered"
               ],
               "type": "string"
@@ -3511,7 +4505,8 @@
                 "relay",
                 "webhook",
                 "pickup",
-                "fbl"
+                "fbl",
+                "dmarc"
               ],
               "type": "string"
             }
@@ -4852,6 +5847,317 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/messages/compose": {
+      "post": {
+        "operationId": "post_MessageCompose",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target label (default INBOX)",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "description": "Target label (default INBOX)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated initial flags, e.g. seen,draft",
+            "in": "query",
+            "name": "flags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated initial flags, e.g. seen,draft",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Run the mailbox's active Sieve filter (default off)",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "description": "Run the mailbox's active Sieve filter (default off)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Epoch seconds recorded as receivedAt; default now",
+            "in": "query",
+            "name": "internaldate",
+            "required": false,
+            "schema": {
+              "description": "Epoch seconds recorded as receivedAt; default now",
+              "maximum": 253402300799,
+              "minimum": -62135596800,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Optional idempotency key; otherwise each call is its own intent",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": false,
+            "schema": {
+              "description": "Optional idempotency key; otherwise each call is its own intent",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "attachments": {
+                    "items": {
+                      "properties": {
+                        "content": {
+                          "description": "Base64 payload",
+                          "type": "string"
+                        },
+                        "contentId": {
+                          "description": "Reference from HTML as cid:<value>; makes the part inline rather than an attachment",
+                          "maxLength": 255,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "contentType": {
+                          "description": "Defaults to application/octet-stream",
+                          "maxLength": 255,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "filename": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "filename",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  "cc": {
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "from": {
+                    "properties": {
+                      "address": {
+                        "maxLength": 320,
+                        "minLength": 3,
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "Display name; RFC 2047-encoded when not plain ASCII",
+                        "maxLength": 320,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "address"
+                    ],
+                    "type": "object"
+                  },
+                  "headers": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Extra headers; structural ones (Content-Type, Date, …) are refused",
+                    "type": "object"
+                  },
+                  "html": {
+                    "description": "HTML body; paired with text as multipart/alternative",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "inReplyTo": {
+                    "description": "Parent Message-ID, angle-bracketed",
+                    "maxLength": 512,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "messageId": {
+                    "description": "Overrides the generated Message-ID",
+                    "maxLength": 998,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "references": {
+                    "items": {
+                      "maxLength": 512,
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  "replyTo": {
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 10,
+                    "type": "array"
+                  },
+                  "subject": {
+                    "maxLength": 2000,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "text": {
+                    "description": "Plain-text body",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "to": {
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "from"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppendResult"
+                }
+              }
+            },
+            "description": "Stored (uid + uidValidity answer IMAP APPENDUID), or status:filtered when an opted-in Sieve filter discarded it"
+          },
+          "400": {
+            "description": "validation_failed, invalid_flag, invalid delivery id, or a message the server refused to build (header_newline, reserved_header, invalid_address, invalid_base64, …) — the `field` names the offending input"
+          },
+          "404": {
+            "description": "Mailbox not found/not accessible, unknown_label, or mailbox_gone"
+          },
+          "411": {
+            "description": "Content-Length required"
+          },
+          "413": {
+            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, or the assembled message exceeds MAX_MESSAGE_BYTES"
+          },
+          "503": {
+            "description": "superseded/reaped — lost pending intent; retry with the same X-Delivery-Id"
+          },
+          "507": {
+            "description": "over_quota"
+          }
+        },
+        "summary": "Create a message in a mailbox from structured JSON — the server assembles the MIME (bypasses routing; same storage path as APPEND)",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/messages/mime": {
       "post": {
         "operationId": "post_MessageMimeBatch",
@@ -6025,6 +7331,317 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/send": {
+      "post": {
+        "operationId": "post_MessageSend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Save one Sent copy for the whole submission (default true)",
+            "in": "query",
+            "name": "save",
+            "required": false,
+            "schema": {
+              "description": "Save one Sent copy for the whole submission (default true)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+            "in": "query",
+            "name": "bounce",
+            "required": false,
+            "schema": {
+              "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Idempotency key for the submission; per-recipient keys are derived from it, so resubmitting retries only what failed",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": false,
+            "schema": {
+              "description": "Idempotency key for the submission; per-recipient keys are derived from it, so resubmitting retries only what failed",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "attachments": {
+                    "items": {
+                      "properties": {
+                        "content": {
+                          "description": "Base64 payload",
+                          "type": "string"
+                        },
+                        "contentId": {
+                          "maxLength": 255,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "contentType": {
+                          "maxLength": 255,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "filename": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "filename",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  "bcc": {
+                    "description": "Recipients that receive the message but appear in no header",
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  "cc": {
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  "from": {
+                    "description": "Must resolve to this mailbox. Also becomes the envelope sender, so the From header stays DMARC-aligned with the DKIM signature",
+                    "properties": {
+                      "address": {
+                        "maxLength": 320,
+                        "minLength": 3,
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 320,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "address"
+                    ],
+                    "type": "object"
+                  },
+                  "headers": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "html": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "inReplyTo": {
+                    "maxLength": 512,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "references": {
+                    "items": {
+                      "maxLength": 512,
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  "replyTo": {
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 10,
+                    "type": "array"
+                  },
+                  "subject": {
+                    "maxLength": 2000,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "text": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "to": {
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "from"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            },
+            "description": "Every recipient was accepted (delivered, queued, or filtered)"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            },
+            "description": "Mixed: at least one recipient failed. The array carries each address's own status and error; retry with the same X-Delivery-Id to converge only the failures"
+          },
+          "400": {
+            "description": "validation_failed, no_recipients, too_many_recipients, or a message the server refused to build (header_newline, reserved_header, invalid_address, invalid_base64, …)"
+          },
+          "403": {
+            "description": "sender_not_owned | sender_not_local | sending_disabled"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible"
+          },
+          "411": {
+            "description": "Content-Length required"
+          },
+          "413": {
+            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, or the assembled message exceeds MAX_MESSAGE_BYTES"
+          },
+          "500": {
+            "description": "internal — the sender mailbox is missing its Sent label"
+          },
+          "503": {
+            "description": "Sent copy lost its pending intent; retry with the same X-Delivery-Id"
+          }
+        },
+        "summary": "Send a message from this mailbox to one or more recipients — the server assembles the MIME and returns one result per recipient",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/sieve/active": {
       "delete": {
         "operationId": "delete_SieveDeactivate",
@@ -6657,6 +8274,198 @@
         "summary": "One conversation: live members oldest-first, plus a server-built replyContext (In-Reply-To, References, Re: subject, reply target) for answering the newest message. A merged-away thread id is transparently recovered — re-cache the returned canonicalThreadId.",
         "tags": [
           "Threads"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/threads/{threadId}/reply": {
+      "post": {
+        "operationId": "post_ThreadReply",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "threadId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Save a Sent copy (default true)",
+            "in": "query",
+            "name": "save",
+            "required": false,
+            "schema": {
+              "description": "Save a Sent copy (default true)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+            "in": "query",
+            "name": "bounce",
+            "required": false,
+            "schema": {
+              "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Idempotency key for the submission",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": false,
+            "schema": {
+              "description": "Idempotency key for the submission",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "attachments": {
+                    "items": {
+                      "properties": {
+                        "content": {
+                          "description": "Base64 payload",
+                          "type": "string"
+                        },
+                        "contentId": {
+                          "maxLength": 255,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "contentType": {
+                          "maxLength": 255,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "filename": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "filename",
+                        "content"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  "fromName": {
+                    "description": "Display name for the From header; the address is always this mailbox's",
+                    "maxLength": 320,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "headers": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "html": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "subject": {
+                    "description": "Overrides the derived \"Re: …\" subject",
+                    "maxLength": 2000,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "text": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            },
+            "description": "The reply was accepted for its recipient"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            },
+            "description": "The recipient failed; the array carries the reason"
+          },
+          "400": {
+            "description": "validation_failed, no_reply_target (the thread has no answerable address, e.g. a null-sender DSN), no_primary_address, delivery_id_too_long, reserved_delivery_id, or a refused build"
+          },
+          "403": {
+            "description": "sender_not_owned | sender_not_local | sending_disabled"
+          },
+          "404": {
+            "description": "Mailbox or thread not found"
+          },
+          "411": {
+            "description": "Content-Length required"
+          },
+          "413": {
+            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, or the assembled message exceeds MAX_MESSAGE_BYTES"
+          },
+          "500": {
+            "description": "internal — the sender mailbox is missing its Sent label"
+          },
+          "503": {
+            "description": "Sent copy lost its pending intent; retry with the same X-Delivery-Id"
+          }
+        },
+        "summary": "Reply to a thread — recipient, subject and threading headers are derived from the conversation; the body carries only what you wrote",
+        "tags": [
+          "Delivery"
         ]
       }
     },
@@ -7542,6 +9351,133 @@
         "summary": "Remove a member from a group route",
         "tags": [
           "Directory"
+        ]
+      }
+    },
+    "/api/v1/suppressions": {
+      "get": {
+        "operationId": "get_SuppressionListEndpoint",
+        "parameters": [
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuppressionList"
+                }
+              }
+            },
+            "description": "Suppressions page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "List suppressed recipient addresses (system callers only)",
+        "tags": [
+          "Suppressions"
+        ]
+      }
+    },
+    "/api/v1/suppressions/{address}": {
+      "delete": {
+        "operationId": "delete_SuppressionDelete",
+        "parameters": [
+          {
+            "description": "Recipient address",
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "description": "Recipient address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Suppression lifted"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "description": "not_found — the address was not suppressed"
+          }
+        },
+        "summary": "Lift a suppression, clearing the address to send again (system callers only)",
+        "tags": [
+          "Suppressions"
+        ]
+      },
+      "get": {
+        "operationId": "get_SuppressionGet",
+        "parameters": [
+          {
+            "description": "Recipient address",
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "description": "Recipient address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Suppression"
+                }
+              }
+            },
+            "description": "The address is suppressed"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "description": "not_found — the address is not suppressed (clear to send)"
+          }
+        },
+        "summary": "Look up one address on the do-not-send list (system callers only)",
+        "tags": [
+          "Suppressions"
         ]
       }
     }

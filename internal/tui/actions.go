@@ -79,12 +79,14 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 		canSend = false
 		canRecv = true
 		fbl     = false
+		dmarc   = false
 		aliasOf string
 	)
 	title := "New domain"
 	if existing != nil {
 		domain = existing.Domain
 		enabled, canSend, canRecv, fbl = existing.Enabled, existing.CanSend, existing.CanReceive, existing.FBL
+		dmarc = existing.DMARC
 		aliasOf = strOr(existing.AliasOf, "")
 		title = "Edit domain " + existing.Domain
 	}
@@ -110,6 +112,7 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 			boolField("Can send", "allow outbound submission from this domain", &canSend),
 			boolField("Can receive", "", &canRecv),
 			boolField("FBL ingestion", "parse DSN/ARF feedback reports delivered to this domain", &fbl),
+			boolField("DMARC ingestion", "parse aggregate (RUA) reports delivered to this domain — not the _dmarc DNS record", &dmarc),
 			huh.NewInput().Title("Alias of").
 				Description("deliver this domain's mail as that domain's — empty for none (clears on edit)").
 				Value(&aliasOf),
@@ -121,7 +124,7 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 		if existing == nil {
 			in := coreapi.DomainCreateInput{
 				Domain: strings.TrimSpace(domain), Enabled: &enabled,
-				CanSend: &canSend, CanReceive: &canRecv, FBL: &fbl,
+				CanSend: &canSend, CanReceive: &canRecv, FBL: &fbl, DMARC: &dmarc,
 			}
 			if o := strings.TrimSpace(owner); o != "" {
 				in.AccountID = &o
@@ -137,7 +140,7 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 			}
 			return "domain " + d.Domain + " created", nil, nil
 		}
-		patch := map[string]any{"enabled": enabled, "canSend": canSend, "canReceive": canRecv, "fbl": fbl}
+		patch := map[string]any{"enabled": enabled, "canSend": canSend, "canReceive": canRecv, "fbl": fbl, "dmarc": dmarc}
 		if alias == "" {
 			patch["aliasOf"] = nil
 		} else {

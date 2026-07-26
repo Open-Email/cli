@@ -16,6 +16,7 @@ var (
 	cDim    = lipgloss.AdaptiveColor{Light: "245", Dark: "241"}
 	cBad    = lipgloss.AdaptiveColor{Light: "124", Dark: "203"}
 	cGood   = lipgloss.AdaptiveColor{Light: "28", Dark: "78"}
+	cWarn   = lipgloss.AdaptiveColor{Light: "130", Dark: "214"}
 	cSubtle = lipgloss.AdaptiveColor{Light: "254", Dark: "237"}
 )
 
@@ -25,6 +26,7 @@ var (
 	stMeta    = lipgloss.NewStyle().Foreground(cDim)
 	stStatus  = lipgloss.NewStyle().Foreground(cDim)
 	stErr     = lipgloss.NewStyle().Foreground(cBad)
+	stWarn    = lipgloss.NewStyle().Foreground(cWarn)
 	stLive    = lipgloss.NewStyle().Foreground(cGood)
 	stDim     = lipgloss.NewStyle().Foreground(cDim)
 	stTitle   = lipgloss.NewStyle().Bold(true)

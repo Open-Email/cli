@@ -25,6 +25,7 @@ type Domain struct {
 	CanReceive   bool       `json:"canReceive"`
 	AliasOf      *string    `json:"aliasOf"`
 	FBL          bool       `json:"fbl"`
+	DMARC        bool       `json:"dmarc"`
 	DNSStatus    *DNSStatus `json:"dnsStatus"`
 	DNSCheckedAt *int64     `json:"dnsCheckedAt"`
 	AccountID    *string    `json:"accountId"`
@@ -41,6 +42,7 @@ type DomainCreateInput struct {
 	CanReceive *bool   `json:"canReceive,omitempty"`
 	AliasOf    *string `json:"aliasOf,omitempty"`
 	FBL        *bool   `json:"fbl,omitempty"`
+	DMARC      *bool   `json:"dmarc,omitempty"`
 	AccountID  *string `json:"accountId,omitempty"`
 	// Platform marks a platform-owned domain (no tenant): marshals as an
 	// explicit `"accountId": null`, which core's system-caller contract
