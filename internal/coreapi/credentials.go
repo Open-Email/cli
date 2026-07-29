@@ -14,6 +14,8 @@ type Credential struct {
 	CreatedAt  int64   `json:"createdAt"`
 	LastUsedAt *int64  `json:"lastUsedAt"`
 	RevokedAt  *int64  `json:"revokedAt"`
+	// ExpiresAt is unix seconds; nil = never expires.
+	ExpiresAt *int64 `json:"expiresAt"`
 }
 
 // CreatedCredential is the create response; Token is the one-time plaintext,
@@ -24,6 +26,9 @@ type CreatedCredential struct {
 	Username string  `json:"username"`
 	Name     *string `json:"name"`
 	Token    string  `json:"token,omitempty"`
+	// ExpiresAt is unix seconds; nil = never expires. app_password arm only —
+	// the password arm of the union carries no expiry.
+	ExpiresAt *int64 `json:"expiresAt,omitempty"`
 }
 
 // CredentialCreateInput is the POST body. Kind is "password" (requires Password)

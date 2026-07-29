@@ -20,6 +20,10 @@ type ReplyContext struct {
 	References []string `json:"references"`
 	Subject    *string  `json:"subject"`
 	To         *string  `json:"to"`
+	// InboundSourceID is the message this context answers, or nil when the
+	// thread's newest member is your own Sent copy (a follow-up to your own
+	// mail). A client can use it to show or open the exact message replied to.
+	InboundSourceID *string `json:"inboundSourceId"`
 }
 
 // ThreadView is a single thread with its messages (oldest-first) and reply

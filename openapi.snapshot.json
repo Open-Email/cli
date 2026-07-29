@@ -17,12 +17,19 @@
           },
           "name": {
             "type": "string"
+          },
+          "verificationToken": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "id",
           "name",
           "maxMailboxes",
+          "verificationToken",
           "createdAt"
         ],
         "type": "object"
@@ -209,6 +216,111 @@
           "size",
           "inline",
           "contentId"
+        ],
+        "type": "object"
+      },
+      "BatchDeleteEntry": {
+        "properties": {
+          "blobOrphaned": {
+            "description": "Present iff status=purged",
+            "type": "boolean"
+          },
+          "expungedAt": {
+            "description": "Present iff status=expunged",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "purgeAfter": {
+            "description": "Present iff status=expunged",
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "description": "expunged (soft, restorable) | purged (?purge=true) | not_found",
+            "enum": [
+              "expunged",
+              "purged",
+              "not_found"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchDeleteResult": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchDeleteEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
+      "BatchUpdateEntry": {
+        "properties": {
+          "expungedAt": {
+            "description": "Present iff status=expunged",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageMeta"
+              },
+              {
+                "description": "Present iff status=updated"
+              }
+            ]
+          },
+          "purgeAfter": {
+            "description": "Present iff status=expunged",
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "description": "updated | expunged | not_found (missing, pending or in trash) | too_many_keywords",
+            "enum": [
+              "updated",
+              "expunged",
+              "not_found",
+              "too_many_keywords"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchUpdateResult": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchUpdateEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
         ],
         "type": "object"
       },
@@ -409,6 +521,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "expiresAt": {
+            "description": "Unix seconds; null = never expires",
+            "format": "int64",
+            "type": "integer"
+          },
           "id": {
             "type": "string"
           },
@@ -441,7 +558,8 @@
           "name",
           "createdAt",
           "lastUsedAt",
-          "revokedAt"
+          "revokedAt",
+          "expiresAt"
         ],
         "type": "object"
       },
@@ -478,6 +596,11 @@
           },
           {
             "properties": {
+              "expiresAt": {
+                "description": "Unix seconds; null = never expires",
+                "format": "int64",
+                "type": "integer"
+              },
               "id": {
                 "type": "string"
               },
@@ -506,7 +629,8 @@
               "kind",
               "username",
               "name",
-              "token"
+              "token",
+              "expiresAt"
             ],
             "type": "object"
           }
@@ -1108,15 +1232,19 @@
       "DnsRecord": {
         "properties": {
           "kind": {
-            "description": "mx | spf | dkim | dmarc",
+            "description": "ownership | mx | spf | dkim | dmarc | jmap",
             "type": "string"
           },
           "name": {
             "description": "Fully-qualified record name to create",
             "type": "string"
           },
+          "port": {
+            "description": "SRV only: RFC 2782 port",
+            "type": "integer"
+          },
           "priority": {
-            "description": "MX preference",
+            "description": "MX preference, or SRV priority",
             "type": "integer"
           },
           "purpose": {
@@ -1127,11 +1255,15 @@
             "type": "boolean"
           },
           "type": {
-            "description": "MX | TXT | CNAME",
+            "description": "MX | TXT | CNAME | SRV",
             "type": "string"
           },
           "value": {
             "type": "string"
+          },
+          "weight": {
+            "description": "SRV only: RFC 2782 weight",
+            "type": "integer"
           }
         },
         "required": [
@@ -1187,6 +1319,9 @@
             "type": "boolean"
           },
           "dmarc": {
+            "type": "boolean"
+          },
+          "jmap": {
             "type": "boolean"
           },
           "mx": {
@@ -1250,6 +1385,21 @@
           },
           "fbl": {
             "type": "boolean"
+          },
+          "jmap": {
+            "type": "boolean"
+          },
+          "receiving": {
+            "description": "enabled && canReceive",
+            "type": "boolean"
+          },
+          "sending": {
+            "description": "enabled && canSend",
+            "type": "boolean"
+          },
+          "verified": {
+            "description": "Always true: control of the domain is the precondition for the row existing, not a column on it",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1260,10 +1410,14 @@
           "aliasOf",
           "fbl",
           "dmarc",
+          "jmap",
           "dnsStatus",
           "dnsCheckedAt",
           "accountId",
-          "createdAt"
+          "createdAt",
+          "verified",
+          "receiving",
+          "sending"
         ],
         "type": "object"
       },
@@ -1494,6 +1648,28 @@
           "estimated"
         ],
         "type": "object"
+      },
+      "DomainOnboarding": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Domain"
+          },
+          {
+            "properties": {
+              "records": {
+                "description": "The mail records this domain needs, plus liveness where known",
+                "items": {
+                  "$ref": "#/components/schemas/DnsRecordCheck"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "records"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "DomainTraffic": {
         "properties": {
@@ -1909,6 +2085,23 @@
             },
             "type": "array"
           },
+          "from": {
+            "description": "Display view of the From: header (original case), stamped at delivery. Null = unknown (pre-v8 row / unparseable head) — fall back to envelopeFrom",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "hasAttachment": {
+            "description": "Whether the message has an attachment, by the RFC 8621 §4.1.4 rule — the same computation GET /content's attachment list uses. NULL means not yet known: the flag is stamped at delivery and backfilled lazily on first read of an older message, and a client should show nothing rather than guess",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -1917,6 +2110,13 @@
               "string",
               "null"
             ]
+          },
+          "keywords": {
+            "description": "Arbitrary JMAP keywords (lowercase-canonical), e.g. $forwarded. The four bitmask-backed ones ($seen/$answered/$flagged/$draft) live in `flags` and are never repeated here",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "labels": {
             "items": {
@@ -1966,6 +2166,16 @@
               "null"
             ]
           },
+          "to": {
+            "description": "Display view of the To: header (capped). Null = unknown — fall back to envelopeTo",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "uid": {
             "description": "Per-label UID — present only in a label's UID listing",
             "format": "int64",
@@ -1976,8 +2186,11 @@
           "id",
           "labels",
           "flags",
+          "keywords",
           "envelopeFrom",
           "envelopeTo",
+          "from",
+          "to",
           "subject",
           "messageIdHeader",
           "threadId",
@@ -1987,6 +2200,7 @@
           "receivedAt",
           "size",
           "snippet",
+          "hasAttachment",
           "blobHash",
           "blobGen",
           "deliveryMeta"
@@ -2249,6 +2463,13 @@
               "null"
             ]
           },
+          "inboundSourceId": {
+            "description": "Id of the message this context answers, or null when the thread's newest member is your own Sent copy (a follow-up to your own mail). A client can use it to show or open the exact message being replied to.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "references": {
             "items": {
               "type": "string"
@@ -2272,7 +2493,8 @@
           "inReplyTo",
           "references",
           "subject",
-          "to"
+          "to",
+          "inboundSourceId"
         ],
         "type": "object"
       },
@@ -4014,6 +4236,9 @@
                   },
                   "fbl": {
                     "type": "boolean"
+                  },
+                  "jmap": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -4029,20 +4254,23 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Domain"
+                  "$ref": "#/components/schemas/DomainOnboarding"
                 }
               }
             },
-            "description": "Created domain"
+            "description": "The domain and its lifecycle state, plus the records it still needs. Answered for a create AND for a re-POST that advanced (or found nothing new to advance)"
           },
           "400": {
-            "description": "validation_failed, account_required (system caller omitted accountId — pass an account id or an explicit null), unknown_account, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+            "description": "validation_failed, domain_not_verified (the account's TXT is not published — the response carries the record to create), account_required (system caller omitted accountId — pass an account id or an explicit null), unknown_account, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
           },
           "409": {
-            "description": "domain_exists (caller already owns it), domain_unavailable (identical for every other conflict — no tenant enumeration), or alias_conflict"
+            "description": "domain_claimed_elsewhere (the caller proved control, but another account holds the domain — an operator must transfer it), domain_unavailable (identical for every other conflict — no tenant enumeration), or alias_conflict"
+          },
+          "503": {
+            "description": "verification_unavailable — DNS could not be queried, so control could not be proven either way. Retryable; nothing was created"
           }
         },
-        "summary": "Create a domain (owned by the calling account; system callers must pass accountId — an account id, or null for a platform domain)",
+        "summary": "Create a domain, or advance an existing one. Requires the account's verification TXT to be live; re-POST after publishing SPF + both DKIM CNAMEs to activate sending",
         "tags": [
           "Directory"
         ]
@@ -4157,6 +4385,9 @@
                       "dmarc": {
                         "type": "boolean"
                       },
+                      "jmap": {
+                        "type": "boolean"
+                      },
                       "mx": {
                         "type": "boolean"
                       },
@@ -4173,6 +4404,9 @@
                     "type": "boolean"
                   },
                   "fbl": {
+                    "type": "boolean"
+                  },
+                  "jmap": {
                     "type": "boolean"
                   }
                 },
@@ -4194,6 +4428,9 @@
           },
           "400": {
             "description": "validation_failed, empty_patch, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+          },
+          "403": {
+            "description": "sending_not_writable — account callers earn canSend by publishing DNS and re-POSTing /domains; only a system caller may grant it outright"
           },
           "404": {
             "description": "Domain not found or not accessible to this principal"
@@ -5044,6 +5281,12 @@
                   },
                   {
                     "properties": {
+                      "expiresInSeconds": {
+                        "description": "Lifetime in seconds. The credential stops authenticating once it elapses — for a client minting one per browser session, so a closed tab cannot leave a permanently valid key behind. Omit for a credential that never expires (the default, and what a mail client wants)",
+                        "maximum": 31536000,
+                        "minimum": 60,
+                        "type": "integer"
+                      },
                       "kind": {
                         "enum": [
                           "app_password"
@@ -5312,6 +5555,9 @@
           },
           "404": {
             "description": "Mailbox or label not found"
+          },
+          "503": {
+            "description": "too_large — the label refilled past the one-commit ceiling while it was being drained; retry"
           }
         },
         "summary": "Delete a non-system label (messages keep their other labels)",
@@ -5532,38 +5778,78 @@
             }
           },
           {
-            "description": "Required — only the expunged (trash) tier is collection-deletable",
+            "description": "Empty the trash tier. Mutually exclusive with an {ids} body",
             "in": "query",
             "name": "state",
-            "required": true,
+            "required": false,
             "schema": {
-              "description": "Required — only the expunged (trash) tier is collection-deletable",
+              "description": "Empty the trash tier. Mutually exclusive with an {ids} body",
               "enum": [
                 "expunged"
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "ids mode only: permanently delete instead of expunging",
+            "in": "query",
+            "name": "purge",
+            "required": false,
+            "schema": {
+              "description": "ids mode only: permanently delete instead of expunging",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EmptyTrashResult"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/EmptyTrashResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BatchDeleteResult"
+                    }
+                  ]
                 }
               }
             },
-            "description": "Purge result ({ purged: N })"
+            "description": "Purge result ({ purged: N }) in state mode, or per-message outcomes in ids mode"
           },
           "400": {
-            "description": "validation_failed — state=expunged is required"
+            "description": "validation_failed; delete_target_required (neither state nor ids); delete_target_exclusive (both)"
           },
           "404": {
             "description": "Mailbox not found or not accessible to this principal"
           }
         },
-        "summary": "Empty the trash: permanently delete every expunged message now, freeing its quota (blobs are reclaimed by the DO's background drain). The trash is addressed exactly like its listing — state=expunged — and the parameter is REQUIRED, so a bare collection DELETE is a validation error, never a mass delete",
+        "summary": "Delete messages by the collection. With state=expunged: empty the trash — permanently delete every expunged message now, freeing its quota (blobs are reclaimed by the DO's background drain). With an {ids} body: delete exactly those messages in one atomic call (expunge by default, permanent with ?purge=true) — the batch form of DELETE .../messages/:messageId, so a client's 'select 50, delete' is one round trip. What is deleted must always be addressed: a DELETE carrying neither is refused, never a mass delete, and carrying both is refused as ambiguous",
         "tags": [
           "Messages"
         ]
@@ -5603,6 +5889,26 @@
               "maximum": 200,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated flag names; a message matches only if ALL are set (e.g. flagged)",
+            "in": "query",
+            "name": "hasFlags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated flag names; a message matches only if ALL are set (e.g. flagged)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated flag names; a message matches only if NONE are set (e.g. seen, for unread-only)",
+            "in": "query",
+            "name": "notFlags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated flag names; a message matches only if NONE are set (e.g. seen, for unread-only)",
+              "type": "string"
             }
           },
           {
@@ -5684,6 +5990,126 @@
           }
         },
         "summary": "List messages newest-first with cursor pagination, optionally filtered to one label. state=expunged lists the trash (restorable messages) instead. For UID-ordered listing use GET /mailboxes/:id/labels/:label/messages.",
+        "tags": [
+          "Messages"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_MessageBatchUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "flagsClear": {
+                    "items": {
+                      "enum": [
+                        "seen",
+                        "answered",
+                        "flagged",
+                        "draft",
+                        "deleted"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "flagsSet": {
+                    "items": {
+                      "enum": [
+                        "seen",
+                        "answered",
+                        "flagged",
+                        "draft",
+                        "deleted"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "keywordsClear": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "keywordsExact": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "keywordsSet": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "labelsAdd": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "labelsExact": {
+                    "description": "Absolute label set; the delta is computed inside the mailbox's own commit",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "labelsRemove": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ids"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchUpdateResult"
+                }
+              }
+            },
+            "description": "Per-message outcomes, in request order"
+          },
+          "400": {
+            "description": "validation_failed, unknown_label, or invalid_keyword (nothing was written)"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Apply ONE patch to many messages in a single atomic call — the batch form of PATCH .../messages/:messageId, with identical semantics per message (additions before removals; a patch whose removals empty a message's labels expunges it). Exists so a client's 'select 50, archive' is one round trip against the mailbox rather than 50. A patch naming an unknown label or an invalid keyword is refused for the WHOLE request before anything is written; per-message outcomes (not_found, too_many_keywords) ride in results",
         "tags": [
           "Messages"
         ]
@@ -6379,7 +6805,34 @@
                     },
                     "type": "array"
                   },
+                  "keywordsClear": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "keywordsExact": {
+                    "description": "Absolute keyword set; also settles the four bitmask-backed keywords",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "keywordsSet": {
+                    "description": "Arbitrary JMAP keywords to add. $seen/$answered/$flagged/$draft fold into the flag bitmask; $deleted is refused (use flagsSet)",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "labelsAdd": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "labelsExact": {
+                    "description": "Absolute label set; the delta is computed inside the mailbox's own commit",
                     "items": {
                       "type": "string"
                     },
@@ -6416,7 +6869,7 @@
             "description": "Mailbox or message not found"
           }
         },
-        "summary": "Set/clear flags (IMAP STORE) and add/remove labels (IMAP COPY/MOVE). Additions apply before removals, so a one-call MOVE is safe; a patch whose removals leave the message with no labels EXPUNGES it (returns {expunged, expungedAt, purgeAfter})",
+        "summary": "Set/clear flags (IMAP STORE), add/remove labels (IMAP COPY/MOVE), and set/clear arbitrary JMAP keywords. Additions apply before removals, so a one-call MOVE is safe; a patch whose removals leave the message with no labels EXPUNGES it (returns {expunged, expungedAt, purgeAfter}). The *Exact fields are absolute sets whose delta is computed inside the mailbox's own commit — use them instead of read-diff-write, which loses concurrent writes",
         "tags": [
           "Messages"
         ]
@@ -8172,6 +8625,26 @@
               "maximum": 100,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated flag names; a message matches only if ALL are set (e.g. flagged)",
+            "in": "query",
+            "name": "hasFlags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated flag names; a message matches only if ALL are set (e.g. flagged)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated flag names; a message matches only if NONE are set (e.g. seen, for unread-only)",
+            "in": "query",
+            "name": "notFlags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated flag names; a message matches only if NONE are set (e.g. seen, for unread-only)",
+              "type": "string"
             }
           }
         ],

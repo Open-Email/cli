@@ -30,7 +30,12 @@ type Account struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
 	MaxMailboxes *int64 `json:"maxMailboxes"`
-	CreatedAt    int64  `json:"createdAt"`
+	// VerificationToken is the value this account publishes in
+	// `_openemail.<domain>` TXT to claim a domain. Per-account and stable, so it
+	// is knowable before the first domain exists. Public by construction (it
+	// lives in DNS) — a claim capability, never an authentication credential.
+	VerificationToken *string `json:"verificationToken"`
+	CreatedAt         int64   `json:"createdAt"`
 }
 
 // Mailbox is a live mailbox row; the stats fields are populated only by

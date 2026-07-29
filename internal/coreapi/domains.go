@@ -14,6 +14,9 @@ type DNSStatus struct {
 	SPF   *bool `json:"spf,omitempty"`
 	DKIM  *bool `json:"dkim,omitempty"`
 	DMARC *bool `json:"dmarc,omitempty"`
+	// Present only for a domain with JMAP autodiscovery enabled — the SRV
+	// record is not offered otherwise, so there is no verdict to report.
+	JMAP *bool `json:"jmap,omitempty"`
 }
 
 // Domain mirrors the endpoint's present() output: booleans are real bools (core
@@ -26,10 +29,73 @@ type Domain struct {
 	AliasOf      *string    `json:"aliasOf"`
 	FBL          bool       `json:"fbl"`
 	DMARC        bool       `json:"dmarc"`
+	JMAP         bool       `json:"jmap"`
 	DNSStatus    *DNSStatus `json:"dnsStatus"`
 	DNSCheckedAt *int64     `json:"dnsCheckedAt"`
 	AccountID    *string    `json:"accountId"`
 	CreatedAt    int64      `json:"createdAt"`
+
+	// Lifecycle view of the three booleans above, so a client rendering an
+	// onboarding checklist does not have to know which combination means what.
+	// Verified is true for every domain that exists: proving control of the
+	// domain is the precondition for core creating the row at all.
+	Verified  bool `json:"verified"`
+	Receiving bool `json:"receiving"`
+	Sending   bool `json:"sending"`
+}
+
+// DNSRecord is one record a domain needs, with the copy-pasteable value. Kind
+// is ownership | mx | spf | dkim | dmarc | jmap; the ownership record appears
+// only in a domain_not_verified refusal, never in a health check (it is a
+// precondition to onboarding, not ongoing health).
+type DNSRecord struct {
+	Kind     string `json:"kind"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	Priority *int32 `json:"priority,omitempty"`
+	Weight   *int32 `json:"weight,omitempty"`
+	Port     *int32 `json:"port,omitempty"`
+	Purpose  string `json:"purpose"`
+	Required bool   `json:"required"`
+}
+
+// DNSRecordCheck is a DNSRecord plus what the resolver actually returned. OK is
+// nil when liveness is UNKNOWN (the resolver could not be reached) — distinct
+// from false, which means the record is genuinely absent.
+type DNSRecordCheck struct {
+	DNSRecord
+	OK    *bool    `json:"ok,omitempty"`
+	Found []string `json:"found"`
+	// DMARC only: whether the published rua reports to this platform, and the
+	// p= value. A record can be published (ok) and still collect nothing.
+	ReportingToUs *bool   `json:"reportingToUs,omitempty"`
+	Policy        *string `json:"policy,omitempty"`
+}
+
+// DomainOnboarding is POST /domains — the domain plus the records it still
+// needs. Onboarding is a loop ("publish a record, POST again"), so the response
+// that advances the domain also carries what is left to publish.
+//
+// Embedded rather than duplicated: encoding/json flattens it, matching core's
+// flat body. Note the selector collision this creates (the embedded field is
+// named Domain and so is its `domain` string) — CreateDomain hands the two
+// parts back separately so no caller has to write d.Domain.Domain.
+type DomainOnboarding struct {
+	Domain
+	Records []DNSRecordCheck `json:"records"`
+}
+
+// DomainDNSCheck is POST /domains/:domain/dns/check. ResolverUnavailable means
+// DNS could not be queried at all: the records are still returned (with OK nil)
+// and nothing was stored, so an outage never reads as misconfiguration.
+type DomainDNSCheck struct {
+	Domain              string           `json:"domain"`
+	CheckedAt           *int64           `json:"checkedAt"`
+	Cached              bool             `json:"cached"`
+	ResolverUnavailable bool             `json:"resolverUnavailable,omitempty"`
+	Status              DNSStatus        `json:"status"`
+	Records             []DNSRecordCheck `json:"records"`
 }
 
 // DomainCreateInput is the POST /domains body; pointers so unset fields are
@@ -143,15 +209,60 @@ func (c *Client) ListDomains(ctx context.Context, limit int, cursor string) (Pag
 	return Page[Domain]{Items: out.Domains, NextCursor: out.NextCursor}, nil
 }
 
-func (c *Client) CreateDomain(ctx context.Context, in DomainCreateInput) (*Domain, error) {
-	var out Domain
+// CreateDomain is core's create-or-advance call: it creates the domain when the
+// account's verification TXT is live, and on a domain that already exists it
+// re-resolves DNS and activates sending once the send records are published.
+// Calling it repeatedly is the onboarding loop, not an error.
+//
+// A 400 domain_not_verified carries the record the customer must publish —
+// pull it out with VerificationRecord rather than re-deriving the name or the
+// token, which are core's to define.
+func (c *Client) CreateDomain(ctx context.Context, in DomainCreateInput) (*Domain, []DNSRecordCheck, error) {
+	var out DomainOnboarding
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost, path: "/domains", body: mustJSON(in), contentType: "application/json",
+	}, &out)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &out.Domain, out.Records, nil
+}
+
+// CheckDomainDNS resolves the records a domain needs and stores the verdict.
+// force bypasses core's brief verdict cache. Unlike CreateDomain this only
+// REPORTS — it never creates a domain and never activates sending.
+func (c *Client) CheckDomainDNS(ctx context.Context, domain string, force bool) (*DomainDNSCheck, error) {
+	q := url.Values{}
+	if force {
+		q.Set("force", "true")
+	}
+	var out DomainDNSCheck
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost,
+		path:   "/domains/" + url.PathEscape(domain) + "/dns/check",
+		query:  q,
 	}, &out)
 	if err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// VerificationRecord returns the ownership record from a 400
+// domain_not_verified refusal, so a client can tell the customer exactly what
+// to publish without deriving the name or the account token itself.
+func VerificationRecord(err error) (DNSRecord, bool) {
+	ae, ok := asAPIError(err)
+	if !ok || ae.Code != "domain_not_verified" {
+		return DNSRecord{}, false
+	}
+	var body struct {
+		Record *DNSRecord `json:"record"`
+	}
+	if json.Unmarshal(ae.Body, &body) != nil || body.Record == nil {
+		return DNSRecord{}, false
+	}
+	return *body.Record, true
 }
 
 func (c *Client) GetDomain(ctx context.Context, domain string) (*Domain, error) {

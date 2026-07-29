@@ -139,6 +139,16 @@ func errorHint(ae *coreapi.APIError) string {
 		// System keys must choose domain ownership explicitly (core refuses to
 		// mint a tenant-invisible platform domain by omission).
 		return "system keys must choose ownership: pass --account <id>, or --platform for a domain owned by no account"
+	case "sending_not_writable":
+		// Sending is earned from DNS, not set. Point at the loop that grants it.
+		return "sending is activated by DNS, not by a flag: publish the SPF and both DKIM records (openemail domains dns <domain>), then re-run openemail domains create <domain>"
+	case "domain_claimed_elsewhere":
+		// The caller proved control, so core told them the truth rather than
+		// hiding behind the anti-enumeration 409. There is no self-service move.
+		return "you control this domain's DNS, but another account holds it here — contact support to have it transferred"
+	case "verification_unavailable":
+		// A resolver outage, not the customer's DNS. Retrying is the whole fix.
+		return "DNS could not be queried just now — nothing was changed; try again shortly"
 	}
 	return ""
 }

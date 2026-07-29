@@ -43,7 +43,7 @@ openemail login
 # Non-interactive / CI:
 OPENEMAIL_API_KEY=oek_… openemail login --api-key oek_…
 
-openemail whoami         # who this key resolves to
+openemail whoami         # who this key resolves to (+ your domain-verification TXT)
 openemail status         # health + auth probe
 
 # Pick a default mailbox so message/label/sieve commands don't need -m each time.
@@ -62,7 +62,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `mailboxes` | create/list/get/update/delete/restore, `use` (set default) |
 | `keys` | account API keys: create/list/revoke |
 | `accounts` | accounts (create/list are system-only), get; `create --with-key` also mints the account's first API key |
-| `domains` | domains + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness), `dmarc-sources <domain>`, `dmarc-reports <domain>` — all `--window 7d\|30d\|90d` |
+| `domains` | domains (`create` is create-or-advance: requires your verification TXT, activates sending once SPF + both DKIM CNAMEs resolve), `dns <domain>` (required records + liveness) + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness), `dmarc-sources <domain>`, `dmarc-reports <domain>` — all `--window 7d\|30d\|90d` |
 | `routes` | address routes + `members list\|add\|remove\|replace` |
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's IMAP/SMTP credentials (app-passwords) |

@@ -21,6 +21,7 @@ func newDomainsCmd(a *app) *cobra.Command {
 		newDomainCreateCmd(a),
 		newDomainGetCmd(a),
 		newDomainUpdateCmd(a),
+		newDomainDNSCmd(a),
 		newDomainDeleteCmd(a),
 		newDomainTrafficCmd(a),
 		newDomainEventsCmd(a),
@@ -66,11 +67,11 @@ func newDomainListCmd(a *app) *cobra.Command {
 				rows := make([][]string, 0, len(items))
 				for _, d := range items {
 					rows = append(rows, []string{
-						d.Domain, boolYN(d.Enabled), boolYN(d.CanSend), boolYN(d.CanReceive),
+						d.Domain, boolYN(d.Enabled), boolYN(d.Receiving), boolYN(d.Sending),
 						boolYN(d.FBL), boolYN(d.DMARC), strOr(d.AliasOf, "—"),
 					})
 				}
-				printTable(w, a.out, []string{"DOMAIN", "ENABLED", "SEND", "RECEIVE", "FBL", "DMARC RUA", "ALIAS OF"}, rows)
+				printTable(w, a.out, []string{"DOMAIN", "ENABLED", "RECEIVING", "SENDING", "FBL", "DMARC RUA", "ALIAS OF"}, rows)
 				a.moreHint(next)
 			})
 			return nil
@@ -125,13 +126,27 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 				}
 				in.AccountID = &account
 			}
-			d, err := client.CreateDomain(cmd.Context(), in)
+			d, records, err := client.CreateDomain(cmd.Context(), in)
 			if err != nil {
+				// The refusal carries the record to publish. Render it instead of
+				// a bare error code: a first-run customer's next action IS this
+				// record, and deriving its name or the account token client-side
+				// would duplicate platform config and drift.
+				if rec, ok := coreapi.VerificationRecord(err); ok {
+					a.out.Emit(map[string]any{"error": "domain_not_verified", "record": rec}, func(w io.Writer) {
+						a.out.Warnf("%s is not verified yet.", args[0])
+						fmt.Fprintln(w, "Publish this DNS record, then run the same command again:")
+						fmt.Fprintln(w)
+						printDNSRecords(w, a.out, []coreapi.DNSRecordCheck{{DNSRecord: rec}}, false)
+					})
+					return errSilent
+				}
 				return err
 			}
-			a.out.Emit(d, func(w io.Writer) {
-				a.out.Successf("Created domain %s", d.Domain)
+			a.out.Emit(map[string]any{"domain": d, "records": records}, func(w io.Writer) {
+				a.out.Successf("Domain %s is verified", d.Domain)
 				printDomain(w, a.out, d)
+				printOnboardingNext(w, a.out, d, records)
 			})
 			return nil
 		},
@@ -144,6 +159,47 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system keys; account keys always own their domains)")
 	cmd.Flags().BoolVar(&platform, "platform", false, "platform domain owned by no account (system keys only; invisible to tenants)")
+	return cmd
+}
+
+// newDomainDNSCmd exposes the health check. It REPORTS only: it never creates a
+// domain and never activates sending — `domains create` (create-or-advance) is
+// the single path that moves a domain's state, so there is one writer of it.
+func newDomainDNSCmd(a *app) *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "dns <domain>",
+		Short: "Show the DNS records a domain needs and whether each is live",
+		Long: "Show the DNS records this domain needs (MX, SPF, both DKIM CNAMEs, a recommended DMARC, " +
+			"and the JMAP SRV record where enabled) and whether each resolves.\n\n" +
+			"Liveness is a resolver view, so it can lag your DNS provider by a few minutes. A verdict is " +
+			"cached briefly; --force re-queries now. When DNS cannot be queried at all the records are " +
+			"still listed with liveness shown as \"?\" — unknown, not missing.\n\n" +
+			"This command only reports. To activate sending, publish the records and re-run " +
+			"`openemail domains create <domain>`.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			res, err := client.CheckDomainDNS(cmd.Context(), args[0], force)
+			if err != nil {
+				return err
+			}
+			a.out.Emit(res, func(w io.Writer) {
+				if res.ResolverUnavailable {
+					a.out.Warnf("DNS could not be queried — liveness is unknown, not failing.")
+				}
+				printDNSRecords(w, a.out, res.Records, true)
+				if res.Cached {
+					a.out.Msgf("%s", a.out.Dim("Cached verdict; pass --force to re-query."))
+				}
+			})
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "bypass the cached verdict and re-query DNS now")
 	return cmd
 }
 
@@ -361,6 +417,9 @@ func newDomainEventsCmd(a *app) *cobra.Command {
 func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 	rows := [][]string{
 		{"Domain", d.Domain},
+		{"Verified", boolYN(d.Verified)},
+		{"Receiving", boolYN(d.Receiving)},
+		{"Sending", boolYN(d.Sending)},
 		{"Enabled", boolYN(d.Enabled)},
 		{"Can send", boolYN(d.CanSend)},
 		{"Can receive", boolYN(d.CanReceive)},
@@ -383,5 +442,67 @@ func fmtDNS(s *coreapi.DNSStatus) string {
 		}
 		return name + "=" + boolYN(*v)
 	}
-	return fmt.Sprintf("%s %s %s %s", part("mx", s.MX), part("spf", s.SPF), part("dkim", s.DKIM), part("dmarc", s.DMARC))
+	out := fmt.Sprintf("%s %s %s %s", part("mx", s.MX), part("spf", s.SPF), part("dkim", s.DKIM), part("dmarc", s.DMARC))
+	if s.JMAP != nil {
+		out += " " + part("jmap", s.JMAP)
+	}
+	return out
+}
+
+// printDNSRecords renders records as copy-pasteable rows. withLiveness adds the
+// resolver verdict column; "?" there means UNKNOWN (the resolver could not be
+// reached), which is deliberately distinct from a "no" the customer can fix.
+func printDNSRecords(w io.Writer, p *Printer, records []coreapi.DNSRecordCheck, withLiveness bool) {
+	head := []string{"KIND", "TYPE", "NAME", "VALUE", "REQUIRED"}
+	if withLiveness {
+		head = append(head, "LIVE")
+	}
+	rows := make([][]string, 0, len(records))
+	for _, r := range records {
+		value := r.Value
+		// MX and SRV carry their numeric fields outside `value`, exactly as a DNS
+		// UI asks for them; show them so a row is usable as-is.
+		if r.Priority != nil {
+			value = fmt.Sprintf("%d %s", *r.Priority, value)
+		}
+		if r.Port != nil {
+			value = fmt.Sprintf("%s (port %d)", value, *r.Port)
+		}
+		row := []string{r.Kind, r.Type, r.Name, value, boolYN(r.Required)}
+		if withLiveness {
+			row = append(row, boolYNUnknown(r.OK))
+		}
+		rows = append(rows, row)
+	}
+	printTable(w, p, head, rows)
+}
+
+// printOnboardingNext tells the customer what is left. Sending is EARNED by
+// publishing SPF + both DKIM CNAMEs and re-running create — it is not a flag
+// they can set, so pointing at the records is the only honest next step.
+func printOnboardingNext(w io.Writer, p *Printer, d *coreapi.Domain, records []coreapi.DNSRecordCheck) {
+	if d.Sending || len(records) == 0 {
+		return
+	}
+	var pending []coreapi.DNSRecordCheck
+	for _, r := range records {
+		if r.OK == nil || !*r.OK {
+			pending = append(pending, r)
+		}
+	}
+	if len(pending) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Still to publish (re-run this command afterwards to activate sending):")
+	printDNSRecords(w, p, pending, true)
+}
+
+// boolYNUnknown renders a tri-state liveness: nil is UNKNOWN (resolver
+// unreachable), never conflated with a plain "no".
+func boolYNUnknown(v *bool) string {
+	if v == nil {
+		return "?"
+	}
+	return boolYN(*v)
 }

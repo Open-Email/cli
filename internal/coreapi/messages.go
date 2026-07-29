@@ -23,24 +23,38 @@ type MessageLabel struct {
 // fields are pointers. In a label message listing each element also carries a
 // top-level UID (nil elsewhere).
 type MessageMeta struct {
-	ID              string          `json:"id"`
-	Labels          []MessageLabel  `json:"labels"`
-	Flags           []string        `json:"flags"`
-	EnvelopeFrom    string          `json:"envelopeFrom"`
-	EnvelopeTo      string          `json:"envelopeTo"`
-	Subject         *string         `json:"subject"`
-	MessageIDHeader *string         `json:"messageIdHeader"`
-	ThreadID        *string         `json:"threadId"`
-	InReplyTo       *string         `json:"inReplyTo"`
-	ReferencesIDs   []string        `json:"referencesIds"`
-	SentAt          *int64          `json:"sentAt"`
-	ReceivedAt      int64           `json:"receivedAt"`
-	Size            int64           `json:"size"`
-	Snippet         *string         `json:"snippet"`
-	BlobHash        string          `json:"blobHash"`
-	BlobGen         string          `json:"blobGen"`
-	DeliveryMeta    json.RawMessage `json:"deliveryMeta"`
-	UID             *int64          `json:"uid,omitempty"`
+	ID           string         `json:"id"`
+	Labels       []MessageLabel `json:"labels"`
+	Flags        []string       `json:"flags"`
+	EnvelopeFrom string         `json:"envelopeFrom"`
+	EnvelopeTo   string         `json:"envelopeTo"`
+	// From/To are the DISPLAY view of the RFC5322 headers, stamped at delivery.
+	// Nil means unknown (an older row, or an unparseable head) — fall back to
+	// EnvelopeFrom/EnvelopeTo rather than showing nothing.
+	From            []ContentAddress `json:"from"`
+	To              []ContentAddress `json:"to"`
+	Subject         *string          `json:"subject"`
+	MessageIDHeader *string          `json:"messageIdHeader"`
+	ThreadID        *string          `json:"threadId"`
+	InReplyTo       *string          `json:"inReplyTo"`
+	ReferencesIDs   []string         `json:"referencesIds"`
+	SentAt          *int64           `json:"sentAt"`
+	ReceivedAt      int64            `json:"receivedAt"`
+	Size            int64            `json:"size"`
+	Snippet         *string          `json:"snippet"`
+	BlobHash        string           `json:"blobHash"`
+	BlobGen         string           `json:"blobGen"`
+	DeliveryMeta    json.RawMessage  `json:"deliveryMeta"`
+	// HasAttachment follows the RFC 8621 §4.1.4 rule (the same computation
+	// GET /content's attachment list uses). Nil = not yet known: the flag is
+	// stamped at delivery and backfilled lazily on first read of an older
+	// message, so a client should show nothing rather than guess.
+	HasAttachment *bool `json:"hasAttachment"`
+	// Keywords are the arbitrary JMAP keywords (lowercase-canonical), e.g.
+	// $forwarded. The four bitmask-backed ones ($seen/$answered/$flagged/$draft)
+	// live in Flags and are never repeated here.
+	Keywords []string `json:"keywords"`
+	UID      *int64   `json:"uid,omitempty"`
 }
 
 // ExpungedMessageMeta is a trash-listing row: MessageMeta (labels always empty)

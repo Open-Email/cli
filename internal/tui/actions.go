@@ -134,13 +134,22 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 			if alias != "" {
 				in.AliasOf = &alias
 			}
-			d, err := c.CreateDomain(sctx, in)
+			d, _, err := c.CreateDomain(sctx, in)
 			if err != nil {
 				return "", nil, err
 			}
 			return "domain " + d.Domain + " created", nil, nil
 		}
-		patch := map[string]any{"enabled": enabled, "canSend": canSend, "canReceive": canRecv, "fbl": fbl, "dmarc": dmarc}
+		patch := map[string]any{"enabled": enabled, "canReceive": canRecv, "fbl": fbl, "dmarc": dmarc}
+		// canSend is EARNED from DNS: core refuses canSend:true from an account
+		// key (403 sending_not_writable), so sending it unchanged would make
+		// every unrelated edit of an already-sending domain fail. Send it only
+		// when the operator actually moved the toggle — turning sending OFF is
+		// always allowed, and turning it ON is what legitimately needs a system
+		// key or a re-run of domain create.
+		if canSend != existing.CanSend {
+			patch["canSend"] = canSend
+		}
 		if alias == "" {
 			patch["aliasOf"] = nil
 		} else {

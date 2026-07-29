@@ -21,6 +21,17 @@ func newWhoamiCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The domain-verification token. It is per-ACCOUNT and stable, so this
+			// is where a customer reads the value to publish BEFORE their first
+			// domain exists — which is the whole point of it not being per-domain.
+			// Best effort: a system key has no account, and whoami must keep
+			// working if the read fails.
+			verifyToken := ""
+			if id.AccountID != "" {
+				if acct, aerr := client.GetAccount(cmd.Context(), id.AccountID); aerr == nil && acct.VerificationToken != nil {
+					verifyToken = *acct.VerificationToken
+				}
+			}
 			// keyId/keyName/keyStorage describe the STORED profile credential; they
 			// are meaningful only when the live token actually came from that profile.
 			// An --api-key/env override authenticates as a different key with no local
@@ -38,15 +49,18 @@ func newWhoamiCmd(a *app) *cobra.Command {
 				"keyName":     keyName,
 				"keyStorage":  keyStore,
 				"tokenSource": a.tokenSource,
+				// Named for what it does, not for the column: this is the domain
+				// claim value, never a credential.
+				"domainVerificationToken": verifyToken,
 			}, func(w io.Writer) {
-				a.printIdentity(w, id)
+				a.printIdentity(w, id, verifyToken)
 			})
 			return nil
 		},
 	}
 }
 
-func (a *app) printIdentity(w io.Writer, id coreapi.Identity) {
+func (a *app) printIdentity(w io.Writer, id coreapi.Identity, verifyToken string) {
 	rows := [][]string{
 		{"Principal", id.Type},
 		{"API URL", a.apiURL},
@@ -73,5 +87,8 @@ func (a *app) printIdentity(w io.Writer, id coreapi.Identity) {
 		store = a.profile.KeyStorage
 	}
 	rows = append(rows, []string{"Key source", src + " / " + store})
+	if verifyToken != "" {
+		rows = append(rows, []string{"Domain verification", "_openemail.<domain> TXT openemail-verification=" + verifyToken})
+	}
 	printTable(w, a.out, []string{"FIELD", "VALUE"}, rows)
 }

@@ -10,8 +10,13 @@ openemail mailboxes use alice@example.com
 ## Provision a new mailbox that receives mail
 
 ```sh
-# 1. The domain (receive-active by default; add --can-send for outbound too).
-openemail domains create example.com
+# 1. The domain. It only exists once you PROVE you control it: publish the TXT
+#    record `openemail whoami` shows, then run create. Re-running create is the
+#    onboarding loop — it re-checks DNS and activates sending once SPF and both
+#    DKIM CNAMEs resolve. (Receiving needs nothing but your MX pointing at us.)
+openemail whoami                        # shows _openemail.<domain> TXT to publish
+openemail domains create example.com    # refuses with the record until it is live
+openemail domains dns example.com       # what is still missing, and what resolves
 
 # 2. The mailbox — passing --address CLAIMS it: the address→mailbox route and
 #    the label are created atomically, so the mailbox receives mail from this

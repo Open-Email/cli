@@ -32,6 +32,8 @@ func domainsDesc() resourceDesc {
 		columns: []column{
 			{title: "DOMAIN", flex: true},
 			{title: "ON", width: 3},
+			// The lifecycle view (enabled AND the capability), not the raw
+			// columns: a disabled domain with can_send=1 is not sending.
 			{title: "SEND", width: 4},
 			{title: "RECV", width: 4},
 			{title: "ALIAS OF", width: 16},
@@ -45,7 +47,7 @@ func domainsDesc() resourceDesc {
 			rows := make([]rowData, len(pg.Items))
 			for i, d := range pg.Items {
 				rows[i] = rowData{
-					cells: []string{d.Domain, yn(d.Enabled), yn(d.CanSend), yn(d.CanReceive), strOr(d.AliasOf, "—"), fmtEpoch(d.CreatedAt)},
+					cells: []string{d.Domain, yn(d.Enabled), yn(d.Sending), yn(d.Receiving), strOr(d.AliasOf, "—"), fmtEpoch(d.CreatedAt)},
 					item:  d,
 				}
 			}
@@ -55,6 +57,11 @@ func domainsDesc() resourceDesc {
 			d := item.(coreapi.Domain)
 			kvs := []kv{
 				{k: "domain", v: d.Domain},
+				// verified is true for every row that exists — control of the
+				// domain is the precondition for core creating it at all.
+				{k: "verified", v: yn(d.Verified)},
+				{k: "receiving", v: yn(d.Receiving)},
+				{k: "sending", v: yn(d.Sending)},
 				{k: "enabled", v: yn(d.Enabled)},
 				{k: "can send", v: yn(d.CanSend)},
 				{k: "can receive", v: yn(d.CanReceive)},
@@ -74,8 +81,11 @@ func domainsDesc() resourceDesc {
 					kv{k: "spf", v: dnsMark(d.DNSStatus.SPF)},
 					kv{k: "dkim", v: dnsMark(d.DNSStatus.DKIM)},
 					kv{k: "dmarc", v: dnsMark(d.DNSStatus.DMARC)},
-					kv{k: "checked", v: fmtEpochPtr(d.DNSCheckedAt)},
 				)
+				if d.DNSStatus.JMAP != nil {
+					kvs = append(kvs, kv{k: "jmap", v: dnsMark(d.DNSStatus.JMAP)})
+				}
+				kvs = append(kvs, kv{k: "checked", v: fmtEpochPtr(d.DNSCheckedAt)})
 			}
 			return kvs
 		},
