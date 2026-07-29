@@ -2007,6 +2007,51 @@
           }
         ]
       },
+      "MessageChangesFeed": {
+        "properties": {
+          "created": {
+            "description": "Message ids that appeared (delivered, or restored)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "destroyed": {
+            "description": "Message ids that left the mailbox (expunged to trash, or purged) — drop these",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hasMore": {
+            "description": "More changes are waiting: call again immediately with `newState`",
+            "type": "boolean"
+          },
+          "newState": {
+            "description": "Opaque token — send it as `since` next time. Never parse it.",
+            "type": "string"
+          },
+          "oldState": {
+            "description": "Echo of the `since` you sent; absent on a bootstrap call",
+            "type": "string"
+          },
+          "updated": {
+            "description": "Message ids whose flags, keywords, labels or thread changed — re-fetch these",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "newState",
+          "hasMore",
+          "created",
+          "updated",
+          "destroyed"
+        ],
+        "type": "object"
+      },
       "MessageDeleteResult": {
         "properties": {
           "blobOrphaned": {
@@ -3237,7 +3282,7 @@
     }
   },
   "info": {
-    "description": "Message store + routing core: mailbox Durable Objects, R2 blobs, D1 directory. Every route except GET /api/v1/health requires a bearer credential (401 unauthorized without one); mailbox-scoped app passwords are refused on directory routes with 403 insufficient_scope. Errors always answer { error: \"snake_case_code\", ... } — schema failures as { error: \"validation_failed\", issues }.",
+    "description": "Message store + routing core: mailbox Durable Objects, R2 blobs, D1 directory. Every route except GET /api/v1/health requires a bearer credential (401 unauthorized without one); mailbox-scoped app passwords are refused on directory routes with 403 insufficient_scope. Errors always answer { error: \"snake_case_code\", ... } — schema failures as { error: \"validation_failed\", issues }.\n\nA caller holding a mailbox app password may write `me` wherever a {mailboxId} PATH segment appears — /api/v1/mailboxes/me/messages and the rest of the subtree — and the request is served as though it had named that credential's own mailbox id. It is a path convenience only: a mailboxId inside a request BODY always names a resource explicitly. Any other principal gets 404, since `me` has no referent for an account or system key.",
     "title": "openemail-core",
     "version": "0.1.0"
   },
@@ -3842,6 +3887,7 @@
     },
     "/api/v1/deliver/outbound": {
       "post": {
+        "description": "**The SMTP-shaped route: for submission agents, not applications.** One recipient per call — you fan out and collect a verdict per RCPT, mirroring an SMTP transaction. Application code almost always wants `POST /mailboxes/{mailboxId}/send`, which takes JSON, builds the MIME, and returns every recipient's result from one call.\n\n**Response codes are durable guarantees.** `200 delivered` comes only after the full two-phase commit; `202 queued` only once the blob is durably staged and a queue job exists. For an MTA the mapping is `4xx` = permanent failure (bounce), `5xx` = retry with the same `X-Delivery-Id` — the retry converges, because everything in the delivery path is idempotent.\n\nEvery RFC 5322 `From:` address must ladder-resolve to the sending mailbox on a domain that may send (`invalid_from` / `from_not_owned` / `from_sending_disabled`), which is what keeps the outbound DKIM signature DMARC-aligned.",
         "operationId": "post_DeliverOutbound",
         "parameters": [
           {
@@ -4749,6 +4795,18 @@
             }
           },
           {
+            "description": "Exact delivery id (the `X-Delivery-Id` you sent, or the `deliveryId` a send response returned). Returns that delivery's whole retry ladder — every deferred attempt plus the terminal outcome. Derived per-recipient and per-member keys (`<id>#rcpt:<addr>`, `<id>#mbx:<id>`) are their own ids.",
+            "in": "query",
+            "name": "deliveryId",
+            "required": false,
+            "schema": {
+              "description": "Exact delivery id (the `X-Delivery-Id` you sent, or the `deliveryId` a send response returned). Returns that delivery's whole retry ladder — every deferred attempt plus the terminal outcome. Derived per-recipient and per-member keys (`<id>#rcpt:<addr>`, `<id>#mbx:<id>`) are their own ids.",
+              "maxLength": 640,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,
@@ -4780,7 +4838,7 @@
             "description": "A page of individual traffic events, newest-first, keyset-paginated"
           },
           "400": {
-            "description": "validation_failed — bad range/outcome/source/limit; or invalid_cursor"
+            "description": "validation_failed — bad range/outcome/source/deliveryId/limit; or invalid_cursor"
           },
           "404": {
             "description": "Domain not found or not accessible to this principal"
@@ -5381,7 +5439,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/events": {
       "get": {
-        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.deleted, and trash.emptied. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. Signals are not a journal: there is no replay or backlog, so on every (re)connect re-sync via the list endpoints and treat each event as 'this changed, re-fetch it'. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
+        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.deleted, trash.emptied, thread.merged (an arrival joined two conversations — re-list thread views, since thread ids are convergent rather than stable), and state.changed. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. The vocabulary is additive: treat an unrecognized `type` as a generic 'something changed' nudge rather than an error.\n\nSignals are not a journal: there is no replay or backlog, so on every (re)connect re-sync and treat each event as 'this changed, re-fetch it'. A `state.changed` frame carries the current state token for each type (`{ Email, Mailbox, Thread, EmailDelivery }`); its `Email` value is exactly what `GET /mailboxes/{mailboxId}/messages/changes` accepts as `since`, so a client can re-sync incrementally instead of re-listing. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
         "operationId": "get_MailboxEvents",
         "parameters": [
           {
@@ -6115,6 +6173,7 @@
         ]
       },
       "post": {
+        "description": "The IMAP `APPEND` equivalent: stores raw RFC 5322 bytes you already hold, under a label, **without sending them**. This is the migration and mail-client route — the body streams to storage and is never buffered, and `?internaldate=` preserves an imported message's original receive time.\n\nUse `POST /mailboxes/{mailboxId}/messages/compose` instead if you hold *fields* rather than bytes, and `POST /mailboxes/{mailboxId}/send` if the message is meant to be delivered somewhere.\n\nThe envelope travels in `X-Envelope-From` / `X-Envelope-To` headers, never the query string; `Content-Length` is required. Supplying `X-Delivery-Id` makes the append idempotent — a replay answers `duplicate` instead of storing a second copy.",
         "operationId": "post_MessageAppend",
         "parameters": [
           {
@@ -6273,8 +6332,73 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/messages/changes": {
+      "get": {
+        "description": "Answers `created` / `updated` / `destroyed` message ids for everything that happened since `since`, plus a `newState` to send next time. Ids only: fetch what you need through the ordinary message endpoints.\n\n**The loop.** Call once with no `since` to get a starting `newState`; do your full listing; then poll with `since=<newState>`, or better, subscribe to `GET /mailboxes/{mailboxId}/events` and call this whenever a frame arrives (a `state.changed` frame's `Email` value is itself a valid `since`). Keep calling while `hasMore` is true.\n\n**What maps to what.** A delivery is `created`, and so is a restore from trash. Flag, keyword and label changes are `updated`, as is a message whose conversation was merged into another. An expunge (soft delete to trash) and a purge are both `destroyed` — this feed mirrors the ordinary live listing, so use `?state=expunged` if you present a trash view. The feed errs toward telling you too much: a message may be reported `created` where `updated` would have done, which costs one refetch. It never reports a message you still hold as `destroyed`.\n\n**When the token is too old** (or was minted by a mailbox that has since been rebuilt) you get `410 cannot_calculate_changes`. There is no repair: re-list the mailbox and bootstrap a fresh token. History is kept for 30 days, comfortably longer than the 14-day trash window, so this only happens to a client that has been away a long time.",
+        "operationId": "get_MessageChanges",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A previous `newState`. Omit to bootstrap: returns the current state and no changes.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "A previous `newState`. Omit to bootstrap: returns the current state and no changes.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum ids per response across all three sets (default and cap 500)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Maximum ids per response across all three sets (default and cap 500)",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageChangesFeed"
+                }
+              }
+            },
+            "description": "The changes since `since` (or the current state, on a bootstrap call)"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "410": {
+            "description": "cannot_calculate_changes — the token is too old or foreign; re-list and bootstrap a new one"
+          }
+        },
+        "summary": "What changed since a state token — the ids to re-fetch, drop, or add",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/messages/compose": {
       "post": {
+        "description": "Files a message directly into a mailbox **without sending it** — drafts, imports, seeded threads. Same JSON body as `POST /mailboxes/{mailboxId}/send`, but routing, relay and the Sent copy are all bypassed: nothing leaves the platform.\n\nUse `/send` if the message is meant to go somewhere. Use `POST /mailboxes/{mailboxId}/messages` instead when you already hold raw RFC 5322 bytes — this route is for when you hold *fields* and want the server to build the MIME.\n\nCaller input that would corrupt the message (a CR/LF in a header field, a structural header like `Content-Type`, malformed base64) is refused, never silently sanitized.",
         "operationId": "post_MessageCompose",
         "parameters": [
           {
@@ -6357,11 +6481,10 @@
                     "items": {
                       "properties": {
                         "content": {
-                          "description": "Base64 payload",
+                          "description": "Inline form: base64 payload",
                           "type": "string"
                         },
                         "contentId": {
-                          "description": "Reference from HTML as cid:<value>; makes the part inline rather than an attachment",
                           "maxLength": 255,
                           "type": [
                             "string",
@@ -6369,7 +6492,7 @@
                           ]
                         },
                         "contentType": {
-                          "description": "Defaults to application/octet-stream",
+                          "description": "Defaults to the stored part's type for a reference, else application/octet-stream",
                           "maxLength": 255,
                           "type": [
                             "string",
@@ -6377,15 +6500,24 @@
                           ]
                         },
                         "filename": {
+                          "description": "Required for an inline attachment. For a reference, defaults to the stored part's own filename.",
                           "maxLength": 255,
                           "minLength": 1,
                           "type": "string"
+                        },
+                        "messageId": {
+                          "description": "Reference form: a message in THIS mailbox to take the part from",
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "section": {
+                          "description": "Reference form: the part's section, as reported by /messages/{id}/content",
+                          "maxLength": 64,
+                          "pattern": "^[0-9]+(\\.[0-9]+)*$",
+                          "type": "string"
                         }
                       },
-                      "required": [
-                        "filename",
-                        "content"
-                      ],
                       "type": "object"
                     },
                     "maxItems": 50,
@@ -6586,6 +6718,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/messages/mime": {
       "post": {
+        "description": "**Gateway-facing, and a read despite the POST** — the method carries the id list, nothing is written. Do not confuse it with `POST /mailboxes/{mailboxId}/messages`, which appends a message; these two share a path prefix and nothing else.\n\nThe payload is IMAP's `ENVELOPE` and `BODYSTRUCTURE`, cached so the gateway can answer metadata-only `FETCH`es without reading raw blobs. Application code almost always wants `GET /mailboxes/{mailboxId}/messages/{messageId}/content` instead, which returns decoded bodies and an attachment list rather than IMAP structures.",
         "operationId": "post_MessageMimeBatch",
         "parameters": [
           {
@@ -6908,7 +7041,7 @@
             "description": "Structured message content"
           },
           "404": {
-            "description": "Mailbox or message not found (incl. trash)"
+            "description": "Mailbox or message not found (purged or unknown) — a TRASHED message still resolves"
           },
           "413": {
             "description": "message_too_large — no index and the blob exceeds the lazy-walk ceiling"
@@ -7062,7 +7195,7 @@
             "description": "Not modified (If-None-Match matched the part ETag)"
           },
           "404": {
-            "description": "Mailbox, message (incl. trash), or unknown section"
+            "description": "Mailbox, message (purged or unknown), or unknown section — a TRASHED message still resolves"
           },
           "413": {
             "description": "message_too_large — no index and the blob exceeds the lazy-walk ceiling"
@@ -7786,6 +7919,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/send": {
       "post": {
+        "description": "**Start here to send mail.** Of the routes that put a message somewhere, this is the one an application wants: JSON in, the server builds the RFC 5322 message, and you get one result per recipient.\n\nReach for a different route when:\n- you are answering an existing conversation — `POST /mailboxes/{mailboxId}/threads/{threadId}/reply` derives the recipient and the threading headers for you;\n- you want to store a message without sending it (a draft, a seeded thread) — `POST /mailboxes/{mailboxId}/messages/compose`;\n- you already hold raw RFC 5322 bytes to file into the mailbox (a migration, an IMAP APPEND) — `POST /mailboxes/{mailboxId}/messages`;\n- you are a submission agent wanting one verdict per RCPT — `POST /deliver/outbound`.\n\nAnswers `200` when every recipient was accepted and `207` when the outcome is mixed: a status line cannot express three verdicts, so the `recipients` array is the contract. Retries are cheap and correct — per-recipient idempotency keys are derived from your `X-Delivery-Id`, so resubmitting the same request re-converges only what failed.",
         "operationId": "post_MessageSend",
         "parameters": [
           {
@@ -7847,7 +7981,7 @@
                     "items": {
                       "properties": {
                         "content": {
-                          "description": "Base64 payload",
+                          "description": "Inline form: base64 payload",
                           "type": "string"
                         },
                         "contentId": {
@@ -7858,6 +7992,7 @@
                           ]
                         },
                         "contentType": {
+                          "description": "Defaults to the stored part's type for a reference, else application/octet-stream",
                           "maxLength": 255,
                           "type": [
                             "string",
@@ -7865,15 +8000,24 @@
                           ]
                         },
                         "filename": {
+                          "description": "Required for an inline attachment. For a reference, defaults to the stored part's own filename.",
                           "maxLength": 255,
                           "minLength": 1,
                           "type": "string"
+                        },
+                        "messageId": {
+                          "description": "Reference form: a message in THIS mailbox to take the part from",
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "section": {
+                          "description": "Reference form: the part's section, as reported by /messages/{id}/content",
+                          "maxLength": 64,
+                          "pattern": "^[0-9]+(\\.[0-9]+)*$",
+                          "type": "string"
                         }
                       },
-                      "required": [
-                        "filename",
-                        "content"
-                      ],
                       "type": "object"
                     },
                     "maxItems": 50,
@@ -8068,7 +8212,7 @@
             "description": "Mixed: at least one recipient failed. The array carries each address's own status and error; retry with the same X-Delivery-Id to converge only the failures"
           },
           "400": {
-            "description": "validation_failed, no_recipients, too_many_recipients, or a message the server refused to build (header_newline, reserved_header, invalid_address, invalid_base64, …)"
+            "description": "validation_failed, no_recipients, too_many_recipients, a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), or a bad attachment reference: unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`"
           },
           "403": {
             "description": "sender_not_owned | sender_not_local | sending_disabled"
@@ -8080,7 +8224,7 @@
             "description": "Content-Length required"
           },
           "413": {
-            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, or the assembled message exceeds MAX_MESSAGE_BYTES"
+            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, the assembled message exceeds MAX_MESSAGE_BYTES, or attachments_too_large (referenced + inline attachment bytes exceed the per-message budget)"
           },
           "500": {
             "description": "internal — the sender mailbox is missing its Sent label"
@@ -8752,6 +8896,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/threads/{threadId}/reply": {
       "post": {
+        "description": "Send only what the user actually typed. The server derives the rest from the thread: the answerable address (Reply-To before From, and the *recipient* when the newest member is your own Sent copy), the `Subject`, `In-Reply-To`, and a trimmed `References` chain.\n\nPrefer this over `POST /mailboxes/{mailboxId}/send` whenever a reply is what you mean. Broken threading is the classic mail-client bug — every client that rebuilds these headers gets them subtly wrong — so the derivation lives here, in one place. A thread with no answerable address is refused (`400 no_reply_target`) rather than sent to nobody.\n\nThe response is the same per-recipient `SendResult` as `/send`, with the same `200` versus `207` rule and the same `X-Delivery-Id` idempotency.",
         "operationId": "post_ThreadReply",
         "parameters": [
           {
@@ -8821,7 +8966,7 @@
                     "items": {
                       "properties": {
                         "content": {
-                          "description": "Base64 payload",
+                          "description": "Inline form: base64 payload",
                           "type": "string"
                         },
                         "contentId": {
@@ -8832,6 +8977,7 @@
                           ]
                         },
                         "contentType": {
+                          "description": "Defaults to the stored part's type for a reference, else application/octet-stream",
                           "maxLength": 255,
                           "type": [
                             "string",
@@ -8839,15 +8985,24 @@
                           ]
                         },
                         "filename": {
+                          "description": "Required for an inline attachment. For a reference, defaults to the stored part's own filename.",
                           "maxLength": 255,
                           "minLength": 1,
                           "type": "string"
+                        },
+                        "messageId": {
+                          "description": "Reference form: a message in THIS mailbox to take the part from",
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "section": {
+                          "description": "Reference form: the part's section, as reported by /messages/{id}/content",
+                          "maxLength": 64,
+                          "pattern": "^[0-9]+(\\.[0-9]+)*$",
+                          "type": "string"
                         }
                       },
-                      "required": [
-                        "filename",
-                        "content"
-                      ],
                       "type": "object"
                     },
                     "maxItems": 50,
@@ -8927,7 +9082,7 @@
             "description": "Content-Length required"
           },
           "413": {
-            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, or the assembled message exceeds MAX_MESSAGE_BYTES"
+            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, the assembled message exceeds MAX_MESSAGE_BYTES, or attachments_too_large (referenced + inline attachment bytes exceed the per-message budget)"
           },
           "500": {
             "description": "internal — the sender mailbox is missing its Sent label"
