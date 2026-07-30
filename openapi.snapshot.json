@@ -2007,6 +2007,30 @@
           }
         ]
       },
+      "MessageBatch": {
+        "properties": {
+          "messages": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MessageMeta"
+                },
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "type": "object"
+      },
       "MessageChangesFeed": {
         "properties": {
           "created": {
@@ -6327,6 +6351,66 @@
           }
         },
         "summary": "Append a raw MIME message directly under a label (bypasses routing; IMAP APPEND)",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/batch": {
+      "post": {
+        "description": "**A read despite the POST** — the id list travels in the body because a URL cannot carry 200 of them. Nothing is written.\n\nThis is the companion to `GET /mailboxes/{mailboxId}/messages/changes`: that feed answers in ids, and this turns a page of them into rows without one request each. The response shape is the same `MessageMeta` the listing and the by-id read return.\n\nEvery requested id appears in the response. An id that is unknown, not yours, or no longer in the live tier maps to `null` rather than failing the call — one bad id in a batch of 200 must not cost you the other 199, and a body-referenced id must not become a way to probe for messages you cannot see. Use `?state=expunged` on the listing for trash.",
+        "operationId": "post_MessageBatchGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ids"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageBatch"
+                }
+              }
+            },
+            "description": "{ messages: { [id]: MessageMeta | null } }"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read metadata for up to 200 messages by id, in one call",
         "tags": [
           "Messages"
         ]
