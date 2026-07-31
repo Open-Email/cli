@@ -215,6 +215,15 @@ func mailboxesDesc() resourceDesc {
 			{key: "C", label: "C credentials", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				return newScreenPane(ctx, ui, credentialsDesc(item.(coreapi.Mailbox)))
 			}},
+			{key: "F", label: "F filters", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return newScreenPane(ctx, ui, rulesDesc(item.(coreapi.Mailbox)))
+			}},
+			{key: "c", label: "c calendars", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return newScreenPane(ctx, ui, pimCollectionsDesc(item.(coreapi.Mailbox), coreapi.PimCalendars))
+			}},
+			{key: "b", label: "b addressbooks", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return newScreenPane(ctx, ui, pimCollectionsDesc(item.(coreapi.Mailbox), coreapi.PimAddressbooks))
+			}},
 		},
 	}
 }

@@ -10,6 +10,7 @@ import (
 type ThreadListItem struct {
 	ThreadID       string      `json:"threadId"`
 	MessageCount   int64       `json:"messageCount"`
+	UnseenCount    int64       `json:"unseenCount"`
 	LastReceivedAt int64       `json:"lastReceivedAt"`
 	Exemplar       MessageMeta `json:"exemplar"`
 }

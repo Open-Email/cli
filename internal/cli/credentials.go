@@ -25,11 +25,15 @@ func newCredentialsCmd(a *app) *cobra.Command {
 }
 
 func newCredentialCreateCmd(a *app) *cobra.Command {
-	var kind, username, password, name string
+	var kind, username, password, name, expiresIn string
 	cmd := &cobra.Command{
 		Use:   "create <mailboxId>",
 		Short: "Create a mailbox credential: generate an app password (shown once) or set a password",
-		Args:  cobra.ExactArgs(1),
+		Long: "Create a mailbox credential. --username defaults to the mailbox's primary\n" +
+			"address; an address-shaped username must route to this mailbox, while an\n" +
+			"@-free username skips that check — how a mail-less (calendar-only) identity\n" +
+			"gets a login for DAV/JMAP clients.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -42,6 +46,16 @@ func newCredentialCreateCmd(a *app) *cobra.Command {
 			in := coreapi.CredentialCreateInput{Kind: apiKind, Username: username}
 			if cmd.Flags().Changed("name") {
 				in.Name = &name
+			}
+			if expiresIn != "" {
+				if apiKind != "app_password" {
+					return usageError(errors.New("--expires-in applies only to kind app-password"))
+				}
+				d, derr := parseLifetime(expiresIn)
+				if derr != nil {
+					return usageError(fmt.Errorf("--expires-in: %w", derr))
+				}
+				in.ExpiresInSeconds = int64(d.Seconds())
 			}
 			if apiKind == "password" {
 				if !cmd.Flags().Changed("password") {
@@ -76,9 +90,10 @@ func newCredentialCreateCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&kind, "kind", "app-password", "app-password (generated, shown once) | password (you set it)")
-	cmd.Flags().StringVar(&username, "username", "", "login username (defaults to the mailbox's primary address)")
+	cmd.Flags().StringVar(&username, "username", "", "login username (default: the primary address; @-free allowed for mail-less identities)")
 	cmd.Flags().StringVar(&password, "password", "", "password (kind=password; prompted if omitted on a TTY)")
 	cmd.Flags().StringVar(&name, "name", "", "human label for the credential")
+	cmd.Flags().StringVar(&expiresIn, "expires-in", "", "app-password lifetime, e.g. 12h or 30d (default: never expires)")
 	return cmd
 }
 
@@ -106,10 +121,10 @@ func newCredentialListCmd(a *app) *cobra.Command {
 					}
 					rows = append(rows, []string{
 						c.ID, c.Kind, c.Username, strOr(c.Name, "—"),
-						fmtEpoch(c.CreatedAt), fmtEpochPtr(c.LastUsedAt), status,
+						fmtEpoch(c.CreatedAt), fmtEpochPtr(c.LastUsedAt), fmtEpochPtr(c.ExpiresAt), status,
 					})
 				}
-				printTable(w, a.out, []string{"ID", "KIND", "USERNAME", "NAME", "CREATED", "LAST USED", "STATUS"}, rows)
+				printTable(w, a.out, []string{"ID", "KIND", "USERNAME", "NAME", "CREATED", "LAST USED", "EXPIRES", "STATUS"}, rows)
 			})
 			return nil
 		},

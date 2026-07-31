@@ -41,14 +41,16 @@ func newWhoamiCmd(a *app) *cobra.Command {
 				keyID, keyName, keyStore = a.profile.KeyID, a.profile.KeyName, a.profile.KeyStorage
 			}
 			a.out.Emit(map[string]any{
-				"profile":     a.profileName,
-				"apiUrl":      a.apiURL,
-				"principal":   id.Type,
-				"accountId":   id.AccountID,
-				"keyId":       keyID,
-				"keyName":     keyName,
-				"keyStorage":  keyStore,
-				"tokenSource": a.tokenSource,
+				"profile":      a.profileName,
+				"apiUrl":       a.apiURL,
+				"principal":    id.Type,
+				"accountId":    id.AccountID,
+				"mailboxId":    id.MailboxID,
+				"credentialId": id.CredentialID,
+				"keyId":        keyID,
+				"keyName":      keyName,
+				"keyStorage":   keyStore,
+				"tokenSource":  a.tokenSource,
 				// Named for what it does, not for the column: this is the domain
 				// claim value, never a credential.
 				"domainVerificationToken": verifyToken,
@@ -60,7 +62,7 @@ func newWhoamiCmd(a *app) *cobra.Command {
 	}
 }
 
-func (a *app) printIdentity(w io.Writer, id coreapi.Identity, verifyToken string) {
+func (a *app) printIdentity(w io.Writer, id coreapi.Principal, verifyToken string) {
 	rows := [][]string{
 		{"Principal", id.Type},
 		{"API URL", a.apiURL},
@@ -68,6 +70,14 @@ func (a *app) printIdentity(w io.Writer, id coreapi.Identity, verifyToken string
 	}
 	if id.AccountID != "" {
 		rows = append(rows, []string{"Account", id.AccountID})
+	}
+	// Known only when core's /auth/whoami answered (a mailbox app password's own
+	// mailbox — which is also its identity id — and the credential it minted).
+	if id.MailboxID != "" {
+		rows = append(rows, []string{"Mailbox", id.MailboxID})
+	}
+	if id.CredentialID != "" {
+		rows = append(rows, []string{"Credential", id.CredentialID})
 	}
 	// The stored key id/name belong to the profile credential — show them only when
 	// the active token came from the profile (an --api-key/env override has none).

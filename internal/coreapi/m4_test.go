@@ -122,7 +122,7 @@ func TestVerifyLogin(t *testing.T) {
 		w.Write([]byte(`{"identityId":"mb","mailboxId":"mb","accountId":null,"credentialId":"c","kind":"app_password","canSend":true,"permittedFrom":["a@x"],"facets":["mail","pim"]}`))
 	}))
 	defer srv.Close()
-	res, err := m3Client(t, srv.URL).VerifyLogin(context.Background(), "a@x", "pw")
+	res, err := m3Client(t, srv.URL).VerifyLogin(context.Background(), "a@x", "pw", "")
 	if err != nil {
 		t.Fatalf("VerifyLogin: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestVerifyLoginMailless(t *testing.T) {
 		w.Write([]byte(`{"identityId":"cal","mailboxId":null,"accountId":null,"credentialId":"c","kind":"app_password","canSend":false,"permittedFrom":[],"facets":["pim"]}`))
 	}))
 	defer srv.Close()
-	res, err := m3Client(t, srv.URL).VerifyLogin(context.Background(), "cal@x", "pw")
+	res, err := m3Client(t, srv.URL).VerifyLogin(context.Background(), "cal@x", "pw", "")
 	if err != nil {
 		t.Fatalf("VerifyLogin: %v", err)
 	}

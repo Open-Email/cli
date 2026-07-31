@@ -32,12 +32,18 @@ type CreatedCredential struct {
 }
 
 // CredentialCreateInput is the POST body. Kind is "password" (requires Password)
-// or "app_password" (generated). Username defaults to the mailbox primary address.
+// or "app_password" (generated). Username defaults to the mailbox primary
+// address; an @-free username is allowed and skips the address-ownership check —
+// how a mail-less (calendar-only) identity gets a login. An address-shaped
+// username must route to this mailbox.
 type CredentialCreateInput struct {
 	Kind     string  `json:"kind"`
 	Username string  `json:"username,omitempty"`
 	Password string  `json:"password,omitempty"`
 	Name     *string `json:"name,omitempty"`
+	// ExpiresInSeconds bounds an app_password's lifetime (60..31536000);
+	// 0 = never expires. The password kind carries no expiry.
+	ExpiresInSeconds int64 `json:"expiresInSeconds,omitempty"`
 }
 
 func (c *Client) credentialsPath(mailboxID string) string {

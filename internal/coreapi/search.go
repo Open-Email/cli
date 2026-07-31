@@ -14,6 +14,75 @@ type SearchResult struct {
 	NextCursor string
 }
 
+// EmailSearchComparator is an RFC 8620 §5.5 sort comparator. Property is one
+// of receivedAt|size|sentAt|from|subject|hasKeyword; a hasKeyword comparator
+// also needs Keyword. IsAscending is a pointer so "descending" (false) is sent
+// rather than omitted.
+type EmailSearchComparator struct {
+	Property    string `json:"property"`
+	IsAscending *bool  `json:"isAscending,omitempty"`
+	Keyword     string `json:"keyword,omitempty"`
+}
+
+// EmailSearchFilter is an RFC 8621 §4.4 FilterCondition, or a boolean tree
+// ({operator: AND|OR|NOT, conditions: [...]}) over them. It stays a free-form
+// map because the condition set is open and core is the validator: keys are
+// inMailbox, inMailboxOtherThan, before, after (RFC 3339 UTCDate strings),
+// minSize, maxSize, hasKeyword, notKeyword, allInThreadHaveKeyword,
+// someInThreadHaveKeyword, noneInThreadHaveKeyword, hasAttachment, from, to,
+// cc, text, subject, body, header. Mailbox ids are label ids spelled L<n>.
+// At most one full-text condition (text/subject/body), never under OR/NOT.
+type EmailSearchFilter map[string]any
+
+// EmailSearchRequest is the POST /search/query body — the structured search
+// that reaches every JMAP filter condition, unlike the text-only GET.
+type EmailSearchRequest struct {
+	Filter EmailSearchFilter       `json:"filter,omitempty"`
+	Sort   []EmailSearchComparator `json:"sort,omitempty"`
+	// Position is a zero-based offset; a negative value counts back from the
+	// end (RFC 8620 §5.5).
+	Position        int64 `json:"position,omitempty"`
+	Limit           int64 `json:"limit,omitempty"`
+	CalculateTotal  bool  `json:"calculateTotal,omitempty"`
+	CollapseThreads bool  `json:"collapseThreads,omitempty"`
+	Snippet         bool  `json:"snippet,omitempty"`
+}
+
+// EmailSearchSnippet is one highlighted excerpt. Matched terms are wrapped in
+// <mark>…</mark>; Subject and Preview are null when that field had no match.
+type EmailSearchSnippet struct {
+	ID      string  `json:"id"`
+	Subject *string `json:"subject"`
+	Preview *string `json:"preview"`
+}
+
+// EmailSearchResult is one page of structured search results. Total is present
+// only when CalculateTotal was set, Limit only when the server narrowed the
+// requested page size, and Snippets only when Snippet was set (at most the
+// first 50 results of the page).
+type EmailSearchResult struct {
+	Results  []MessageMeta        `json:"results"`
+	Position int64                `json:"position"`
+	Total    *int64               `json:"total,omitempty"`
+	Limit    *int64               `json:"limit,omitempty"`
+	Snippets []EmailSearchSnippet `json:"snippets,omitempty"`
+}
+
+// SearchQuery runs a structured search. Offset-paged (Position), not
+// cursor-paged: the result reports the position it answered from.
+func (c *Client) SearchQuery(ctx context.Context, mailboxID string, req EmailSearchRequest) (*EmailSearchResult, error) {
+	var out EmailSearchResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost,
+		path:   "/mailboxes/" + escapeSegment(mailboxID) + "/search/query",
+		body:   mustJSON(req), contentType: "application/json", idempotent: true,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Search runs a full-text query over a mailbox. label restricts to one label;
 // groupThread collapses matches to one per conversation (single page — a cursor
 // with groupThread is rejected 400 grouped_search_unpaginated). limit is 1..100

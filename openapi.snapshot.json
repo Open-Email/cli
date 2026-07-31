@@ -1738,6 +1738,116 @@
         ],
         "type": "object"
       },
+      "EmailSearchComparator": {
+        "additionalProperties": {},
+        "description": "An RFC 8620 §5.5 Comparator: {property, isAscending?, keyword?}. property is one of receivedAt|size|sentAt|from|subject|hasKeyword (a hasKeyword comparator also needs `keyword`).",
+        "type": "object"
+      },
+      "EmailSearchFilter": {
+        "additionalProperties": {},
+        "description": "An RFC 8621 §4.4 FilterCondition or a boolean tree ({operator: AND|OR|NOT, conditions: [...]}) over them. Supported keys: inMailbox, inMailboxOtherThan, before, after, minSize, maxSize, hasKeyword, notKeyword, allInThreadHaveKeyword, someInThreadHaveKeyword, noneInThreadHaveKeyword, hasAttachment, from, to, cc, text, subject, body, header. At most one full-text condition (text/subject/body), never under OR/NOT. Mailbox ids are label ids as L<n>.",
+        "type": "object"
+      },
+      "EmailSearchRequest": {
+        "properties": {
+          "calculateTotal": {
+            "description": "Also return the total number of matches (an extra count).",
+            "type": "boolean"
+          },
+          "collapseThreads": {
+            "description": "Return one representative message per conversation.",
+            "type": "boolean"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/EmailSearchFilter"
+          },
+          "limit": {
+            "description": "Page size; capped at 200, defaults to 25.",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "position": {
+            "description": "Zero-based offset into the result list. A negative value counts back from the end (RFC 8620 §5.5).",
+            "type": "integer"
+          },
+          "snippet": {
+            "description": "Also return highlighted <mark> excerpts (subject + body preview) for the matched text terms of this page's results. Each excerpt costs a body read, so at most the first 50 results carry one.",
+            "type": "boolean"
+          },
+          "sort": {
+            "description": "Up to 4 comparators; an id tiebreak is always appended so the order is total.",
+            "items": {
+              "$ref": "#/components/schemas/EmailSearchComparator"
+            },
+            "maxItems": 4,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "EmailSearchResult": {
+        "properties": {
+          "limit": {
+            "description": "The effective page size the server applied, present only when it differs from the requested limit.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "position": {
+            "description": "The offset of the first returned result within the full match list.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/MessageMeta"
+            },
+            "type": "array"
+          },
+          "snippets": {
+            "description": "Highlighted excerpts, present only when snippet was set. Covers at most the first 50 results of the page.",
+            "items": {
+              "$ref": "#/components/schemas/EmailSearchSnippet"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "Total matches; present only when calculateTotal was set.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "results",
+          "position"
+        ],
+        "type": "object"
+      },
+      "EmailSearchSnippet": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "preview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "preview"
+        ],
+        "type": "object"
+      },
       "EmptyTrashResult": {
         "properties": {
           "purged": {
@@ -1834,6 +1944,132 @@
         "required": [
           "uid",
           "messageId"
+        ],
+        "type": "object"
+      },
+      "FilterRule": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/RuleAction"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "type": "array"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/RuleCondition"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "type": "array"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "match": {
+            "default": "all",
+            "enum": [
+              "all",
+              "any"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "Display label; also emitted as a comment in the compiled script",
+            "maxLength": 128,
+            "minLength": 0,
+            "type": "string"
+          },
+          "stop": {
+            "default": false,
+            "description": "Stop processing further rules when this one matches",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "conditions",
+          "actions"
+        ],
+        "type": "object"
+      },
+      "FilterRulesDeleted": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "FilterRulesPutResult": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/FilterRule"
+            },
+            "type": "array"
+          },
+          "script": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "rules",
+          "status",
+          "created",
+          "script"
+        ],
+        "type": "object"
+      },
+      "FilterRulesState": {
+        "properties": {
+          "activeScript": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/FilterRule"
+            },
+            "type": "array"
+          },
+          "script": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rules",
+          "status",
+          "activeScript",
+          "script",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -1944,6 +2180,11 @@
               "null"
             ]
           },
+          "sortOrder": {
+            "description": "Presentation order (JMAP Mailbox sortOrder), resolved: a label with no explicit order reports its role default (inbox=1…trash=6, user labels=100). Set via PATCH; shared with JMAP so clients need not reinvent folder ordering.",
+            "format": "int64",
+            "type": "integer"
+          },
           "uidNext": {
             "format": "int64",
             "type": "integer"
@@ -1964,7 +2205,8 @@
           "uidValidity",
           "uidNext",
           "messageCount",
-          "unseenCount"
+          "unseenCount",
+          "sortOrder"
         ],
         "type": "object"
       },
@@ -2846,7 +3088,7 @@
       "PimInstance": {
         "properties": {
           "component": {
-            "description": "The occurrence as a standalone VCALENDAR, RECURRENCE-ID stamped",
+            "description": "The occurrence as a standalone VCALENDAR, RECURRENCE-ID stamped. Absent under fields=json, where the client renders from the parent object's `data` — every other representation carries it, which the gateway's expand REPORT relies on",
             "type": "string"
           },
           "end": {
@@ -2889,10 +3131,83 @@
           "end",
           "recurrenceId",
           "transp",
-          "status",
-          "component"
+          "status"
         ],
         "type": "object"
+      },
+      "PimInvitationStatus": {
+        "properties": {
+          "calendarId": {
+            "description": "The collection holding the copy, if any",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "myAddress": {
+            "description": "Which address of this mailbox the event names as an attendee",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "myPartstat": {
+            "description": "The caller's current PARTSTAT on the stored copy, if they are on it",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "found",
+          "calendarId",
+          "href",
+          "myPartstat",
+          "myAddress"
+        ],
+        "type": "object"
+      },
+      "PimObjectJson": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PimObjectMeta"
+          },
+          {
+            "properties": {
+              "content": {
+                "description": "The wire text; present only when data is null",
+                "type": "string"
+              },
+              "data": {
+                "additionalProperties": {},
+                "description": "JSCalendar Event (RFC 8984) or JSContact Card (RFC 9553); null when unmapped",
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "writable": {
+                "description": "False when the object converts TO JSON but cannot be converted back — display-only. The reader is more permissive than the writer (e.g. a VEVENT with no DTSTART reads fine and can never be written), so this says up front that an edit would be refused",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "data",
+              "writable"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "PimObjectMeta": {
         "properties": {
@@ -3056,8 +3371,16 @@
                 {
                   "properties": {
                     "content": {
-                      "description": "Absent when fields=meta",
+                      "description": "Absent when fields=meta, and under fields=json unless data is null",
                       "type": "string"
+                    },
+                    "data": {
+                      "additionalProperties": {},
+                      "description": "Present when fields=json",
+                      "type": [
+                        "object",
+                        "null"
+                      ]
                     },
                     "instances": {
                       "items": {
@@ -3183,6 +3506,54 @@
           "etag",
           "created",
           "syncToken"
+        ],
+        "type": "object"
+      },
+      "PimRsvpResult": {
+        "properties": {
+          "calendarId": {
+            "type": "string"
+          },
+          "etag": {
+            "type": "string"
+          },
+          "filed": {
+            "description": "True when the event was not stored yet and a copy was created",
+            "type": "boolean"
+          },
+          "href": {
+            "type": "string"
+          },
+          "myAddress": {
+            "description": "The address this reply was recorded for",
+            "type": "string"
+          },
+          "organizerUpdated": {
+            "type": "boolean"
+          },
+          "partstat": {
+            "type": "string"
+          },
+          "replySent": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "partstat",
+          "calendarId",
+          "href",
+          "myAddress",
+          "filed",
+          "etag",
+          "organizerUpdated",
+          "replySent",
+          "summary"
         ],
         "type": "object"
       },
@@ -3369,6 +3740,23 @@
           }
         ]
       },
+      "Prefs": {
+        "properties": {
+          "prefs": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prefs",
+          "version"
+        ],
+        "type": "object"
+      },
       "RecipientAccepted": {
         "properties": {
           "accepted": {
@@ -3530,6 +3918,290 @@
         "required": [
           "address",
           "memberAddress"
+        ],
+        "type": "object"
+      },
+      "RuleAction": {
+        "oneOf": [
+          {
+            "properties": {
+              "label": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "fileInto"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "label"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "flag": {
+                "enum": [
+                  "seen",
+                  "answered",
+                  "flagged"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "addFlag"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "flag"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "keepCopy": {
+                "default": false,
+                "type": "boolean"
+              },
+              "to": {
+                "format": "email",
+                "maxLength": 320,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "redirect"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "to"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "type": {
+                "enum": [
+                  "discard"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "RuleCondition": {
+        "oneOf": [
+          {
+            "properties": {
+              "field": {
+                "enum": [
+                  "from",
+                  "to",
+                  "cc",
+                  "toOrCc"
+                ],
+                "type": "string"
+              },
+              "not": {
+                "default": false,
+                "description": "Invert this condition",
+                "type": "boolean"
+              },
+              "op": {
+                "enum": [
+                  "contains",
+                  "is",
+                  "matches",
+                  "regex",
+                  "exists"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "maxLength": 1024,
+                "minLength": 0,
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "field": {
+                "enum": [
+                  "subject",
+                  "listId"
+                ],
+                "type": "string"
+              },
+              "not": {
+                "default": false,
+                "description": "Invert this condition",
+                "type": "boolean"
+              },
+              "op": {
+                "enum": [
+                  "contains",
+                  "is",
+                  "matches",
+                  "regex",
+                  "exists"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "maxLength": 1024,
+                "minLength": 0,
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "field": {
+                "enum": [
+                  "header"
+                ],
+                "type": "string"
+              },
+              "header": {
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9-]+$",
+                "type": "string"
+              },
+              "not": {
+                "default": false,
+                "description": "Invert this condition",
+                "type": "boolean"
+              },
+              "op": {
+                "enum": [
+                  "contains",
+                  "is",
+                  "matches",
+                  "regex",
+                  "exists"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "maxLength": 1024,
+                "minLength": 0,
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "header",
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "field": {
+                "enum": [
+                  "body"
+                ],
+                "type": "string"
+              },
+              "not": {
+                "default": false,
+                "description": "Invert this condition",
+                "type": "boolean"
+              },
+              "op": {
+                "enum": [
+                  "contains"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "field": {
+                "enum": [
+                  "size"
+                ],
+                "type": "string"
+              },
+              "not": {
+                "default": false,
+                "description": "Invert this condition",
+                "type": "boolean"
+              },
+              "op": {
+                "enum": [
+                  "over",
+                  "under"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "value"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "RulesDocument": {
+        "properties": {
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/FilterRule"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "rules"
         ],
         "type": "object"
       },
@@ -3857,11 +4529,17 @@
           },
           "threadId": {
             "type": "string"
+          },
+          "unseenCount": {
+            "description": "Live members without the seen flag — same population as messageCount (deleted-flagged members included). The exemplar's flags describe only the newest member, so render unread state from this, not from the exemplar",
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
           "threadId",
           "messageCount",
+          "unseenCount",
           "lastReceivedAt",
           "exemplar"
         ],
@@ -4076,6 +4754,33 @@
           "routeKind",
           "events",
           "bytes"
+        ],
+        "type": "object"
+      },
+      "UploadResult": {
+        "properties": {
+          "blobId": {
+            "description": "Opaque upload id (u_…); pass it as an attachment's blobId, or to JMAP as a blobId",
+            "type": "string"
+          },
+          "expires": {
+            "description": "ISO 8601 UTC instant after which the upload is treated as gone — reference it before then",
+            "type": "string"
+          },
+          "size": {
+            "description": "Stored byte length",
+            "type": "integer"
+          },
+          "type": {
+            "description": "The media type recorded for the blob (echoes the request Content-Type)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blobId",
+          "size",
+          "type",
+          "expires"
         ],
         "type": "object"
       },
@@ -4505,6 +5210,22 @@
     "/api/v1/auth/verify": {
       "post": {
         "operationId": "post_AuthVerify",
+        "parameters": [
+          {
+            "description": "The END CLIENT's IP, forwarded by the frontend this login came through. Trustworthy because only system callers reach this endpoint. Optional; when present it adds a per-client throttle dimension alongside the per-username one",
+            "in": "header",
+            "name": "x-client-ip",
+            "required": false,
+            "schema": {
+              "description": "The END CLIENT's IP, forwarded by the frontend this login came through. Trustworthy because only system callers reach this endpoint. Optional; when present it adds a per-client throttle dimension alongside the per-username one",
+              "maxLength": 64,
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4547,6 +5268,9 @@
           },
           "403": {
             "description": "system_credentials_required"
+          },
+          "429": {
+            "description": "rate_limited — too many verification attempts for this username or forwarded client IP; retry after the Retry-After window. One indistinguishable answer for both dimensions"
           }
         },
         "summary": "Verify a username/password against mailbox credentials (system callers only); returns mailbox identity plus permitted envelope-From addresses",
@@ -4923,7 +5647,7 @@
             "description": "Queued for relay, forwarding, webhook, or a recipient's Sieve redirect"
           },
           "400": {
-            "description": "Permanent — malformed request: missing_delivery_id, invalid delivery id, invalid_envelope, invalid_save/invalid_bounce, delivery_meta_too_large/_not_object/_invalid_json, empty_body, invalid_from (missing or unparseable RFC5322 From header — non-system callers)"
+            "description": "Permanent — malformed request: missing_delivery_id, invalid delivery id, invalid_envelope, invalid_save/invalid_bounce, delivery_meta_too_large/_not_object/_invalid_json, empty_body, invalid_from (missing or unparseable RFC5322 From header — non-system callers), header_block_too_large (the header block runs past the 64 KB parse window, so a Bcc could not be ruled out and the message cannot safely be relayed)"
           },
           "403": {
             "description": "Permanent — sender_not_owned (one indistinguishable reply for every not-yours case), sender_not_local, sending_disabled, from_not_owned (an RFC5322 From address is not an identity of the sending mailbox — collapsed like sender_not_owned), from_sending_disabled (a From identity's domain cannot send), or receiving_disabled (local recipient)"
@@ -4968,7 +5692,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Accepted (delivered / duplicate / filtered) — Poppy may DELE"
+            "description": "Accepted (delivered / duplicate / filtered) — pop3-fetch may DELE"
           },
           "400": {
             "description": "empty_body / bad length"
@@ -4989,7 +5713,7 @@
             "description": "over_quota — keep upstream, retry"
           }
         },
-        "summary": "Ingest a Poppy-forwarded message into a pickup source's mailbox (system only)",
+        "summary": "Ingest a pop3-fetch-forwarded message into a pickup source's mailbox (system only)",
         "tags": [
           "Pickups"
         ]
@@ -5908,6 +6632,114 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}/prefs": {
+      "get": {
+        "description": "Returns the server-stored preferences the client owns (theme, language, signature, …) as an arbitrary JSON object, plus a monotonic `version` (0 = never written) to feed the PUT's If-Match. Self-service: an app password reads its own. The same row is served at /mailboxes/{id}/prefs and /identities/{id}/prefs.",
+        "operationId": "get__api_v1_identities_{identityId}_prefs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prefs"
+                }
+              }
+            },
+            "description": "The preferences blob and its version"
+          },
+          "404": {
+            "description": "Identity not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read an identity's opaque preferences blob and its version",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "put": {
+        "description": "Overwrites the opaque preferences JSON and returns the new `version`. Send `If-Match: <version>` for a compare-and-swap (a stale version is refused 412 version_conflict with the current version, so two devices cannot silently clobber); `If-Match: 0` is a create-only write. Omit If-Match (or `*`) for an unconditional upsert. Bodies over 64 KiB are refused 413 too_large. Self-service: an app password writes its own.",
+        "operationId": "put__api_v1_identities_{identityId}_prefs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CAS on the current version: \"<n>\" to require it, \"0\" for create-only, absent or \"*\" for unconditional",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "description": "CAS on the current version: \"<n>\" to require it, \"0\" for create-only, absent or \"*\" for unconditional",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "prefs": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "prefs"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prefs"
+                }
+              }
+            },
+            "description": "Stored; the new version"
+          },
+          "400": {
+            "description": "validation_failed — malformed body or If-Match"
+          },
+          "404": {
+            "description": "Identity not found or not accessible to this principal"
+          },
+          "412": {
+            "description": "version_conflict — If-Match did not match the current version"
+          },
+          "413": {
+            "description": "too_large — the blob exceeds 64 KiB"
+          }
+        },
+        "summary": "Replace an identity's preferences blob (optionally If-Match-versioned)",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/mailboxes": {
       "get": {
         "operationId": "get_MailboxList",
@@ -6351,10 +7183,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -6403,10 +7237,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -6443,10 +7279,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -6551,10 +7389,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -6616,10 +7456,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -6658,10 +7500,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -6729,10 +7573,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -6759,15 +7605,16 @@
             }
           },
           {
-            "description": "meta omits each object's content — listings without body transfer",
+            "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
             "in": "query",
             "name": "fields",
             "required": false,
             "schema": {
-              "description": "meta omits each object's content — listings without body transfer",
+              "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
               "enum": [
                 "meta",
-                "full"
+                "full",
+                "json"
               ],
               "type": "string"
             }
@@ -6820,10 +7667,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -6908,6 +7757,7 @@
         ]
       },
       "get": {
+        "description": "Two representations of the same resource. Without an `Accept: application/json` header you get the stored bytes verbatim — what a DAV client needs. With it you get a JSContact Card (RFC 9553), which is what a browser client wants: no vCard parser in the page, and unmapped properties preserved through a read-modify-write by the escape hatches.\n\n**The ETag is the hash of the WIRE bytes in both representations** — it validates the resource, not the encoding, so an `If-Match` taken from a JSON read is valid on a raw write and vice versa.\n\n`data` is null when the stored body has no JSON mapping (a VTODO, or a body that does not parse); `content` carries the wire text in that case. `writable` is false when the object converts to JSON but could not be converted back — it is display-only.",
         "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
         "parameters": [
           {
@@ -6919,10 +7769,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -6950,6 +7802,11 @@
         "responses": {
           "200": {
             "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimObjectJson"
+                }
+              },
               "text/vcard": {
                 "schema": {
                   "type": "string"
@@ -6962,12 +7819,13 @@
             "description": "No such object, collection, or mailbox"
           }
         },
-        "summary": "Fetch one addressbook object as raw text/vcard",
+        "summary": "Fetch one addressbook object as raw text/vcard, or as JSON with Accept: application/json",
         "tags": [
           "PIM"
         ]
       },
       "put": {
+        "description": "Accepts either representation. The default is raw text/vcard — the bytes are stored verbatim and the ETag is their hash.\n\nSend `Content-Type: application/json` to write a JSContact Card (RFC 9553) instead: it is converted to vCard server-side and then stored through the identical path, so idempotency, preconditions, scheduling and sync behave the same either way. `uid` may be omitted on create — the resource name (minus its extension) is used. Unmapped properties survive a read-modify-write via the escape hatches, so round-tripping a JSON read never drops what it did not model.\n\nRefusals specific to the JSON body: `invalid_json` (unparseable), `invalid_object` (a member this mapping cannot express — `property` names it).",
         "operationId": "put__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
         "parameters": [
           {
@@ -6979,10 +7837,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -7051,7 +7911,7 @@
             "description": "Created"
           },
           "400": {
-            "description": "empty_body, invalid_href, or multiple_uids (the body is an export file carrying several UIDs — import objects one per resource)"
+            "description": "empty_body, invalid_href, multiple_uids (the body is an export file carrying several UIDs — import objects one per resource), or — for a JSON body — invalid_json / invalid_object (with `property` naming the offending member)"
           },
           "403": {
             "description": "forbidden — read-only grant"
@@ -7091,10 +7951,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -7201,10 +8063,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -7254,10 +8118,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -7310,10 +8176,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -7381,10 +8249,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -7432,10 +8302,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "addressbookId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -7668,6 +8540,128 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/calendars/invitations": {
+      "get": {
+        "description": "Answers whether an event with this UID is already filed anywhere in the mailbox, which calendar holds it, and what the caller has answered so far. A mail client shows an invitation's current state with this before offering the RSVP buttons.\n\nDeliberately cross-collection: an auto-filed or user-moved copy lives wherever it lives, and probing only the default calendar would report `found: false` for an event the mailbox already holds — after which filing it again would succeed, since UID uniqueness is per collection.",
+        "operationId": "get_PimInvitationStatusRoute",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The invitation's iCalendar UID",
+            "in": "query",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "description": "The invitation's iCalendar UID",
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimInvitationStatus"
+                }
+              }
+            },
+            "description": "The invitation's state in this mailbox"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible"
+          }
+        },
+        "summary": "Find an invitation across all of this mailbox's calendars, with the caller's reply",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/invitations/respond": {
+      "post": {
+        "description": "The one call behind a mail client's Accept / Tentative / Decline buttons. Give it the raw `text/calendar` part and a PARTSTAT; it files an attendee copy into the default calendar if the event is not already stored, then records the reply and tells the organizer — patching their copy in place when they are local, mailing them a `METHOD:REPLY` when they are not.\n\n**Why this exists rather than PUT-then-respond.** Writing the invitation yourself and then replying is the natural client shape and is unsafe: a PUT whose ORGANIZER is the writing mailbox schedules iTIP, so an ICS that names *you* as organizer would turn one click on unsolicited mail into invitations sent as you, to addresses the sender chose. This endpoint refuses exactly that — the caller must be an ATTENDEE and must not be the ORGANIZER — and the filing it performs is an attendee copy, which never schedules.",
+        "operationId": "post_PimInvitationRespond",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ics": {
+                    "description": "The raw text/calendar part from the message",
+                    "maxLength": 262144,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "partstat": {
+                    "description": "RFC 5545 PARTSTAT to record for the caller",
+                    "enum": [
+                      "ACCEPTED",
+                      "DECLINED",
+                      "TENTATIVE",
+                      "NEEDS-ACTION"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ics",
+                  "partstat"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimRsvpResult"
+                }
+              }
+            },
+            "description": "Recorded. `filed` says whether a copy had to be created; `organizerUpdated` / `replySent` report how the organizer was told, exactly as the collection-scoped RSVP does"
+          },
+          "400": {
+            "description": "invalid_invitation — the body is not a parseable VEVENT"
+          },
+          "403": {
+            "description": "not_attendee (no address of this mailbox is on the event) or is_organizer (the event names this mailbox as ORGANIZER — an organizer answers by editing their own copy, and filing it here would schedule invitations on their behalf)"
+          },
+          "404": {
+            "description": "Mailbox not found, or it has no calendar to file into"
+          },
+          "409": {
+            "description": "conflict — the copy changed concurrently under the reply; retry"
+          }
+        },
+        "summary": "File an emailed invitation if needed, then record this mailbox's reply",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}": {
       "delete": {
         "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}",
@@ -7681,10 +8675,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -7733,10 +8729,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -7773,10 +8771,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -7881,10 +8881,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -7946,10 +8948,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -7988,10 +8992,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -8059,10 +9065,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8089,15 +9097,16 @@
             }
           },
           {
-            "description": "meta omits each object's content — listings without body transfer",
+            "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
             "in": "query",
             "name": "fields",
             "required": false,
             "schema": {
-              "description": "meta omits each object's content — listings without body transfer",
+              "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
               "enum": [
                 "meta",
-                "full"
+                "full",
+                "json"
               ],
               "type": "string"
             }
@@ -8113,12 +9122,12 @@
             }
           },
           {
-            "description": "Unix seconds, inclusive",
+            "description": "Unix seconds, inclusive. May be given alone (everything from here on)",
             "in": "query",
             "name": "start",
             "required": false,
             "schema": {
-              "description": "Unix seconds, inclusive",
+              "description": "Unix seconds, inclusive. May be given alone (everything from here on)",
               "type": [
                 "integer",
                 "null"
@@ -8126,12 +9135,12 @@
             }
           },
           {
-            "description": "Unix seconds, exclusive",
+            "description": "Unix seconds, exclusive. May be given alone (everything before here)",
             "in": "query",
             "name": "end",
             "required": false,
             "schema": {
-              "description": "Unix seconds, exclusive",
+              "description": "Unix seconds, exclusive. May be given alone (everything before here)",
               "type": [
                 "integer",
                 "null"
@@ -8205,10 +9214,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8293,6 +9304,7 @@
         ]
       },
       "get": {
+        "description": "Two representations of the same resource. Without an `Accept: application/json` header you get the stored bytes verbatim — what a DAV client needs. With it you get a JSCalendar Event (RFC 8984), which is what a browser client wants: no iCalendar parser in the page, and unmapped properties preserved through a read-modify-write by the escape hatches.\n\n**The ETag is the hash of the WIRE bytes in both representations** — it validates the resource, not the encoding, so an `If-Match` taken from a JSON read is valid on a raw write and vice versa.\n\n`data` is null when the stored body has no JSON mapping (a VTODO, or a body that does not parse); `content` carries the wire text in that case. `writable` is false when the object converts to JSON but could not be converted back — it is display-only.",
         "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
         "parameters": [
           {
@@ -8304,10 +9316,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8335,6 +9349,11 @@
         "responses": {
           "200": {
             "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimObjectJson"
+                }
+              },
               "text/calendar": {
                 "schema": {
                   "type": "string"
@@ -8347,12 +9366,13 @@
             "description": "No such object, collection, or mailbox"
           }
         },
-        "summary": "Fetch one calendar object as raw text/calendar",
+        "summary": "Fetch one calendar object as raw text/calendar, or as JSON with Accept: application/json",
         "tags": [
           "PIM"
         ]
       },
       "put": {
+        "description": "Accepts either representation. The default is raw text/calendar — the bytes are stored verbatim and the ETag is their hash.\n\nSend `Content-Type: application/json` to write a JSCalendar Event (RFC 8984) instead: it is converted to iCalendar server-side and then stored through the identical path, so idempotency, preconditions, scheduling and sync behave the same either way. `uid` may be omitted on create — the resource name (minus its extension) is used. Unmapped properties survive a read-modify-write via the escape hatches, so round-tripping a JSON read never drops what it did not model.\n\nRefusals specific to the JSON body: `invalid_json` (unparseable), `invalid_object` (a member this mapping cannot express — `property` names it).",
         "operationId": "put__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
         "parameters": [
           {
@@ -8364,10 +9384,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8436,7 +9458,7 @@
             "description": "Created"
           },
           "400": {
-            "description": "empty_body, invalid_href, or multiple_uids (the body is an export file carrying several UIDs — import objects one per resource)"
+            "description": "empty_body, invalid_href, multiple_uids (the body is an export file carrying several UIDs — import objects one per resource), or — for a JSON body — invalid_json / invalid_object (with `property` naming the offending member)"
           },
           "403": {
             "description": "forbidden — read-only grant"
@@ -8476,10 +9498,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8586,10 +9610,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8688,10 +9714,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -8741,10 +9769,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8797,10 +9827,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           },
@@ -8868,10 +9900,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -8919,10 +9953,12 @@
             }
           },
           {
+            "description": "Collection ULID or its name slug",
             "in": "path",
             "name": "calendarId",
             "required": true,
             "schema": {
+              "description": "Collection ULID or its name slug",
               "type": "string"
             }
           }
@@ -9430,11 +10466,13 @@
                     "maxLength": 255,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "sortOrder": {
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer"
                   }
                 },
-                "required": [
-                  "name"
-                ],
                 "type": "object"
               }
             }
@@ -9449,13 +10487,13 @@
                 }
               }
             },
-            "description": "Rename result"
+            "description": "Patch result"
           },
           "400": {
-            "description": "validation_failed — malformed name"
+            "description": "validation_failed — malformed name/sortOrder or empty patch"
           },
           "403": {
-            "description": "System labels cannot be renamed"
+            "description": "System labels cannot be renamed (a sortOrder-only patch still succeeds)"
           },
           "404": {
             "description": "Mailbox or label not found"
@@ -9464,7 +10502,7 @@
             "description": "Target name already exists"
           }
         },
-        "summary": "Rename a non-system label (IMAP RENAME; UIDs and uidValidity are preserved)",
+        "summary": "Rename a non-system label and/or set its sortOrder (IMAP RENAME preserves UIDs/uidValidity; sortOrder is the JMAP Mailbox order, allowed on system labels)",
         "tags": [
           "Labels"
         ]
@@ -9748,6 +10786,20 @@
             }
           },
           {
+            "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "live (default): ordinary listing. expunged: the trash — soft-deleted messages awaiting restore or purge, with expungedAt/purgeAfter and their pre-expunge labels",
             "in": "query",
             "name": "state",
@@ -9822,10 +10874,10 @@
             "description": "validation_failed, or label_not_applicable (label filter with state=expunged)"
           },
           "404": {
-            "description": "Mailbox not found or not accessible to this principal"
+            "description": "Mailbox not found or not accessible to this principal, or unknown_label (the label filter names no existing label)"
           }
         },
-        "summary": "List messages newest-first with cursor pagination, optionally filtered to one label. state=expunged lists the trash (restorable messages) instead. For UID-ordered listing use GET /mailboxes/:id/labels/:label/messages.",
+        "summary": "List messages newest-first (order=asc for oldest-first) with cursor pagination, optionally filtered to one label. Hold order constant across a crawl — cursors do not encode direction, so a cursor reused under the opposite order yields a differently-windowed page, not an error. state=expunged lists the trash (restorable messages) instead. For UID-ordered listing use GET /mailboxes/:id/labels/:label/messages.",
         "tags": [
           "Messages"
         ]
@@ -10318,6 +11370,12 @@
                   "attachments": {
                     "items": {
                       "properties": {
+                        "blobId": {
+                          "description": "Staged-upload form: a blobId from POST /mailboxes/{id}/uploads (or JMAP /upload)",
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
                         "content": {
                           "description": "Inline form: base64 payload",
                           "type": "string"
@@ -10330,7 +11388,7 @@
                           ]
                         },
                         "contentType": {
-                          "description": "Defaults to the stored part's type for a reference, else application/octet-stream",
+                          "description": "Defaults to the stored part's / upload's type for a reference or blob, else application/octet-stream",
                           "maxLength": 255,
                           "type": [
                             "string",
@@ -10338,7 +11396,7 @@
                           ]
                         },
                         "filename": {
-                          "description": "Required for an inline attachment. For a reference, defaults to the stored part's own filename.",
+                          "description": "Required for an inline attachment. For a reference or a staged upload, defaults to the stored part's filename (or \"attachment\").",
                           "maxLength": 255,
                           "minLength": 1,
                           "type": "string"
@@ -11110,7 +12168,7 @@
             "description": "Raw message"
           },
           "404": {
-            "description": "Mailbox or message not found"
+            "description": "Mailbox or message not found (a trashed message still resolves)"
           },
           "500": {
             "description": "blob_missing — metadata exists but the blob read failed"
@@ -11780,6 +12838,114 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/prefs": {
+      "get": {
+        "description": "Returns the server-stored preferences the client owns (theme, language, signature, …) as an arbitrary JSON object, plus a monotonic `version` (0 = never written) to feed the PUT's If-Match. Self-service: an app password reads its own. The same row is served at /mailboxes/{id}/prefs and /identities/{id}/prefs.",
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_prefs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prefs"
+                }
+              }
+            },
+            "description": "The preferences blob and its version"
+          },
+          "404": {
+            "description": "Identity not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read an identity's opaque preferences blob and its version",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "put": {
+        "description": "Overwrites the opaque preferences JSON and returns the new `version`. Send `If-Match: <version>` for a compare-and-swap (a stale version is refused 412 version_conflict with the current version, so two devices cannot silently clobber); `If-Match: 0` is a create-only write. Omit If-Match (or `*`) for an unconditional upsert. Bodies over 64 KiB are refused 413 too_large. Self-service: an app password writes its own.",
+        "operationId": "put__api_v1_mailboxes_{mailboxId}_prefs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CAS on the current version: \"<n>\" to require it, \"0\" for create-only, absent or \"*\" for unconditional",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "description": "CAS on the current version: \"<n>\" to require it, \"0\" for create-only, absent or \"*\" for unconditional",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "prefs": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "prefs"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prefs"
+                }
+              }
+            },
+            "description": "Stored; the new version"
+          },
+          "400": {
+            "description": "validation_failed — malformed body or If-Match"
+          },
+          "404": {
+            "description": "Identity not found or not accessible to this principal"
+          },
+          "412": {
+            "description": "version_conflict — If-Match did not match the current version"
+          },
+          "413": {
+            "description": "too_large — the blob exceeds 64 KiB"
+          }
+        },
+        "summary": "Replace an identity's preferences blob (optionally If-Match-versioned)",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/purge": {
       "post": {
         "operationId": "post_MailboxPurge",
@@ -11899,6 +13065,128 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/rules": {
+      "delete": {
+        "description": "Removes the generated script. If it was the active filter the mailbox is left with no active script — i.e. delivery is unfiltered — which is what deleting your rules means. Hand-written scripts are untouched.",
+        "operationId": "delete_RulesDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterRulesDeleted"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "No rules for this mailbox, or mailbox not accessible"
+          }
+        },
+        "summary": "Delete a mailbox's JSON filter rules",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "get": {
+        "description": "Returns the rules document, whether it is the mailbox's active filter, the name of whatever script IS active (null = filtering off), and the compiled Sieve source. 404 when this mailbox has no rules — including when a hand-written script happens to occupy the reserved name.",
+        "operationId": "get_RulesGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterRulesState"
+                }
+              }
+            },
+            "description": "The rules document, its status, and the compiled script"
+          },
+          "404": {
+            "description": "No rules for this mailbox, or mailbox not accessible"
+          }
+        },
+        "summary": "Read a mailbox's JSON filter rules, their status, and the Sieve they compile to",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "put": {
+        "description": "Compiles the rules to Sieve, stores both, and activates the result — so a previously active hand-written script is deactivated (last management action wins). Rules are evaluated top to bottom; `stop` halts further rules. An empty `rules` array is legal and means 'rules mode, no rules yet'. Refused 409 name_conflict when a hand-written script already occupies the reserved name `openemail.rules` — delete or rename it via the Sieve API first.",
+        "operationId": "put_RulesPut",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulesDocument"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterRulesPutResult"
+                }
+              }
+            },
+            "description": "Stored and activated (created distinguishes new vs replaced)"
+          },
+          "400": {
+            "description": "validation_failed — malformed rules document"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "name_conflict (a hand-written script holds the reserved name), or too_many_scripts"
+          },
+          "413": {
+            "description": "too_large — the rules document exceeds 48 KiB"
+          },
+          "422": {
+            "description": "The rules compile to a script that is too large or does not load"
+          }
+        },
+        "summary": "Replace a mailbox's JSON filter rules and make them the active filter",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/search": {
       "get": {
         "operationId": "get_MailboxSearch",
@@ -11929,6 +13217,26 @@
             "required": false,
             "schema": {
               "description": "Restrict to one label",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated flag names; a message matches only if ALL are set (e.g. flagged)",
+            "in": "query",
+            "name": "hasFlags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated flag names; a message matches only if ALL are set (e.g. flagged)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated flag names; a message matches only if NONE are set (e.g. seen, for unread-only)",
+            "in": "query",
+            "name": "notFlags",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated flag names; a message matches only if NONE are set (e.g. seen, for unread-only)",
               "type": "string"
             }
           },
@@ -12005,6 +13313,52 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/search/query": {
+      "post": {
+        "operationId": "post_MailboxSearchQuery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailSearchResult"
+                }
+              }
+            },
+            "description": "One page of matches (JMAP-visible tier), plus position and optional total/limit/snippets"
+          },
+          "400": {
+            "description": "validation_failed, unsupported_filter, unsupported_sort, or invalid_filter (with a `detail` naming the offending condition)"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Structured search a mailbox (JMAP Email/query grammar, one page)",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/send": {
       "post": {
         "description": "**Start here to send mail.** Of the routes that put a message somewhere, this is the one an application wants: JSON in, the server builds the RFC 5322 message, and you get one result per recipient.\n\nReach for a different route when:\n- you are answering an existing conversation — `POST /mailboxes/{mailboxId}/threads/{threadId}/reply` derives the recipient and the threading headers for you;\n- you want to store a message without sending it (a draft, a seeded thread) — `POST /mailboxes/{mailboxId}/messages/compose`;\n- you already hold raw RFC 5322 bytes to file into the mailbox (a migration, an IMAP APPEND) — `POST /mailboxes/{mailboxId}/messages`;\n- you are a submission agent wanting one verdict per RCPT — `POST /deliver/outbound`.\n\nAnswers `200` when every recipient was accepted and `207` when the outcome is mixed: a status line cannot express three verdicts, so the `recipients` array is the contract. Retries are cheap and correct — per-recipient idempotency keys are derived from your `X-Delivery-Id`, so resubmitting the same request re-converges only what failed.",
@@ -12068,6 +13422,12 @@
                   "attachments": {
                     "items": {
                       "properties": {
+                        "blobId": {
+                          "description": "Staged-upload form: a blobId from POST /mailboxes/{id}/uploads (or JMAP /upload)",
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
                         "content": {
                           "description": "Inline form: base64 payload",
                           "type": "string"
@@ -12080,7 +13440,7 @@
                           ]
                         },
                         "contentType": {
-                          "description": "Defaults to the stored part's type for a reference, else application/octet-stream",
+                          "description": "Defaults to the stored part's / upload's type for a reference or blob, else application/octet-stream",
                           "maxLength": 255,
                           "type": [
                             "string",
@@ -12088,7 +13448,7 @@
                           ]
                         },
                         "filename": {
-                          "description": "Required for an inline attachment. For a reference, defaults to the stored part's own filename.",
+                          "description": "Required for an inline attachment. For a reference or a staged upload, defaults to the stored part's filename (or \"attachment\").",
                           "maxLength": 255,
                           "minLength": 1,
                           "type": "string"
@@ -12620,6 +13980,9 @@
           "400": {
             "description": "validation_failed — malformed script name"
           },
+          "403": {
+            "description": "reserved — the generated rules script is deleted via DELETE /rules"
+          },
           "404": {
             "description": "No such script, or mailbox not accessible"
           }
@@ -12696,6 +14059,19 @@
               "pattern": "^[^/\\\\]+$",
               "type": "string"
             }
+          },
+          {
+            "description": "Set to \"*\" for create-only: an existing name is refused 409 name_exists, never overwritten",
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "description": "Set to \"*\" for create-only: an existing name is refused 409 name_exists, never overwritten",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "requestBody": {
@@ -12730,11 +14106,14 @@
           "400": {
             "description": "validation_failed — malformed name or body"
           },
+          "403": {
+            "description": "reserved — the name belongs to the JSON rules API (PUT /rules)"
+          },
           "404": {
             "description": "Mailbox not found or not accessible to this principal"
           },
           "409": {
-            "description": "Script limit reached"
+            "description": "too_many_scripts (script limit reached), or name_exists (If-None-Match: * on an existing name)"
           },
           "422": {
             "description": "Script does not compile (message + line/col)"
@@ -12803,6 +14182,9 @@
           },
           "400": {
             "description": "validation_failed — malformed name"
+          },
+          "403": {
+            "description": "reserved — the rules API's script name, in either direction"
           },
           "404": {
             "description": "No such script, or mailbox not accessible"
@@ -12878,6 +14260,20 @@
               "description": "Comma-separated flag names; a message matches only if NONE are set (e.g. seen, for unread-only)",
               "type": "string"
             }
+          },
+          {
+            "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -12908,13 +14304,13 @@
                 }
               }
             },
-            "description": "threads: [{ threadId, messageCount, lastReceivedAt, exemplar: MessageMeta of the newest live member }]; cursor present when a further page exists. threadId is opaque and convergent, NOT stable — a merge re-stamps the losing thread (GET /threads/:threadId recovers a merged-away id)"
+            "description": "threads: [{ threadId, messageCount, unseenCount, lastReceivedAt, exemplar: MessageMeta of the newest live member }]; cursor present when a further page exists. threadId is opaque and convergent, NOT stable — a merge re-stamps the losing thread (GET /threads/:threadId recovers a merged-away id)"
           },
           "404": {
             "description": "Mailbox (or, as unknown_label, the label filter) not found"
           }
         },
-        "summary": "List conversations, newest activity first. Snapshot semantics: new activity or a thread merge between pages can skip or re-home a conversation — restart the crawl for a consistent view. label filters Gmail-style (a thread matches when ANY live member carries the label).",
+        "summary": "List conversations, newest activity first (order=asc for oldest activity first). Snapshot semantics: new activity or a thread merge between pages can skip or re-home a conversation — restart the crawl for a consistent view; under order=asc a thread that gains a newer member mid-crawl can re-qualify and appear twice in one crawl. Hold order constant across a crawl — cursors do not encode direction, so a cursor reused under the opposite order yields a differently-windowed page, not an error. label filters Gmail-style (a thread matches when ANY live member carries the label).",
         "tags": [
           "Threads"
         ]
@@ -13053,6 +14449,12 @@
                   "attachments": {
                     "items": {
                       "properties": {
+                        "blobId": {
+                          "description": "Staged-upload form: a blobId from POST /mailboxes/{id}/uploads (or JMAP /upload)",
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
                         "content": {
                           "description": "Inline form: base64 payload",
                           "type": "string"
@@ -13065,7 +14467,7 @@
                           ]
                         },
                         "contentType": {
-                          "description": "Defaults to the stored part's type for a reference, else application/octet-stream",
+                          "description": "Defaults to the stored part's / upload's type for a reference or blob, else application/octet-stream",
                           "maxLength": 255,
                           "type": [
                             "string",
@@ -13073,7 +14475,7 @@
                           ]
                         },
                         "filename": {
-                          "description": "Required for an inline attachment. For a reference, defaults to the stored part's own filename.",
+                          "description": "Required for an inline attachment. For a reference or a staged upload, defaults to the stored part's filename (or \"attachment\").",
                           "maxLength": 255,
                           "minLength": 1,
                           "type": "string"
@@ -13182,6 +14584,89 @@
         "summary": "Reply to a thread — recipient, subject and threading headers are derived from the conversation; the body carries only what you wrote",
         "tags": [
           "Delivery"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/uploads": {
+      "post": {
+        "description": "Streams raw bytes to server storage and returns an opaque `blobId` you can attach to a later `POST /mailboxes/{mailboxId}/send`, `/messages/compose` or `/threads/{threadId}/reply` via the `blobId` form of an attachment — instead of base64-inflating the payload inside the JSON body. The blobId is the SAME kind JMAP `POST /jmap/upload/{accountId}` returns and is usable across both protocols.\n\nThe body streams to storage and is never buffered, so `Content-Length` is required. The upload is scoped to this mailbox's account and expires (see `expires`) a day inside the storage lifecycle; the account holds a bounded quota of un-expired uploads (507 when full). The staged bytes survive a send, so retries re-resolve the same blobId.",
+        "operationId": "post_UploadCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Body size in bytes — required (411 without it)",
+            "in": "header",
+            "name": "content-length",
+            "required": false,
+            "schema": {
+              "description": "Body size in bytes — required (411 without it)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Recorded as the blob's media type (default application/octet-stream)",
+            "in": "header",
+            "name": "content-type",
+            "required": false,
+            "schema": {
+              "description": "Recorded as the blob's media type (default application/octet-stream)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "description": "Raw bytes to stage (streamed; never buffered)",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResult"
+                }
+              }
+            },
+            "description": "Staged — the blobId, its size, recorded type, and advertised expiry"
+          },
+          "400": {
+            "description": "empty_body"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "411": {
+            "description": "Content-Length required"
+          },
+          "413": {
+            "description": "Body exceeds MAX_MESSAGE_BYTES"
+          },
+          "507": {
+            "description": "store_full — the account is holding too many un-expired uploads"
+          }
+        },
+        "summary": "Stage a binary upload, returning a blobId to attach later (REST twin of JMAP /upload)",
+        "tags": [
+          "Messages"
         ]
       }
     },
@@ -13531,7 +15016,7 @@
             "description": "unknown source"
           }
         },
-        "summary": "Poppy run-completion callback (system only)",
+        "summary": "pop3-fetch run-completion callback (system only)",
         "tags": [
           "Pickups"
         ]

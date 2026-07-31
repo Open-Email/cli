@@ -41,13 +41,20 @@ func (c *Client) Reindex(ctx context.Context, mailboxID string, limit int) (int6
 }
 
 // VerifyLogin verifies IMAP/SMTP credentials (system-only). 401 invalid_credentials
-// on a wrong password. Read-only; safe to retry.
-func (c *Client) VerifyLogin(ctx context.Context, username, password string) (*VerifyResult, error) {
+// on a wrong password; 429 rate_limited once the per-username (or forwarded
+// client-IP) attempt throttle trips. clientIP, when non-empty, is forwarded as
+// X-Client-Ip — the END CLIENT's address, adding the per-client throttle
+// dimension. Read-only; safe to retry.
+func (c *Client) VerifyLogin(ctx context.Context, username, password, clientIP string) (*VerifyResult, error) {
+	var headers map[string]string
+	if clientIP != "" {
+		headers = map[string]string{"X-Client-Ip": clientIP}
+	}
 	var out VerifyResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost, path: "/auth/verify",
 		body:        mustJSON(map[string]string{"username": username, "password": password}),
-		contentType: "application/json", idempotent: true,
+		contentType: "application/json", headers: headers, idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -55,7 +62,7 @@ func (c *Client) VerifyLogin(ctx context.Context, username, password string) (*V
 	return &out, nil
 }
 
-// PickupIngest is the Poppy ingestion path (system-only): stream a fetched RFC822
+// PickupIngest is the pop3-fetch ingestion path (system-only): stream a fetched RFC822
 // message for a pickup source. checksum (BLAKE3 hex, optional) becomes the
 // delivery-key suffix. Returns a DeliverResult (delivered/filtered).
 func (c *Client) PickupIngest(ctx context.Context, sourceID string, getBody func() (io.ReadCloser, error), bodyLen int64, checksum string) (*DeliverResult, []byte, error) {
@@ -75,7 +82,7 @@ func (c *Client) PickupIngest(ctx context.Context, sourceID string, getBody func
 	return &out, raw, nil
 }
 
-// PickupReportInput is the Poppy run-completion callback body. Only Status and
+// PickupReportInput is the pop3-fetch run-completion callback body. Only Status and
 // Error are persisted by core; the counters are validated but discarded.
 type PickupReportInput struct {
 	Status   string  `json:"status"` // ok | partial | auth_failed | error

@@ -49,7 +49,7 @@ func newAdminReindexCmd(a *app) *cobra.Command {
 }
 
 func newAdminVerifyLoginCmd(a *app) *cobra.Command {
-	var password string
+	var password, clientIP string
 	cmd := &cobra.Command{
 		Use:   "verify-login <username>",
 		Short: "Verify IMAP/SMTP credentials and show resolved sendability",
@@ -69,7 +69,7 @@ func newAdminVerifyLoginCmd(a *app) *cobra.Command {
 				}
 				password = pw
 			}
-			res, err := client.VerifyLogin(cmd.Context(), args[0], password)
+			res, err := client.VerifyLogin(cmd.Context(), args[0], password, clientIP)
 			if err != nil {
 				return err
 			}
@@ -95,13 +95,14 @@ func newAdminVerifyLoginCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&password, "password", "", "credential password (prompted if omitted on a TTY)")
+	cmd.Flags().StringVar(&clientIP, "client-ip", "", "end client's IP to forward (adds the per-client attempt-throttle dimension)")
 	return cmd
 }
 
 func newAdminPickupCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pickup",
-		Short: "Poppy pickup ingest/report (system-only)",
+		Short: "pop3-fetch pickup ingest/report (system-only)",
 	}
 	cmd.AddCommand(
 		newAdminPickupIngestCmd(a),
@@ -114,7 +115,7 @@ func newAdminPickupIngestCmd(a *app) *cobra.Command {
 	var file, checksum string
 	cmd := &cobra.Command{
 		Use:   "ingest <sourceId>",
-		Short: "Ingest a fetched RFC822 message for a pickup source (Poppy path)",
+		Short: "Ingest a fetched RFC822 message for a pickup source (pop3-fetch path)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -146,7 +147,7 @@ func newAdminPickupReportCmd(a *app) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "report <sourceId> --status <ok|partial|auth_failed|error>",
-		Short: "Record a pickup run's outcome (Poppy callback)",
+		Short: "Record a pickup run's outcome (pop3-fetch callback)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()

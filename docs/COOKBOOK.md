@@ -171,6 +171,141 @@ openemail pickups update <id> --disabled            # pause it
 The password is write-only — never returned, and omitted on update to keep the
 current one.
 
+## Filter incoming mail without writing Sieve
+
+```sh
+openemail rules add --name "Acme" --if 'from:contains:@acme.com' --then 'label:Work'
+openemail rules add --name "Newsletters" --if 'listId:exists' --then 'label:Lists' --then 'flag:seen' --stop
+openemail rules list          # order, on/off, and whether the rules are the ACTIVE filter
+openemail rules script        # read the Sieve they compile to
+```
+
+Conditions are `[!]field:op[:value]` (`from to cc toOrCc subject listId header body
+size`; ops `contains is matches regex exists`, `body:contains`, `size:over|under`);
+the `!` prefix inverts one. Actions are `label:<name>`, `flag:seen|answered|flagged`,
+`redirect[-copy]:<addr>`, or `discard`.
+
+Rules and hand-written Sieve are **two interfaces over one active filter**: saving
+rules deactivates an active hand-written script, and `openemail sieve activate <name>`
+deactivates the rules. `rules list` always says which is actually filtering mail.
+In the console, `F` on a mailbox opens the same list with `t` toggle, `J`/`K` reorder,
+and `d` delete.
+
+## Find a message
+
+```sh
+openemail search invoice                                     # full text
+openemail search --from boss@acme.com --after 7d --total     # structured filters
+openemail search invoice --snippet                           # highlighted excerpts
+openemail search --unread --has-attachment --sort receivedAt:desc --limit 10
+openemail search --from a@x.com --position 25                # next page (offset paging)
+```
+
+Any structured flag switches from the text search to the filter search, which pages
+by `--position` instead of a cursor. Core allows at most one full-text condition, so
+a bare query and `--subject`/`--body` are mutually exclusive. Dates take RFC3339,
+`YYYY-MM-DD`, or a relative `7d`/`24h`; sizes take a `k`/`m`/`g` suffix.
+
+## Send with attachments
+
+```sh
+openemail compose --from me@example.com --to you@example.com \
+  --subject "Q3 report" --text "See attached." --attach report.pdf --attach data.csv
+```
+
+`compose` sends a structured message: each `--attach` is staged with an upload first
+(bytes never ride inside the JSON), the server assembles the MIME, and you get one
+result per recipient — so a partial failure names the address that failed and exits
+non-zero. `--to/--cc/--bcc` repeat and also accept `"Name <addr>"` and comma lists.
+Use `openemail send --file` instead when you already hold raw RFC 5322 bytes.
+
+## Keep a team calendar
+
+```sh
+openemail calendars create work --display-name "Work" --color '#0A84FF'
+openemail calendars objects put work standup.ics --file standup.ics
+openemail calendars events list work --start 2026-08-01 --end 2026-09-01 --expand
+
+# Share it read-write with a teammate (grant + visibility are BOTH required),
+# and hand read-only access to everyone else as an unauthenticated feed URL.
+openemail calendars update work --visibility shared
+openemail calendars shares set work teammate@example.com --permission read-write
+openemail calendars tokens create work --label "team feed" --expires-in 90d
+
+# The teammate reads it by ULID (find it via `openemail pim shared`):
+openemail pim shared
+openemail calendars objects list <collectionId> --owner <ownerMailboxId>
+```
+
+An organizer's `objects put`/`delete` fans out iTIP invitations (REQUEST/CANCEL)
+to the attendees the event names; `calendars respond <cal> <href> accepted`
+records your RSVP and tells the organizer — a local organizer's copy is patched
+in place, a remote one is mailed a `METHOD:REPLY`.
+
+## Answer an invitation that arrived by email
+
+```sh
+openemail calendars invitations status team-offsite-2026   # already filed? what did I answer?
+openemail messages content <id>                            # find the text/calendar section
+openemail messages part <id> 2 | openemail calendars invitations respond accepted
+```
+
+One call does the whole job: core files an attendee copy into your default calendar
+if the event is not stored yet, records the reply, and tells the organizer —
+patching their copy when they are local, mailing a `METHOD:REPLY` when they are not.
+Re-answering later is the same command (it updates the existing copy instead of
+filing a second one). For an event already in a calendar, `openemail calendars
+respond <calendar> <href> <partstat>` addresses it directly.
+
+## Edit calendar and contact objects as JSON
+
+```sh
+openemail calendars objects get work standup.ics --json > event.json
+# edit event.json …
+openemail calendars objects put work standup.ics --json --file event.json
+```
+
+`--json` reads and writes JSCalendar (RFC 8984) / JSContact (RFC 9553) instead of
+raw iCalendar/vCard, so a program never has to parse wire text. Core converts on the
+way in, which means ETags, `--if-match`, and invitation fan-out behave identically.
+A read reports `writable:false` when an object converts to JSON but could never be
+converted back — the CLI warns rather than letting you edit something unsavable.
+
+## Store client preferences
+
+```sh
+openemail prefs get                          # the document plus its version
+openemail prefs set theme=dark density=3     # edit single keys (CAS-guarded)
+openemail prefs set zip='"01234"'            # quotes force a string, not a number
+openemail prefs get --raw > prefs.json       # back it up
+openemail prefs put --file prefs.json        # restore (version from the file guards it)
+```
+
+The blob is opaque to core — clients own its schema — and belongs to the **identity**,
+so it follows a user across mail, calendars, and devices. Every write is a
+compare-and-swap on `version`: a stale write is refused (412) instead of silently
+clobbering another device. `--force` overrides that deliberately.
+
+## Migrate contacts in
+
+```sh
+openemail addressbooks import default --file contacts.vcf   # idempotent (hrefs derive from UIDs)
+openemail addressbooks contacts list default
+openemail addressbooks objects get default --uid <uid> -o one.vcf
+```
+
+## A calendar-only identity (no email at all)
+
+```sh
+openemail mailboxes create                                  # no --address: a bare store
+openemail credentials create <id> --kind password --username roomcal --password …
+openemail identities get <id>                               # pim facet bound, mail facet absent
+```
+
+The @-free username skips the address-ownership check — such a login works for
+DAV/JMAP clients but can never send or receive mail. `openemail whoami` and
+`openemail admin verify-login` both report the identity id and its facets.
+
 ## Empty the trash / purge
 
 ```sh

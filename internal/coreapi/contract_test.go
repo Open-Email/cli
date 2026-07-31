@@ -102,6 +102,47 @@ func contractPairings() []pairing {
 		{val: SievePutResult{}, comp: "SievePutResult"},
 		{val: SieveCheckResult{}, comp: "SieveCheckResult"},
 		{val: SieveCapabilities{}, comp: "SieveCapabilities"},
+		// Staged uploads + the structured send.
+		{val: UploadResult{}, comp: "UploadResult"},
+		{val: SendResult{}, comp: "SendResult"},
+		{val: SendRecipientResult{}, comp: "SendRecipientResult"},
+		// Structured search. EmailSearchRequest/Filter are free-form on the wire
+		// (additionalProperties), so only the response shapes are pinned.
+		{val: EmailSearchResult{}, comp: "EmailSearchResult"},
+		{val: EmailSearchSnippet{}, comp: "EmailSearchSnippet"},
+		// JSON filter rules (the flat authoring surface over Sieve).
+		{val: FilterRule{}, comp: "FilterRule"},
+		{val: RuleCondition{}, comp: "RuleCondition"},
+		{val: RuleAction{}, comp: "RuleAction"},
+		{val: RulesDocument{}, comp: "RulesDocument"},
+		{val: FilterRulesState{}, comp: "FilterRulesState"},
+		{val: FilterRulesPutResult{}, comp: "FilterRulesPutResult"},
+		{val: FilterRulesDeleted{}, comp: "FilterRulesDeleted"},
+		// Identities & auth introspection.
+		{val: Identity{}, comp: "Identity"},
+		{val: IdentityFacets{}, comp: "IdentityFacets"},
+		{val: WhoamiResult{}, comp: "WhoamiResult"},
+		// PIM (calendars/addressbooks). PimObject adds the listing-only content /
+		// instances / data keys the spec declares inline on PimObjectPage's items.
+		{val: PimCollection{}, comp: "PimCollection"},
+		{val: PimObject{}, comp: "PimObjectMeta", ignoreGo: []string{"content", "instances", "data"}},
+		{val: PimObjectPage{}, comp: "PimObjectPage"},
+		{val: PimInstance{}, comp: "PimInstance"},
+		{val: PimAttendee{}, comp: "PimAttendee"},
+		{val: PimChanges{}, comp: "PimChanges"},
+		{val: PimChangedRef{}, comp: "PimChangedRef"},
+		{val: PimPutResult{}, comp: "PimPutResult"},
+		{val: PimImportItem{}, comp: "PimImportItem"},
+		{val: PimImportResult{}, comp: "PimImportResult"},
+		{val: PimShare{}, comp: "PimShare"},
+		{val: PimSharedWithMe{}, comp: "PimSharedWithMe"},
+		{val: PimPublicCollection{}, comp: "PimPublicCollection"},
+		{val: PimToken{}, comp: "PimToken"},
+		{val: PimTokenCreated{}, comp: "PimTokenCreated"},
+		{val: PimObjectJSON{}, comp: "PimObjectJson"},
+		{val: PimInvitationStatus{}, comp: "PimInvitationStatus"},
+		{val: PimRsvpResult{}, comp: "PimRsvpResult"},
+		{val: Prefs{}, comp: "Prefs"},
 	}
 }
 

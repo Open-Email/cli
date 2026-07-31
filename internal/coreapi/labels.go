@@ -16,6 +16,9 @@ type LabelInfo struct {
 	UIDNext      int64   `json:"uidNext"`
 	MessageCount int64   `json:"messageCount"`
 	UnseenCount  int64   `json:"unseenCount"`
+	// SortOrder is the resolved presentation order (JMAP Mailbox sortOrder): a
+	// stored value, else the role default (inbox=1…trash=6, user labels=100).
+	SortOrder int64 `json:"sortOrder"`
 }
 
 // CreatedLabel is the (smaller) create response.

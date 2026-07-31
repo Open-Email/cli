@@ -4,9 +4,11 @@ The command-line client for the [OpenEmail](https://open.email) platform — in 
 style of the Stripe CLI and wrangler. Authenticate once; the CLI mints its own
 dedicated account API key, stores it in your OS keychain, and uses it for every
 command. It covers the **entire** core API: the directory plane (accounts,
-domains, routes, patterns, credentials), the mailbox data plane (messages,
-labels, threads, search, sieve, pickups), and the workflow verbs (`send`,
-`watch`, `deliver`, `api`, operator `admin`).
+domains, routes, patterns, credentials, identities), the mailbox data plane
+(messages, labels, threads, search, rules, sieve, pickups), calendars and contacts
+(`calendars`, `addressbooks`, `pim` — raw iCalendar/vCard objects, sharing,
+RSVP, feeds), and the workflow verbs (`send`, `watch`, `deliver`, `api`,
+operator `admin`).
 
 ## Install
 
@@ -65,12 +67,19 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `domains` | domains (`create` is create-or-advance: requires your verification TXT, activates sending once SPF + both DKIM CNAMEs resolve), `dns <domain>` (required records + liveness) + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness), `dmarc-sources <domain>`, `dmarc-reports <domain>` — all `--window 7d\|30d\|90d` |
 | `routes` | address routes + `members list\|add\|remove\|replace` |
 | `patterns` | per-domain pattern routes |
-| `credentials` | a mailbox's IMAP/SMTP credentials (app-passwords) |
+| `credentials` | a mailbox's login credentials (app-passwords; `--expires-in` for session-scoped ones, @-free usernames for mail-less identities) |
+| `identities` | `get [id]` — the durable identity and its bound stores (mail + PIM facets with usage); a calendar-only identity shows no mail facet |
 | `messages` | list/get/`raw`/`append`/`flag`/`label`/`move`/`delete`/`restore`/`trash empty`/`mime` |
 | `labels` | list/create/rename/delete/`messages`/`expunge` |
 | `threads` | list, get (with reply context) |
-| `search <query>` | full-text search (`--group-thread` for one hit per conversation) |
+| `search [query]` | full-text search, or a structured filter search when any of `--from/--to/--before/--after/--unread/--has-attachment/--sort/…` is passed (`--snippet` for highlighted excerpts, `--total` for the match count) |
+| `rules` | filter rules — the simple alternative to writing Sieve: `list`/`get`/`put`/`delete`, plus `add`/`remove`/`enable`/`disable`/`move` edits and `script` (the Sieve they compile to) |
 | `sieve` | `scripts {list,get,put,delete,rename}`, `activate`/`deactivate`/`active`, `check`, `capabilities` |
+| `compose` | send a structured message: multiple recipients, `--attach` files (staged as uploads), one result per recipient |
+| `calendars` | calendars: list/create/get/update/delete, `objects` (alias `events`: list with `--start/--end/--expand` range queries, get/put/delete/move raw .ics or `--json` JSCalendar), `respond` (RSVP), `invitations {status,respond}` (answer an invitation straight from a received message part), `changes` (sync diff), `export`/`import`, `shares`, `tokens` (feed URLs) |
+| `addressbooks` | addressbooks: the same verb set over raw .vcf objects (alias `contacts`; no range/RSVP) |
+| `pim` | cross-collection surfaces: `shared` (shared with me), `public` (directory), `subscribe`/`unsubscribe`/`subscriptions`, `feed <token-or-url>` (no login needed) |
+| `prefs` | the opaque client-preferences document: `get`/`put`/`set` with compare-and-swap on its version |
 | `pickups` | POP3 pickup sources: create/list/get/update/delete/`run` |
 | `send` | submit an outbound message (compose or raw MIME) |
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
@@ -111,10 +120,58 @@ openemail domains dmarc example.com --window 30d
 openemail domains dmarc-sources example.com   # every sender, unaligned ones first
 openemail domains dmarc-reports example.com   # the raw ingest log (empty ⇒ check rua=)
 
+# Filter mail without writing Sieve: rules are evaluated top to bottom.
+openemail rules add --name "Acme" --if 'from:contains:@acme.com' --then 'label:Work'
+openemail rules add --name "Big" --if 'size:over:5m' --then 'label:Big' --stop
+openemail rules list                             # order, state, and whether they're active
+openemail rules move 2 1                         # reorder (order is meaning)
+openemail rules disable 1                        # keep the rule, stop it running
+openemail rules script                           # the Sieve it compiles to
+
+# Search: text, or structured filters over any field.
+openemail search invoice                                    # full text
+openemail search --from boss@acme.com --after 7d --total    # structured
+openemail search invoice --snippet --sort receivedAt:desc   # highlighted excerpts
+openemail search --unread --has-attachment --label INBOX --position 25
+
+# Send with attachments to several recipients (server assembles the MIME).
+openemail compose --from me@example.com --to a@x.com --to b@x.com \
+  --cc c@x.com --subject "Report" --text "See attached." --attach report.pdf
+
 # Manage Sieve filters.
 openemail sieve check -f filter.sieve            # dry-run compile (exit 1 if invalid)
 openemail sieve scripts put main -f filter.sieve
 openemail sieve activate main
+
+# Calendars: create one, add an event, list a month expanded into occurrences.
+openemail calendars create work --display-name "Work"
+openemail calendars objects put work standup.ics --file standup.ics
+openemail calendars events list work --start 2026-08-01 --end 2026-09-01 --expand
+
+# RSVP to an invitation that landed in your calendar.
+openemail calendars respond work invite.ics accepted
+
+# …or answer one straight from the email it arrived in (files it if it's new).
+openemail calendars invitations status <uid>
+openemail messages part <id> 2 | openemail calendars invitations respond accepted
+
+# Read or edit an event as JSCalendar instead of raw .ics.
+openemail calendars objects get work standup.ics --json
+openemail calendars objects put work standup.ics --json --file event.json
+
+# Share a calendar with a teammate, or publish a read-only feed URL.
+openemail calendars update work --visibility shared
+openemail calendars shares set work teammate@example.com --permission read-write
+openemail calendars tokens create work --label "team feed" --expires-in 90d
+
+# Import contacts and read one back.
+openemail addressbooks import default --file contacts.vcf
+openemail addressbooks objects get default --uid alice-uid -o alice.vcf
+
+# A calendar-only identity: a store with no address, plus an @-free login.
+openemail mailboxes create                        # no --address
+openemail credentials create <id> --kind password --username roomcal --password …
+openemail identities get <id>                     # facets: pim bound, no mail store
 
 # Rotate a webhook route's URL while KEEPING its signing secret (omit the secret).
 openemail routes update hook@example.com --type webhook --webhook-url https://new/hook

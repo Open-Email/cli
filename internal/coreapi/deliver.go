@@ -8,7 +8,7 @@ import (
 )
 
 // DeliverResult is the shared delivery trichotomy returned by /deliver/outbound,
-// /deliver/inbound, and the Poppy pickup ingest. status is delivered | filtered |
+// /deliver/inbound, and the pop3-fetch pickup ingest. status is delivered | filtered |
 // queued. uid/uidValidity/threadId are null on an idempotent replay. sentCopy /
 // sentThreadId appear only on an outbound ?save=true.
 type DeliverResult struct {
