@@ -446,6 +446,9 @@ func fmtDNS(s *coreapi.DNSStatus) string {
 	if s.JMAP != nil {
 		out += " " + part("jmap", s.JMAP)
 	}
+	if s.DAV != nil {
+		out += " " + part("dav", s.DAV)
+	}
 	return out
 }
 
