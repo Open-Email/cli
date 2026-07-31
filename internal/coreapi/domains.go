@@ -24,21 +24,21 @@ type DNSStatus struct {
 // Domain mirrors the endpoint's present() output: booleans are real bools (core
 // converts the stored 0/1), dnsStatus is an object or null.
 type Domain struct {
-	Domain       string     `json:"domain"`
-	Enabled      bool       `json:"enabled"`
-	CanSend      bool       `json:"canSend"`
-	CanReceive   bool       `json:"canReceive"`
-	AliasOf      *string    `json:"aliasOf"`
-	FBL          bool       `json:"fbl"`
-	DMARC        bool       `json:"dmarc"`
-	JMAP         bool       `json:"jmap"`
+	Domain     string  `json:"domain"`
+	Enabled    bool    `json:"enabled"`
+	CanSend    bool    `json:"canSend"`
+	CanReceive bool    `json:"canReceive"`
+	AliasOf    *string `json:"aliasOf"`
+	FBL        bool    `json:"fbl"`
+	DMARC      bool    `json:"dmarc"`
+	JMAP       bool    `json:"jmap"`
 	// DAV: RFC 6764 CalDAV/CardDAV autodiscovery opt-in (core migration 0018) —
 	// the DNS checklist gains _caldavs._tcp/_carddavs._tcp SRV + TXT records
 	// pointing at the DAV gateway.
 	DAV bool `json:"dav"`
 	// ITIP: inbound iTIP auto-apply (core migration 0015) — arriving
 	// text/calendar invitations are filed into recipients' calendars.
-	ITIP bool `json:"itip"`
+	ITIP         bool       `json:"itip"`
 	DNSStatus    *DNSStatus `json:"dnsStatus"`
 	DNSCheckedAt *int64     `json:"dnsCheckedAt"`
 	AccountID    *string    `json:"accountId"`
