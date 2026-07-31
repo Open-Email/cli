@@ -1232,7 +1232,7 @@
       "DnsRecord": {
         "properties": {
           "kind": {
-            "description": "ownership | mx | spf | dkim | dmarc | jmap",
+            "description": "ownership | mx | spf | dkim | dmarc | jmap | dav",
             "type": "string"
           },
           "name": {
@@ -1315,6 +1315,9 @@
       },
       "DnsStatus": {
         "properties": {
+          "dav": {
+            "type": "boolean"
+          },
           "dkim": {
             "type": "boolean"
           },
@@ -1356,6 +1359,9 @@
           "createdAt": {
             "format": "int64",
             "type": "integer"
+          },
+          "dav": {
+            "type": "boolean"
           },
           "dmarc": {
             "type": "boolean"
@@ -1414,6 +1420,7 @@
           "fbl",
           "dmarc",
           "jmap",
+          "dav",
           "itip",
           "dnsStatus",
           "dnsCheckedAt",
@@ -2964,6 +2971,7 @@
             ]
           },
           "rrule": {
+            "description": "The RRULE value; the literal \"RDATE\" marks a series recurring by RDATE only",
             "type": [
               "string",
               "null"
@@ -5173,6 +5181,9 @@
                   "canSend": {
                     "type": "boolean"
                   },
+                  "dav": {
+                    "type": "boolean"
+                  },
                   "dmarc": {
                     "type": "boolean"
                   },
@@ -5326,11 +5337,17 @@
                   "canSend": {
                     "type": "boolean"
                   },
+                  "dav": {
+                    "type": "boolean"
+                  },
                   "dmarc": {
                     "type": "boolean"
                   },
                   "dnsStatus": {
                     "properties": {
+                      "dav": {
+                        "type": "boolean"
+                      },
                       "dkim": {
                         "type": "boolean"
                       },

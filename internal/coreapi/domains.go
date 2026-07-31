@@ -17,6 +17,8 @@ type DNSStatus struct {
 	// Present only for a domain with JMAP autodiscovery enabled — the SRV
 	// record is not offered otherwise, so there is no verdict to report.
 	JMAP *bool `json:"jmap,omitempty"`
+	// Same rule for the RFC 6764 CalDAV/CardDAV records (the dav flag).
+	DAV *bool `json:"dav,omitempty"`
 }
 
 // Domain mirrors the endpoint's present() output: booleans are real bools (core
@@ -30,6 +32,10 @@ type Domain struct {
 	FBL          bool       `json:"fbl"`
 	DMARC        bool       `json:"dmarc"`
 	JMAP         bool       `json:"jmap"`
+	// DAV: RFC 6764 CalDAV/CardDAV autodiscovery opt-in (core migration 0018) —
+	// the DNS checklist gains _caldavs._tcp/_carddavs._tcp SRV + TXT records
+	// pointing at the DAV gateway.
+	DAV bool `json:"dav"`
 	// ITIP: inbound iTIP auto-apply (core migration 0015) — arriving
 	// text/calendar invitations are filed into recipients' calendars.
 	ITIP bool `json:"itip"`
