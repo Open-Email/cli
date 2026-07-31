@@ -75,11 +75,16 @@ func newAdminVerifyLoginCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(res, func(w io.Writer) {
 				rows := [][]string{
-					{"Mailbox", res.MailboxID},
+					{"Identity", res.IdentityID},
+					// "—" = a calendar-only identity: no mail store to serve.
+					{"Mailbox", strOr(res.MailboxID, "—")},
 					{"Account", strOr(res.AccountID, "—")},
 					{"Credential", res.CredentialID},
 					{"Kind", res.Kind},
 					{"Can send", boolYN(res.CanSend)},
+				}
+				if len(res.Facets) > 0 {
+					rows = append(rows, []string{"Facets", joinStrings(res.Facets)})
 				}
 				if len(res.PermittedFrom) > 0 {
 					rows = append(rows, []string{"Permitted from", joinStrings(res.PermittedFrom)})

@@ -119,14 +119,31 @@ func TestCheckRecipient(t *testing.T) {
 // VerifyLogin decodes nullable accountId + permittedFrom array.
 func TestVerifyLogin(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`{"mailboxId":"mb","accountId":null,"credentialId":"c","kind":"app_password","canSend":true,"permittedFrom":["a@x"]}`))
+		w.Write([]byte(`{"identityId":"mb","mailboxId":"mb","accountId":null,"credentialId":"c","kind":"app_password","canSend":true,"permittedFrom":["a@x"],"facets":["mail","pim"]}`))
 	}))
 	defer srv.Close()
 	res, err := m3Client(t, srv.URL).VerifyLogin(context.Background(), "a@x", "pw")
 	if err != nil {
 		t.Fatalf("VerifyLogin: %v", err)
 	}
-	if res.MailboxID != "mb" || res.AccountID != nil || !res.CanSend || len(res.PermittedFrom) != 1 {
+	if res.IdentityID != "mb" || res.MailboxID == nil || *res.MailboxID != "mb" ||
+		res.AccountID != nil || !res.CanSend || len(res.PermittedFrom) != 1 || len(res.Facets) != 2 {
+		t.Fatalf("got %+v", res)
+	}
+}
+
+// VerifyLogin tolerates a NULL mailboxId — a calendar-only identity, whose
+// identityId remains the durable key.
+func TestVerifyLoginMailless(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"identityId":"cal","mailboxId":null,"accountId":null,"credentialId":"c","kind":"app_password","canSend":false,"permittedFrom":[],"facets":["pim"]}`))
+	}))
+	defer srv.Close()
+	res, err := m3Client(t, srv.URL).VerifyLogin(context.Background(), "cal@x", "pw")
+	if err != nil {
+		t.Fatalf("VerifyLogin: %v", err)
+	}
+	if res.IdentityID != "cal" || res.MailboxID != nil || len(res.Facets) != 1 {
 		t.Fatalf("got %+v", res)
 	}
 }

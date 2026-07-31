@@ -30,6 +30,9 @@ type Domain struct {
 	FBL          bool       `json:"fbl"`
 	DMARC        bool       `json:"dmarc"`
 	JMAP         bool       `json:"jmap"`
+	// ITIP: inbound iTIP auto-apply (core migration 0015) — arriving
+	// text/calendar invitations are filed into recipients' calendars.
+	ITIP bool `json:"itip"`
 	DNSStatus    *DNSStatus `json:"dnsStatus"`
 	DNSCheckedAt *int64     `json:"dnsCheckedAt"`
 	AccountID    *string    `json:"accountId"`

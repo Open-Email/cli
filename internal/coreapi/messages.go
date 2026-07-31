@@ -33,6 +33,8 @@ type MessageMeta struct {
 	// EnvelopeFrom/EnvelopeTo rather than showing nothing.
 	From            []ContentAddress `json:"from"`
 	To              []ContentAddress `json:"to"`
+	CC              []ContentAddress `json:"cc"`
+	BCC             []ContentAddress `json:"bcc"`
 	Subject         *string          `json:"subject"`
 	MessageIDHeader *string          `json:"messageIdHeader"`
 	ThreadID        *string          `json:"threadId"`

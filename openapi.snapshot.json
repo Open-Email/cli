@@ -1386,6 +1386,9 @@
           "fbl": {
             "type": "boolean"
           },
+          "itip": {
+            "type": "boolean"
+          },
           "jmap": {
             "type": "boolean"
           },
@@ -1411,6 +1414,7 @@
           "fbl",
           "dmarc",
           "jmap",
+          "itip",
           "dnsStatus",
           "dnsCheckedAt",
           "accountId",
@@ -1826,6 +1830,94 @@
         ],
         "type": "object"
       },
+      "Identity": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Mailbox"
+          },
+          {
+            "properties": {
+              "facets": {
+                "$ref": "#/components/schemas/IdentityFacets"
+              }
+            },
+            "required": [
+              "facets"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "IdentityFacets": {
+        "properties": {
+          "mail": {
+            "properties": {
+              "expungedBytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "expungedCount": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "messageCount": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "provisioned": {
+                "type": "boolean"
+              },
+              "storeId": {
+                "type": "string"
+              },
+              "usedBytes": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "storeId",
+              "provisioned",
+              "messageCount",
+              "usedBytes",
+              "expungedCount",
+              "expungedBytes"
+            ],
+            "type": "object"
+          },
+          "pim": {
+            "properties": {
+              "bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "collections": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "objects": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "provisioned": {
+                "type": "boolean"
+              },
+              "storeId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "storeId",
+              "provisioned",
+              "collections",
+              "objects",
+              "bytes"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "LabelInfo": {
         "properties": {
           "id": {
@@ -2128,11 +2220,31 @@
       },
       "MessageMeta": {
         "properties": {
+          "bcc": {
+            "description": "Display view of the Bcc: header (capped) — in practice 'who will this draft blind-copy'. Empty for RECEIVED mail as a matter of fact, not policy: a blind copy is blind because the header is stripped before transmission, so there is nothing to parse. Non-empty for mail this mailbox composed. Null = unknown (pre-v12 row / unparseable head). NOT available on GET /content, whose headers come from the part_index env",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "blobGen": {
             "type": "string"
           },
           "blobHash": {
             "type": "string"
+          },
+          "cc": {
+            "description": "Display view of the Cc: header (capped). Null = unknown (pre-v11 row / unparseable head), which is NOT the same as [] (no carbon copies) — a reply-all should fetch /content rather than answer a shorter list",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "deliveryMeta": {
             "additionalProperties": {},
@@ -2260,6 +2372,8 @@
           "envelopeTo",
           "from",
           "to",
+          "cc",
+          "bcc",
           "subject",
           "messageIdHeader",
           "threadId",
@@ -2498,6 +2612,754 @@
           "createdAt"
         ],
         "type": "object"
+      },
+      "PimAttendee": {
+        "properties": {
+          "cn": {
+            "description": "Display name",
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "partstat": {
+            "description": "NEEDS-ACTION | ACCEPTED | DECLINED | TENTATIVE",
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "rsvp": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "PimChangedRef": {
+        "properties": {
+          "etag": {
+            "type": "string"
+          },
+          "href": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "href",
+          "etag",
+          "id",
+          "uid"
+        ],
+        "type": "object"
+      },
+      "PimChanges": {
+        "properties": {
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/PimChangedRef"
+            },
+            "type": "array"
+          },
+          "deleted": {
+            "description": "Deleted (or renamed-away) hrefs",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "syncToken": {
+            "description": "OPAQUE. Anchored at the last change reported when truncated",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "More changes remain; re-poll with the returned token (gateway maps to 507)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "syncToken",
+          "changed",
+          "deleted",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "PimCollection": {
+        "properties": {
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Collection ULID — stable across renames; the JMAP id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "calendar",
+              "addressbook"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "URL slug (the DAV path segment)",
+            "type": "string"
+          },
+          "objectCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "role": {
+            "description": "default | tasks | null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "syncToken": {
+            "description": "RFC 6578 sync-token / DAV ctag — OPAQUE; relay it, never parse it",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "private",
+              "shared",
+              "public"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "displayName",
+          "color",
+          "description",
+          "visibility",
+          "role",
+          "syncToken",
+          "createdAt",
+          "objectCount"
+        ],
+        "type": "object"
+      },
+      "PimImportItem": {
+        "properties": {
+          "error": {
+            "description": "Present iff status=failed",
+            "type": "string"
+          },
+          "etag": {
+            "type": "string"
+          },
+          "href": {
+            "description": "Where the object landed; null when the item failed",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "created",
+              "replaced",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "href",
+          "status"
+        ],
+        "type": "object"
+      },
+      "PimImportResult": {
+        "properties": {
+          "created": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PimImportItem"
+            },
+            "type": "array"
+          },
+          "replaced": {
+            "type": "integer"
+          },
+          "syncToken": {
+            "description": "The collection's token after the last successful write; absent if none landed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "created",
+          "replaced",
+          "failed"
+        ],
+        "type": "object"
+      },
+      "PimInstance": {
+        "properties": {
+          "component": {
+            "description": "The occurrence as a standalone VCALENDAR, RECURRENCE-ID stamped",
+            "type": "string"
+          },
+          "end": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "recurrenceId": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "recurrenceId",
+          "transp",
+          "status",
+          "component"
+        ],
+        "type": "object"
+      },
+      "PimObjectMeta": {
+        "properties": {
+          "attendees": {
+            "items": {
+              "$ref": "#/components/schemas/PimAttendee"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "component": {
+            "description": "VEVENT | VTODO | VCARD",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "dtend": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dtstart": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "etag": {
+            "description": "sha256 of the body, hex — the strong ETag's opaque value",
+            "type": "string"
+          },
+          "eventStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "href": {
+            "description": "Client-chosen resource name (the DAV path segment)",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "organizer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rrule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sequence": {
+            "type": "integer"
+          },
+          "size": {
+            "description": "BYTES",
+            "format": "int64",
+            "type": "integer"
+          },
+          "transp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uid": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "vcardEmail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vcardFn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vcardN": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "href",
+          "uid",
+          "etag",
+          "size",
+          "contentType",
+          "component",
+          "dtstart",
+          "dtend",
+          "rrule",
+          "organizer",
+          "attendees",
+          "sequence",
+          "eventStatus",
+          "transp",
+          "vcardFn",
+          "vcardEmail",
+          "vcardN",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "PimObjectPage": {
+        "properties": {
+          "nextCursor": {
+            "description": "Present when more objects remain; pass back as ?cursor=",
+            "type": "string"
+          },
+          "objects": {
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/PimObjectMeta"
+                },
+                {
+                  "properties": {
+                    "content": {
+                      "description": "Absent when fields=meta",
+                      "type": "string"
+                    },
+                    "instances": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimInstance"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "window": {
+            "description": "The effective range actually answered, echoed on ranged queries",
+            "properties": {
+              "clamped": {
+                "description": "True when the asked-for range was narrowed to the cap",
+                "type": "boolean"
+              },
+              "end": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "start": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "start",
+              "end",
+              "clamped"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "objects"
+        ],
+        "type": "object"
+      },
+      "PimPublicCollection": {
+        "properties": {
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collectionId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Directory entry id — the handle POST /subscriptions takes",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "calendar",
+              "addressbook"
+            ],
+            "type": "string"
+          },
+          "ownerMailboxId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ownerMailboxId",
+          "collectionId",
+          "kind",
+          "displayName",
+          "description",
+          "category",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "PimPutResult": {
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "etag": {
+            "type": "string"
+          },
+          "href": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "syncToken": {
+            "type": "string"
+          },
+          "unparsed": {
+            "description": "Present (true) when the body was stored but could not be parsed — it will round-trip byte-identically, but extracts, range queries and scheduling cannot see inside it",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "href",
+          "etag",
+          "created",
+          "syncToken"
+        ],
+        "type": "object"
+      },
+      "PimShare": {
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "permission": {
+            "enum": [
+              "read",
+              "read-write"
+            ],
+            "type": "string"
+          },
+          "shareeMailboxId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "shareeMailboxId",
+          "permission",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "PimSharedWithMe": {
+        "properties": {
+          "collectionId": {
+            "type": "string"
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "calendar",
+              "addressbook"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerMailboxId": {
+            "type": "string"
+          },
+          "permission": {
+            "enum": [
+              "read",
+              "read-write"
+            ],
+            "type": "string"
+          },
+          "syncToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ownerMailboxId",
+          "collectionId",
+          "permission",
+          "kind",
+          "name",
+          "displayName",
+          "color",
+          "description",
+          "syncToken",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "PimToken": {
+        "properties": {
+          "accessCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "collectionId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "calendar",
+              "addressbook"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastAccessedAt": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "collectionId",
+          "kind",
+          "label",
+          "expiresAt",
+          "accessCount",
+          "lastAccessedAt",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "PimTokenCreated": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PimToken"
+          },
+          {
+            "properties": {
+              "token": {
+                "description": "Shown once; only its hash is stored",
+                "type": "string"
+              },
+              "url": {
+                "description": "The unauthenticated feed URL to hand out",
+                "type": "string"
+              }
+            },
+            "required": [
+              "token",
+              "url"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "RecipientAccepted": {
         "properties": {
@@ -3223,12 +4085,27 @@
           "credentialId": {
             "type": "string"
           },
+          "facets": {
+            "description": "The identity's bound durable-store facets (identity_bindings; today 'mail' and/or 'pim'). The IMAP/POP3 gateway refuses mail-protocol LOGIN when 'mail' is absent — the read that lets mailboxId go nullable for a calendar-only identity (docs/identity-design.md §IX.7).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "identityId": {
+            "description": "The authenticated IDENTITY's ULID — always present, and the value new consumers should key on (it is the PimDO name, the JMAP accountId, and equals mailboxId wherever a mail store exists).",
+            "type": "string"
+          },
           "kind": {
             "description": "password | app_password",
             "type": "string"
           },
           "mailboxId": {
-            "type": "string"
+            "description": "The identity's MAIL store, or null for a calendar-only identity (no 'mail' facet). Mail-protocol frontends must refuse LOGIN on null; identityId keeps serving CalDAV/REST/JMAP.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "permittedFrom": {
             "items": {
@@ -3238,12 +4115,14 @@
           }
         },
         "required": [
+          "identityId",
           "mailboxId",
           "accountId",
           "credentialId",
           "kind",
           "canSend",
-          "permittedFrom"
+          "permittedFrom",
+          "facets"
         ],
         "type": "object"
       },
@@ -4307,6 +5186,9 @@
                   "fbl": {
                     "type": "boolean"
                   },
+                  "itip": {
+                    "type": "boolean"
+                  },
                   "jmap": {
                     "type": "boolean"
                   }
@@ -4474,6 +5356,9 @@
                     "type": "boolean"
                   },
                   "fbl": {
+                    "type": "boolean"
+                  },
+                  "itip": {
                     "type": "boolean"
                   },
                   "jmap": {
@@ -4971,6 +5856,41 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}": {
+      "get": {
+        "description": "An identity is an account-scoped ULID that anchors credentials and owns durable stores. `facets.mail` and `facets.pim` are present when the identity is BOUND to that store; `provisioned` says whether the store has actually been used. Mail is optional — a calendar or contacts product creates an identity, mints a credential with an `@`-free username, and never binds an address at all. This is the same resource as GET /mailboxes/{mailboxId}, which returns mail stats only.",
+        "operationId": "get_IdentityGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            },
+            "description": "The identity with its bound stores"
+          },
+          "404": {
+            "description": "Identity not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get an identity with the stores it owns (mail, calendars/contacts) and their usage",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/mailboxes": {
       "get": {
         "operationId": "get_MailboxList",
@@ -5271,6 +6191,2823 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "addressbooks": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "addressbooks"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Collections, each with its current sync token"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List a mailbox's addressbooks",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "color": {
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "description": {
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "URL slug — letters, digits, and . _ ~ - (the DAV path segment)",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "maxLength": 32,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "visibility": {
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "description": "validation_failed, or invalid_name"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "name_taken, or too_many_collections (max 10)"
+          }
+        },
+        "summary": "Create a addressbook",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "objectsDestroyed": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "deleted",
+                    "objectsDestroyed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted; objectsDestroyed counts the members that went with it"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Delete a addressbook and every object in it",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "The collection and its current sync token"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Fetch one addressbook",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "patch": {
+        "operationId": "patch__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "color": {
+                    "maxLength": 32,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "description": {
+                    "maxLength": 1024,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "displayName": {
+                    "maxLength": 256,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expectedVisibility": {
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "maxLength": 32,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "visibility": {
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "Updated"
+          },
+          "400": {
+            "description": "validation_failed, or invalid_name"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "409": {
+            "description": "name_taken, or visibility_conflict (CAS lost)"
+          }
+        },
+        "summary": "Update a addressbook's properties",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/changes": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_changes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A token from a previous response. Omit for an initial sync",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "A token from a previous response. Omit for an initial sync",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimChanges"
+                }
+              }
+            },
+            "description": "Changed hrefs (with etags), deleted hrefs, the next token, and whether more remain"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "410": {
+            "description": "invalid_sync_token — the token predates this collection instance or its pruned history; permanently unanswerable, resync from scratch (the mail tier's cannot_calculate_changes vocabulary; the gateway maps it to DAV:valid-sync-token)"
+          }
+        },
+        "summary": "Sync diff for a addressbook (RFC 6578 sync-collection)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/export": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/vcard": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The merged wire text, ready to save or import"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Export a whole addressbook as one vCard stream",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/import": {
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_import",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/vcard": {
+              "schema": {
+                "description": "Concatenated VCARDs",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimImportResult"
+                }
+              }
+            },
+            "description": "Every item imported"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimImportResult"
+                }
+              }
+            },
+            "description": "Mixed: at least one item failed; each carries its own status and error. Re-send the same file to converge — successful items simply answer `replaced`"
+          },
+          "400": {
+            "description": "empty_body, not_calendar, or empty_import (no components found)"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "413": {
+            "description": "import_too_large (max 16777216 bytes) or too_many_items (max 500 per request — chunk larger migrations)"
+          }
+        },
+        "summary": "Import a whole text/vcard export into a addressbook (one object per UID)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/objects": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size; default 500",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size; default 500",
+              "maximum": 5000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The previous page's nextCursor; omit for the first page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "The previous page's nextCursor; omit for the first page",
+              "type": "string"
+            }
+          },
+          {
+            "description": "meta omits each object's content — listings without body transfer",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "description": "meta omits each object's content — listings without body transfer",
+              "enum": [
+                "meta",
+                "full"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only the object with this iCal/vCard UID (0 or 1 results)",
+            "in": "query",
+            "name": "uid",
+            "required": false,
+            "schema": {
+              "description": "Return only the object with this iCal/vCard UID (0 or 1 results)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimObjectPage"
+                }
+              }
+            },
+            "description": "One page of objects; `nextCursor` when more remain, `instances` per object when expand=true"
+          },
+          "400": {
+            "description": "expand_requires_range"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List addressbook objects",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/objects/{href}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uid",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "href": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "syncToken": {
+                      "type": "string"
+                    },
+                    "uid": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "deleted",
+                    "id",
+                    "href",
+                    "uid",
+                    "syncToken"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such object, collection, or mailbox"
+          },
+          "412": {
+            "description": "precondition_failed — If-Match not satisfied"
+          }
+        },
+        "summary": "Delete one addressbook object (If-Match honored)",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Look the object up by iCal/vCard UID instead of by resource name",
+            "in": "query",
+            "name": "uid",
+            "required": false,
+            "schema": {
+              "description": "Look the object up by iCal/vCard UID instead of by resource name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/vcard": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The stored body, byte-identical, with ETag + X-Pim-* metadata"
+          },
+          "404": {
+            "description": "No such object, collection, or mailbox"
+          }
+        },
+        "summary": "Fetch one addressbook object as raw text/vcard",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "put": {
+        "operationId": "put__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/vcard": {
+              "schema": {
+                "description": "Raw iCalendar/vCard text",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimPutResult"
+                }
+              }
+            },
+            "description": "Replaced"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimPutResult"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "description": "empty_body, invalid_href, or multiple_uids (the body is an export file carrying several UIDs — import objects one per resource)"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "409": {
+            "description": "uid_conflict — the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
+          },
+          "412": {
+            "description": "precondition_failed — If-Match/If-None-Match not satisfied"
+          },
+          "413": {
+            "description": "object_too_large (max 1048576 bytes)"
+          },
+          "507": {
+            "description": "too_many_objects (collection or store object cap) or store_full (the store's 268435456-byte total would be exceeded)"
+          }
+        },
+        "summary": "Create or replace one addressbook object (If-Match / If-None-Match honored)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/objects/{href}/move": {
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}_move",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "to": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "to"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "etag": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "syncToken": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "etag",
+                    "syncToken"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Moved. The ULID (and the JMAP id) survive; the old href is reported deleted by the sync diff"
+          },
+          "400": {
+            "description": "invalid_href"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such object, collection, or mailbox"
+          },
+          "409": {
+            "description": "href_taken"
+          },
+          "412": {
+            "description": "precondition_failed — If-Match not satisfied"
+          }
+        },
+        "summary": "Rename one addressbook object (the DAV MOVE within a collection)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/shares": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_shares",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "shares": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimShare"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "shares"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Grants"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List the grants on a addressbook",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/shares/{shareeMailboxId}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_shares_{shareeMailboxId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "shareeMailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Revoked — effective on the next access; there is no cache to wait for"
+          },
+          "404": {
+            "description": "No such grant, collection, or mailbox"
+          }
+        },
+        "summary": "Revoke one mailbox's access to a addressbook",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "put": {
+        "operationId": "put__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_shares_{shareeMailboxId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "shareeMailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "permission": {
+                    "enum": [
+                      "read",
+                      "read-write"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "permission"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimShare"
+                }
+              }
+            },
+            "description": "Granted. The grant alone is not access — the collection's visibility must also be shared or public"
+          },
+          "404": {
+            "description": "No such collection, sharee, or mailbox"
+          }
+        },
+        "summary": "Grant a mailbox access to a addressbook",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/tokens": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_tokens",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "tokens": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimToken"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "tokens"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Tokens (never their plaintext — only the hash is stored)"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List a addressbook's external feed tokens",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_tokens",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expiresAt": {
+                    "description": "Unix seconds; omit for never",
+                    "type": "integer"
+                  },
+                  "label": {
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTokenCreated"
+                }
+              }
+            },
+            "description": "Created — `token` and `url` are shown ONCE and never again"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Mint a read-only feed token for a addressbook",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/tokens/{tokenId}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_tokens_{tokenId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tokenId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "No such token, collection, or mailbox"
+          }
+        },
+        "summary": "Revoke a addressbook feed token",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "calendars": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "calendars"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Collections, each with its current sync token"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List a mailbox's calendars",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "color": {
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "description": {
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "URL slug — letters, digits, and . _ ~ - (the DAV path segment)",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "maxLength": 32,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "visibility": {
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "description": "validation_failed, or invalid_name"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "name_taken, or too_many_collections (max 10)"
+          }
+        },
+        "summary": "Create a calendar",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "objectsDestroyed": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "deleted",
+                    "objectsDestroyed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted; objectsDestroyed counts the members that went with it"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Delete a calendar and every object in it",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "The collection and its current sync token"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Fetch one calendar",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "patch": {
+        "operationId": "patch__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "color": {
+                    "maxLength": 32,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "description": {
+                    "maxLength": 1024,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "displayName": {
+                    "maxLength": 256,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expectedVisibility": {
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "maxLength": 32,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "visibility": {
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "Updated"
+          },
+          "400": {
+            "description": "validation_failed, or invalid_name"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "409": {
+            "description": "name_taken, or visibility_conflict (CAS lost)"
+          }
+        },
+        "summary": "Update a calendar's properties",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/changes": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_changes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A token from a previous response. Omit for an initial sync",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "A token from a previous response. Omit for an initial sync",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimChanges"
+                }
+              }
+            },
+            "description": "Changed hrefs (with etags), deleted hrefs, the next token, and whether more remain"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "410": {
+            "description": "invalid_sync_token — the token predates this collection instance or its pruned history; permanently unanswerable, resync from scratch (the mail tier's cannot_calculate_changes vocabulary; the gateway maps it to DAV:valid-sync-token)"
+          }
+        },
+        "summary": "Sync diff for a calendar (RFC 6578 sync-collection)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/export": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The merged wire text, ready to save or import"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Export a whole calendar as one iCalendar stream",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/import": {
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_import",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/calendar": {
+              "schema": {
+                "description": "One VCALENDAR carrying any number of UIDs; masters keep their overrides, VTIMEZONEs ride into every item",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimImportResult"
+                }
+              }
+            },
+            "description": "Every item imported"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimImportResult"
+                }
+              }
+            },
+            "description": "Mixed: at least one item failed; each carries its own status and error. Re-send the same file to converge — successful items simply answer `replaced`"
+          },
+          "400": {
+            "description": "empty_body, not_calendar, or empty_import (no components found)"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "413": {
+            "description": "import_too_large (max 16777216 bytes) or too_many_items (max 500 per request — chunk larger migrations)"
+          }
+        },
+        "summary": "Import a whole text/calendar export into a calendar (one object per UID)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size; default 500",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size; default 500",
+              "maximum": 5000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The previous page's nextCursor; omit for the first page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "The previous page's nextCursor; omit for the first page",
+              "type": "string"
+            }
+          },
+          {
+            "description": "meta omits each object's content — listings without body transfer",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "description": "meta omits each object's content — listings without body transfer",
+              "enum": [
+                "meta",
+                "full"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only the object with this iCal/vCard UID (0 or 1 results)",
+            "in": "query",
+            "name": "uid",
+            "required": false,
+            "schema": {
+              "description": "Return only the object with this iCal/vCard UID (0 or 1 results)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Unix seconds, inclusive",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "description": "Unix seconds, inclusive",
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Unix seconds, exclusive",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "description": "Unix seconds, exclusive",
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Restrict to one component kind",
+            "in": "query",
+            "name": "component",
+            "required": false,
+            "schema": {
+              "description": "Restrict to one component kind",
+              "enum": [
+                "VEVENT",
+                "VTODO",
+                "VJOURNAL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return per-object recurrence instances (requires start and end)",
+            "in": "query",
+            "name": "expand",
+            "required": false,
+            "schema": {
+              "description": "Return per-object recurrence instances (requires start and end)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimObjectPage"
+                }
+              }
+            },
+            "description": "One page of objects; `nextCursor` when more remain, `instances` per object when expand=true"
+          },
+          "400": {
+            "description": "expand_requires_range"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List calendar objects, optionally filtered by time range and expanded",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects/{href}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uid",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "href": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "syncToken": {
+                      "type": "string"
+                    },
+                    "uid": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "deleted",
+                    "id",
+                    "href",
+                    "uid",
+                    "syncToken"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such object, collection, or mailbox"
+          },
+          "412": {
+            "description": "precondition_failed — If-Match not satisfied"
+          }
+        },
+        "summary": "Delete one calendar object (If-Match honored)",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Look the object up by iCal/vCard UID instead of by resource name",
+            "in": "query",
+            "name": "uid",
+            "required": false,
+            "schema": {
+              "description": "Look the object up by iCal/vCard UID instead of by resource name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The stored body, byte-identical, with ETag + X-Pim-* metadata"
+          },
+          "404": {
+            "description": "No such object, collection, or mailbox"
+          }
+        },
+        "summary": "Fetch one calendar object as raw text/calendar",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "put": {
+        "operationId": "put__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/calendar": {
+              "schema": {
+                "description": "Raw iCalendar/vCard text",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimPutResult"
+                }
+              }
+            },
+            "description": "Replaced"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimPutResult"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "description": "empty_body, invalid_href, or multiple_uids (the body is an export file carrying several UIDs — import objects one per resource)"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          },
+          "409": {
+            "description": "uid_conflict — the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
+          },
+          "412": {
+            "description": "precondition_failed — If-Match/If-None-Match not satisfied"
+          },
+          "413": {
+            "description": "object_too_large (max 1048576 bytes)"
+          },
+          "507": {
+            "description": "too_many_objects (collection or store object cap) or store_full (the store's 268435456-byte total would be exceeded)"
+          }
+        },
+        "summary": "Create or replace one calendar object (If-Match / If-None-Match honored)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects/{href}/move": {
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}_move",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "to": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "to"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "etag": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "syncToken": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "etag",
+                    "syncToken"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Moved. The ULID (and the JMAP id) survive; the old href is reported deleted by the sync diff"
+          },
+          "400": {
+            "description": "invalid_href"
+          },
+          "403": {
+            "description": "forbidden — read-only grant"
+          },
+          "404": {
+            "description": "No such object, collection, or mailbox"
+          },
+          "409": {
+            "description": "href_taken"
+          },
+          "412": {
+            "description": "precondition_failed — If-Match not satisfied"
+          }
+        },
+        "summary": "Rename one calendar object (the DAV MOVE within a collection)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects/{href}/respond": {
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}_respond",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "partstat": {
+                    "description": "RFC 5545 PARTSTAT to record for the caller",
+                    "enum": [
+                      "ACCEPTED",
+                      "DECLINED",
+                      "TENTATIVE",
+                      "NEEDS-ACTION"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "partstat"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "etag": {
+                      "type": "string"
+                    },
+                    "organizerUpdated": {
+                      "type": "boolean"
+                    },
+                    "partstat": {
+                      "type": "string"
+                    },
+                    "replySent": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "partstat",
+                    "etag",
+                    "organizerUpdated",
+                    "replySent"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Recorded. The organizer is told one of two ways, never both: `organizerUpdated` means their stored copy was patched in place (a local organizer), `replySent` means a METHOD:REPLY message was submitted to them (a remote one). Both false means the reply is recorded on the caller's copy but the organizer could not be reached — an event with no ORGANIZER, or a submission the sending mailbox is not permitted to make"
+          },
+          "403": {
+            "description": "not_attendee — the caller is not on this event"
+          },
+          "404": {
+            "description": "No such object, collection, or mailbox"
+          },
+          "409": {
+            "description": "conflict — the copy changed concurrently under the reply; retry"
+          }
+        },
+        "summary": "Record this mailbox's reply to an invitation (RSVP)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/shares": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_shares",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "shares": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimShare"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "shares"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Grants"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List the grants on a calendar",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/shares/{shareeMailboxId}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_shares_{shareeMailboxId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "shareeMailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Revoked — effective on the next access; there is no cache to wait for"
+          },
+          "404": {
+            "description": "No such grant, collection, or mailbox"
+          }
+        },
+        "summary": "Revoke one mailbox's access to a calendar",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "put": {
+        "operationId": "put__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_shares_{shareeMailboxId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "shareeMailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "permission": {
+                    "enum": [
+                      "read",
+                      "read-write"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "permission"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimShare"
+                }
+              }
+            },
+            "description": "Granted. The grant alone is not access — the collection's visibility must also be shared or public"
+          },
+          "404": {
+            "description": "No such collection, sharee, or mailbox"
+          }
+        },
+        "summary": "Grant a mailbox access to a calendar",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/tokens": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_tokens",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "tokens": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimToken"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "tokens"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Tokens (never their plaintext — only the hash is stored)"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List a calendar's external feed tokens",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "post": {
+        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_tokens",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expiresAt": {
+                    "description": "Unix seconds; omit for never",
+                    "type": "integer"
+                  },
+                  "label": {
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTokenCreated"
+                }
+              }
+            },
+            "description": "Created — `token` and `url` are shown ONCE and never again"
+          },
+          "404": {
+            "description": "No such collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Mint a read-only feed token for a calendar",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/tokens/{tokenId}": {
+      "delete": {
+        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_tokens_{tokenId}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tokenId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "No such token, collection, or mailbox"
+          }
+        },
+        "summary": "Revoke a calendar feed token",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/credentials": {
       "get": {
         "operationId": "get_CredentialList",
@@ -5407,7 +9144,7 @@
             "description": "Created credential (app_password plaintext shown once)"
           },
           "400": {
-            "description": "validation_failed, username_required, or username_not_mailbox_address"
+            "description": "validation_failed, username_required (no username and no primaryAddress), or username_not_mailbox_address (an address-shaped username that does not route here; `@`-free usernames are accepted for mail-less calendar/contact mailboxes)"
           },
           "404": {
             "description": "Mailbox not found or not accessible to this principal"
@@ -6607,6 +10344,31 @@
                     "maxItems": 50,
                     "type": "array"
                   },
+                  "bcc": {
+                    "items": {
+                      "properties": {
+                        "address": {
+                          "maxLength": 320,
+                          "minLength": 3,
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
+                          "maxLength": 320,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
                   "cc": {
                     "items": {
                       "properties": {
@@ -7776,6 +11538,231 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/pim/public-directory": {
+      "get": {
+        "operationId": "get_PimPublicDirectory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "public": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimPublicCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "public"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Public listings (discovery only — reading still needs a subscription)"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Browse the public calendars/addressbooks in this mailbox's account",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/pim/shared-with-me": {
+      "get": {
+        "operationId": "get_PimSharedWithMeList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "shared": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimSharedWithMe"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "shared"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Live grants only — revoked or private collections are omitted"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List the collections other mailboxes have shared with this one",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/pim/subscriptions": {
+      "get": {
+        "operationId": "get_PimSubscriptionList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "subscriptions": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimPublicCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "subscriptions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Subscriptions"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List this mailbox's public-collection subscriptions",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/pim/subscriptions/{publicId}": {
+      "delete": {
+        "operationId": "delete_PimUnsubscribe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unsubscribed"
+          },
+          "404": {
+            "description": "Not subscribed"
+          }
+        },
+        "summary": "Unsubscribe from a public collection (drops the read grant)",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "post": {
+        "operationId": "post_PimSubscribe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publicId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimPublicCollection"
+                }
+              }
+            },
+            "description": "Subscribed"
+          },
+          "404": {
+            "description": "No such public collection, or it is no longer public"
+          }
+        },
+        "summary": "Subscribe to a public collection (creates the read grant)",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/purge": {
       "post": {
         "operationId": "post_MailboxPurge",
@@ -8108,7 +12095,7 @@
                     "type": "array"
                   },
                   "bcc": {
-                    "description": "Recipients that receive the message but appear in no header",
+                    "description": "Recipients that receive the message but appear in no header on the wire. They DO appear in a `Bcc:` header on the sender's own Sent copy, which is the only place that record exists — MessageMeta.bcc reads it back",
                     "items": {
                       "properties": {
                         "address": {
@@ -9530,6 +13517,47 @@
         "summary": "Poppy run-completion callback (system only)",
         "tags": [
           "Pickups"
+        ]
+      }
+    },
+    "/api/v1/pim/feeds/{token}": {
+      "get": {
+        "operationId": "get_PimFeed",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/vcard": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The whole collection as one iCalendar or vCard stream"
+          },
+          "404": {
+            "description": "Unknown, expired, or revoked token"
+          }
+        },
+        "summary": "Read-only whole-collection export behind a feed token (UNAUTHENTICATED)",
+        "tags": [
+          "PIM"
         ]
       }
     },

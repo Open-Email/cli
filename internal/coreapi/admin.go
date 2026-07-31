@@ -8,14 +8,19 @@ import (
 )
 
 // VerifyResult is POST /auth/verify — verifies a credential and re-resolves
-// sendability. Mints nothing. accountId is nullable.
+// sendability. Mints nothing. accountId is nullable, and so is mailboxId: a
+// calendar-only identity (binding model, core's identity-design §IX) has no
+// MAIL store, while identityId is always present and is the durable key.
 type VerifyResult struct {
-	MailboxID     string   `json:"mailboxId"`
+	IdentityID    string   `json:"identityId"`
+	MailboxID     *string  `json:"mailboxId"`
 	AccountID     *string  `json:"accountId"`
 	CredentialID  string   `json:"credentialId"`
 	Kind          string   `json:"kind"`
 	CanSend       bool     `json:"canSend"`
 	PermittedFrom []string `json:"permittedFrom"`
+	// Facets lists the identity's bound stores ("mail", "pim").
+	Facets []string `json:"facets"`
 }
 
 // Reindex re-enqueues FTS index jobs for a mailbox (system-only). limit bounds the
