@@ -92,6 +92,7 @@ func newRootCmd(a *app) *cobra.Command {
 		newRulesCmd(a),
 		newPrefsCmd(a),
 		newSieveCmd(a),
+		newVacationCmd(a),
 		newCalendarsCmd(a),
 		newAddressbooksCmd(a),
 		newPimCmd(a),

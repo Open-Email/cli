@@ -712,9 +712,18 @@ func newMessageDeleteCmd(a *app) *cobra.Command {
 
 func newMessageRestoreCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "restore <messageId>",
-		Short: "Restore an expunged message from trash",
-		Args:  cobra.ExactArgs(1),
+		Use:   "restore <messageId> [messageId...]",
+		Short: "Restore expunged messages from trash (many ids land in one atomic call)",
+		Long: "Restores messages from the trash, re-attaching each under the labels it had\n" +
+			"before it was expunged (or INBOX if none survive), with fresh UIDs as IMAP\n" +
+			"requires.\n\n" +
+			"Several ids are ONE call against the mailbox, which is the point: undoing a\n" +
+			"bulk delete lands in a single commit rather than as an arbitrary partial\n" +
+			"subset if something fails halfway. Up to 200 at a time.\n\n" +
+			"An id that is missing, already live, or already purged is reported\n" +
+			"`not_found` on its own row and does not stop the others; the command exits\n" +
+			"non-zero so a script notices without parsing the table.",
+		Args: cobra.RangeArgs(1, 200),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -724,15 +733,60 @@ func newMessageRestoreCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := client.RestoreMessage(cmd.Context(), mbx, args[0])
+			// A single id keeps the per-message route, so its --json shape stays
+			// what it has always been; only the batch answer is new.
+			if len(args) == 1 {
+				res, rerr := client.RestoreMessage(cmd.Context(), mbx, args[0])
+				if rerr != nil {
+					return rerr
+				}
+				a.out.Emit(res, func(w io.Writer) {
+					a.out.Successf("Restored message %s", res.Message.ID)
+					a.out.Msgf("  labels: %s", labelMembershipDisplay(&res.Message))
+				})
+				return nil
+			}
+
+			res, err := client.RestoreMessages(cmd.Context(), mbx, args)
 			if err != nil {
 				return err
 			}
+			byID := make(map[string]coreapi.BatchRestoreEntry, len(res.Results))
+			for _, e := range res.Results {
+				byID[e.ID] = e
+			}
+			restored, missing := 0, 0
 			a.out.Emit(res, func(w io.Writer) {
-				a.out.Successf("Restored message %s", res.Message.ID)
-				a.out.Msgf("  labels: %s", labelMembershipDisplay(&res.Message))
+				// Ranged over the REQUEST, not the response, so an id the server
+				// said nothing about still gets a row rather than vanishing.
+				rows := make([][]string, 0, len(args))
+				for _, id := range args {
+					e, ok := byID[id]
+					if !ok {
+						rows = append(rows, []string{id, "no answer", "—"})
+						continue
+					}
+					labels := "—"
+					if e.Message != nil {
+						labels = labelMembershipDisplay(e.Message)
+					}
+					rows = append(rows, []string{id, e.Status, labels})
+				}
+				printTable(w, a.out, []string{"MESSAGE", "STATUS", "LABELS"}, rows)
 			})
-			return nil
+			for _, id := range args {
+				if e, ok := byID[id]; ok && e.Status == "restored" {
+					restored++
+					continue
+				}
+				missing++
+			}
+			if missing == 0 {
+				a.out.Successf("Restored %d message(s) in one call", restored)
+				return nil
+			}
+			a.out.Warnf("Restored %d of %d — %d could not be found (already live, or purged)", restored, len(args), missing)
+			return silentExit(1)
 		},
 	}
 }

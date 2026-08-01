@@ -161,7 +161,8 @@ openemail ui
 
 A mailbox row on the Mailboxes screen drills into its sub-resources: `C`
 credentials, `F` filter rules (and `s` from there for the Sieve scripts behind
-them), `c` calendars, `b` addressbooks, `p` POP3 pickups, `P` preferences. With a
+them), `c` calendars, `b` addressbooks, `p` POP3 pickups, `P` preferences, `V`
+the out-of-office auto-reply. With a
 system key the sidebar also carries **Suppressions** (the do-not-send list, `u`
 lifts an entry) and **DKIM** (key generations, `n` stages a rotation, `A`
 activates a staged key).
@@ -320,17 +321,67 @@ in place, a remote one is mailed a `METHOD:REPLY`.
 ## Answer an invitation that arrived by email
 
 ```sh
-openemail calendars invitations status team-offsite-2026   # already filed? what did I answer?
-openemail messages content <id>                            # find the text/calendar section
-openemail messages part <id> 2 | openemail calendars invitations respond accepted
+openemail calendars invitations show <messageId>     # the event, and can you answer it?
+openemail calendars invitations respond accepted --message <messageId>
 ```
 
-One call does the whole job: core files an attendee copy into your default calendar
-if the event is not stored yet, records the reply, and tells the organizer —
-patching their copy when they are local, mailing a `METHOD:REPLY` when they are not.
-Re-answering later is the same command (it updates the existing copy instead of
-filing a second one). For an event already in a calendar, `openemail calendars
+Name the message and the server does the rest: it locates the scheduling part,
+parses it, files an attendee copy into your default calendar if the event is not
+stored yet, records the reply, and tells the organizer — patching their copy when
+they are local, mailing a `METHOD:REPLY` when they are not. Re-answering later is
+the same command; it updates the existing copy instead of filing a second one.
+
+`show` is worth running first because it answers a question you cannot work out
+locally: **can answer** is the respond endpoint's own verdict. You cannot answer
+your own invitation (an organizer edits their copy instead), nor a message that is
+itself someone else's reply or a cancellation — and being the organizer is decided
+on any routing tier, so an invitation that reached you through an alias still
+counts as yours.
+
+`--section` pins a particular part when a message carries more than one; omitted,
+the server picks the message's own scheduling part.
+
+For an `.ics` that is not in a mailbox at all — a file someone handed you — the
+inline form still applies, and reads stdin when `--file` is omitted:
+
+```sh
+openemail calendars invitations respond accepted --file invite.ics
+```
+
+Prefer the `--message` form otherwise. The bytes are already on the server, so
+piping the part in only makes the client fetch them, decode the charset, and post
+them straight back. For an event already in a calendar, `openemail calendars
 respond <calendar> <href> <partstat>` addresses it directly.
+
+## Set an out-of-office auto-reply
+
+```sh
+openemail vacation show
+openemail vacation on --subject "Away until the 15th" --text "Back on the 15th." \
+  --from 2026-08-01 --to 2026-08-15
+openemail vacation set --text "Back on the 20th, not the 15th."   # fix the wording
+openemail vacation off
+```
+
+Core sends one reply per correspondent **per absence**, so a mailing list or a
+persistent sender is not answered over and over.
+
+The distinction between `on` and `set` is the part worth knowing, because getting
+it wrong is embarrassing rather than merely wrong: turning the reply **on** starts
+a new absence, which makes everyone eligible for a reply again — including people
+who already heard from you during the last one. Editing while you are already away
+deliberately re-notifies nobody. So fix a typo with `set`; never with `off` then
+`on`.
+
+Dates are optional and bound the absence (`--from ''` clears one). They are given
+as `YYYY-MM-DD`, an RFC3339 instant, or unix seconds, and are normalized to UTC.
+Relative forms like `7d` are refused here — they mean "ago" elsewhere in the CLI,
+which would silently backdate the start of an absence.
+
+Writes are compare-and-swap on the document's state, so a change made from another
+device since you read it is refused (`--force` overrides, `--if-match <state>`
+pins an explicit one). An unmentioned field keeps its value; a flag given empty
+clears it.
 
 ## Edit calendar and contact objects as JSON
 
@@ -386,9 +437,20 @@ DAV/JMAP clients but can never send or receive mail. `openemail whoami` and
 ```sh
 openemail messages list --trash                     # what's in the trash
 openemail messages restore <id>                     # undo one soft-delete
+openemail messages restore <id> <id> <id>           # undo a bulk delete, atomically
 openemail messages trash empty                       # purge all (typed confirm)
 openemail messages delete <id> --purge               # hard-delete one (typed confirm)
 ```
+
+Several ids are **one call** against the mailbox, and that is the point: undoing a
+bulk delete lands in a single commit rather than as an arbitrary partial subset if
+something fails halfway. Up to 200 at a time. Each message comes back under the
+labels it had before it was expunged (or INBOX if none survive), with fresh UIDs
+as IMAP requires.
+
+An id that is missing, already live, or already purged is reported `not_found` on
+its own row without stopping the others, and the command exits non-zero so a
+script notices without parsing the table.
 
 ## Scripting with a system key (operator)
 

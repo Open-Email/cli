@@ -69,14 +69,15 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's login credentials (app-passwords; `--expires-in` for session-scoped ones, @-free usernames for mail-less identities) |
 | `identities` | `get [id]` — the durable identity and its bound stores (mail + PIM facets with usage); a calendar-only identity shows no mail facet |
-| `messages` | list/get/`raw`/`append`/`compose` (file from fields without sending — drafts, imports)/`junk`/`not-junk` (train this mailbox's spam filter)/`flag`/`label`/`move`/`delete`/`restore`/`trash empty`/`mime` |
+| `messages` | list/get/`raw`/`append`/`compose` (file from fields without sending — drafts, imports)/`junk`/`not-junk` (train this mailbox's spam filter)/`flag`/`label`/`move`/`delete`/`restore` (many ids restore in one atomic call)/`trash empty`/`mime` |
 | `labels` | list/create/rename/delete/`messages`/`expunge` |
 | `threads` | list, get (with reply context), `reply` — the server derives recipient, subject and threading headers from the conversation |
 | `search [query]` | full-text search, or a structured filter search when any of `--from/--to/--before/--after/--unread/--has-attachment/--sort/…` is passed (`--snippet` for highlighted excerpts, `--total` for the match count) |
 | `rules` | filter rules — the simple alternative to writing Sieve: `list`/`get`/`put`/`delete`, plus `add`/`remove`/`enable`/`disable`/`move` edits and `script` (the Sieve they compile to) |
 | `sieve` | `scripts {list,get,put,delete,rename}`, `activate`/`deactivate`/`active`, `check`, `capabilities` |
+| `vacation` (alias `ooo`) | out-of-office auto-reply: `show`/`set`/`on`/`off` — one reply per correspondent per absence, compare-and-swap on the document's state |
 | `compose` | send a structured message: multiple recipients, `--attach` files (staged as uploads), one result per recipient |
-| `calendars` | calendars: list/create/get/update/delete, `objects` (alias `events`: list with `--start/--end/--expand` range queries, get/put/delete/move raw .ics or `--json` JSCalendar), `respond` (RSVP), `invitations {status,respond}` (answer an invitation straight from a received message part), `changes` (sync diff), `export`/`import`, `shares`, `tokens` (feed URLs) |
+| `calendars` | calendars: list/create/get/update/delete, `objects` (alias `events`: list with `--start/--end/--expand` range queries, get/put/delete/move raw .ics or `--json` JSCalendar), `respond` (RSVP), `invitations {show,status,respond}` (read and answer an invitation straight from the email it arrived in), `changes` (sync diff), `export`/`import`, `shares`, `tokens` (feed URLs) |
 | `addressbooks` | addressbooks: the same verb set over raw .vcf objects (alias `contacts`; no range/RSVP) |
 | `pim` | cross-collection surfaces: `shared` (shared with me), `public` (directory), `subscribe`/`unsubscribe`/`subscriptions`, `feed <token-or-url>` (no login needed) |
 | `prefs` | the opaque client-preferences document: `get`/`put`/`set` with compare-and-swap on its version |
@@ -166,8 +167,14 @@ openemail calendars events list work --start 2026-08-01 --end 2026-09-01 --expan
 openemail calendars respond work invite.ics accepted
 
 # …or answer one straight from the email it arrived in (files it if it's new).
-openemail calendars invitations status <uid>
-openemail messages part <id> 2 | openemail calendars invitations respond accepted
+openemail calendars invitations show <messageId>       # event, and can you answer it?
+openemail calendars invitations respond accepted --message <messageId>
+
+# Out of office. Turning it ON starts a new absence (everyone becomes eligible
+# for one reply again); `set` edits the wording without re-notifying anyone.
+openemail vacation on --subject "Away until the 15th" --text "Back on the 15th."
+openemail vacation set --text "Back on the 20th, not the 15th."
+openemail vacation off
 
 # Read or edit an event as JSCalendar instead of raw .ics.
 openemail calendars objects get work standup.ics --json

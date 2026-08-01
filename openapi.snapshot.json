@@ -268,6 +268,49 @@
         ],
         "type": "object"
       },
+      "BatchRestoreEntry": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageMeta"
+              },
+              {
+                "description": "Present iff status=restored (new label UIDs included)"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "restored",
+              "not_found"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchRestoreResult": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchRestoreEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
       "BatchUpdateEntry": {
         "properties": {
           "expungedAt": {
@@ -2444,6 +2487,158 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "MessageInvitation": {
+        "properties": {
+          "attendeeCount": {
+            "type": "integer"
+          },
+          "attendees": {
+            "description": "Truncated to the iTIP fan-out bound; attendeeCount is the real total",
+            "items": {
+              "$ref": "#/components/schemas/PimAttendee"
+            },
+            "type": "array"
+          },
+          "calendarId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canRespond": {
+            "description": "A POST to …/invitations/respond would be accepted — render the buttons iff true",
+            "type": "boolean"
+          },
+          "component": {
+            "description": "VEVENT | VTODO | VJOURNAL",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dtend": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dtstart": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "found": {
+            "description": "Already filed in one of this mailbox's calendars",
+            "type": "boolean"
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isOrganizer": {
+            "description": "This mailbox is the ORGANIZER, on any routing tier. They answer by editing their own copy, never through this surface",
+            "type": "boolean"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "method": {
+            "description": "iTIP METHOD: REQUEST | CANCEL | REPLY | … ; null for a non-scheduling body",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "myAddress": {
+            "description": "Which address of this mailbox the invitation names as an ATTENDEE — from the directory, so an alias counts",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "myPartstat": {
+            "description": "The caller's reply so far: from the STORED copy when found is true (they may have answered since the mail arrived), else what the invitation itself records",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organizer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rrule": {
+            "description": "The RRULE value; the literal \"RDATE\" marks a series recurring by RDATE only",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "section": {
+            "description": "MIME section of the text/calendar part — pass it back to …/invitations/respond",
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uid": {
+            "description": "null when the body carries no UID or does not parse",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "section",
+          "method",
+          "uid",
+          "component",
+          "summary",
+          "location",
+          "dtstart",
+          "dtend",
+          "rrule",
+          "organizer",
+          "attendees",
+          "attendeeCount",
+          "myAddress",
+          "myPartstat",
+          "isOrganizer",
+          "canRespond",
+          "found",
+          "calendarId",
+          "href"
+        ],
         "type": "object"
       },
       "MessageLabel": {
@@ -4781,6 +4976,56 @@
           "size",
           "type",
           "expires"
+        ],
+        "type": "object"
+      },
+      "Vacation": {
+        "properties": {
+          "fromDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "htmlBody": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isEnabled": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "textBody": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "toDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "isEnabled",
+          "fromDate",
+          "toDate",
+          "subject",
+          "textBody",
+          "htmlBody",
+          "state"
         ],
         "type": "object"
       },
@@ -7628,6 +7873,39 @@
               "description": "Return only the object with this iCal/vCard UID (0 or 1 results)",
               "type": "string"
             }
+          },
+          {
+            "description": "Case-insensitive substring over name, email and structured name",
+            "in": "query",
+            "name": "text",
+            "required": false,
+            "schema": {
+              "description": "Case-insensitive substring over name, email and structured name",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring over the formatted name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "description": "Case-insensitive substring over the formatted name",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring over email addresses",
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "description": "Case-insensitive substring over email addresses",
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -7642,7 +7920,7 @@
             "description": "One page of objects; `nextCursor` when more remain, `instances` per object when expand=true"
           },
           "400": {
-            "description": "expand_requires_range"
+            "description": "expand_requires_range, or search_term_too_long"
           },
           "404": {
             "description": "No such collection, or mailbox not accessible"
@@ -7940,6 +8218,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/objects/{href}/move": {
       "post": {
+        "description": "The DAV MOVE. `to` is the new resource name; `toAddressbookId` re-files the object into a different addressbook — omit either to leave that half alone.\n\n**The object keeps its identity.** Same ULID (so the same JMAP id), same UID, same ETag: the bytes did not change, so neither did the version. A DAV client syncing the source sees the old href reported gone; a JMAP client sees an update, never a destroy.\n\nA single commit, so a failure cannot leave the card in both addressbooks or in neither.",
         "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}_move",
         "parameters": [
           {
@@ -7988,14 +8267,16 @@
               "schema": {
                 "properties": {
                   "to": {
+                    "description": "New resource name; omit to keep it",
                     "maxLength": 512,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "toAddressbookId": {
+                    "description": "Destination addressbook (ULID or name slug); omit to stay put",
+                    "type": "string"
                   }
                 },
-                "required": [
-                  "to"
-                ],
                 "type": "object"
               }
             }
@@ -8007,6 +8288,10 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "collectionId": {
+                      "description": "Where the object now lives",
+                      "type": "string"
+                    },
                     "etag": {
                       "type": "string"
                     },
@@ -8020,7 +8305,8 @@
                   "required": [
                     "id",
                     "etag",
-                    "syncToken"
+                    "syncToken",
+                    "collectionId"
                   ],
                   "type": "object"
                 }
@@ -8029,22 +8315,25 @@
             "description": "Moved. The ULID (and the JMAP id) survive; the old href is reported deleted by the sync diff"
           },
           "400": {
-            "description": "invalid_href"
+            "description": "invalid_href, or nothing_to_move (neither field given)"
           },
           "403": {
-            "description": "forbidden — read-only grant"
+            "description": "forbidden — read-only grant on the source OR the destination"
           },
           "404": {
             "description": "No such object, collection, or mailbox"
           },
           "409": {
-            "description": "href_taken"
+            "description": "href_taken (the destination already has that resource name), or uid_conflict (it already holds this UID — uniqueness is per collection, so only a re-parent can hit this)"
           },
           "412": {
             "description": "precondition_failed — If-Match not satisfied"
+          },
+          "507": {
+            "description": "too_many_objects — the destination collection is full"
           }
         },
-        "summary": "Rename one addressbook object (the DAV MOVE within a collection)",
+        "summary": "Move one addressbook object: rename it, re-file it into another addressbook, or both",
         "tags": [
           "PIM"
         ]
@@ -8589,7 +8878,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/calendars/invitations/respond": {
       "post": {
-        "description": "The one call behind a mail client's Accept / Tentative / Decline buttons. Give it the raw `text/calendar` part and a PARTSTAT; it files an attendee copy into the default calendar if the event is not already stored, then records the reply and tells the organizer — patching their copy in place when they are local, mailing them a `METHOD:REPLY` when they are not.\n\n**Why this exists rather than PUT-then-respond.** Writing the invitation yourself and then replying is the natural client shape and is unsafe: a PUT whose ORGANIZER is the writing mailbox schedules iTIP, so an ICS that names *you* as organizer would turn one click on unsolicited mail into invitations sent as you, to addresses the sender chose. This endpoint refuses exactly that — the caller must be an ATTENDEE and must not be the ORGANIZER — and the filing it performs is an attendee copy, which never schedules.",
+        "description": "The one call behind a mail client's Accept / Tentative / Decline buttons. Name the invitation — either `messageId` (+ the `section` from `…/messages/{id}/invitation`, or omit it and let the server pick the scheduling part) or the raw `ics` inline — and give a PARTSTAT; it files an attendee copy into the default calendar if the event is not already stored, then records the reply and tells the organizer — patching their copy in place when they are local, mailing them a `METHOD:REPLY` when they are not.\n\nPrefer `messageId`: the bytes are already here, so the inline form makes a client fetch the part, decode its charset, and post it straight back.\n\n**Why this exists rather than PUT-then-respond.** Writing the invitation yourself and then replying is the natural client shape and is unsafe: a PUT whose ORGANIZER is the writing mailbox schedules iTIP, so an ICS that names *you* as organizer would turn one click on unsolicited mail into invitations sent as you, to addresses the sender chose. This endpoint refuses exactly that — the caller must be an ATTENDEE and must not be the ORGANIZER — and the filing it performs is an attendee copy, which never schedules.",
         "operationId": "post_PimInvitationRespond",
         "parameters": [
           {
@@ -8607,8 +8896,14 @@
               "schema": {
                 "properties": {
                   "ics": {
-                    "description": "The raw text/calendar part from the message",
+                    "description": "Inline form: the raw text/calendar part from the message",
                     "maxLength": 262144,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "messageId": {
+                    "description": "Reference form: a message in THIS mailbox carrying the invitation",
+                    "maxLength": 64,
                     "minLength": 1,
                     "type": "string"
                   },
@@ -8621,10 +8916,15 @@
                       "NEEDS-ACTION"
                     ],
                     "type": "string"
+                  },
+                  "section": {
+                    "description": "Reference form, optional: the part's section as reported by …/messages/{id}/invitation. Omitted, the server picks the message's scheduling part itself",
+                    "maxLength": 64,
+                    "pattern": "^[0-9]+(\\.[0-9]+)*$",
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "ics",
                   "partstat"
                 ],
                 "type": "object"
@@ -8644,16 +8944,22 @@
             "description": "Recorded. `filed` says whether a copy had to be created; `organizerUpdated` / `replySent` report how the organizer was told, exactly as the collection-scoped RSVP does"
           },
           "400": {
-            "description": "invalid_invitation — the body is not a parseable VEVENT"
+            "description": "invalid_invitation (the body is not a parseable VEVENT) or multiple_uids (a scheduling message carries one event; overrides share its UID)"
           },
           "403": {
-            "description": "not_attendee (no address of this mailbox is on the event) or is_organizer (the event names this mailbox as ORGANIZER — an organizer answers by editing their own copy, and filing it here would schedule invitations on their behalf)"
+            "description": "not_attendee (no address of this mailbox is on the event) or is_organizer (the event names this mailbox as ORGANIZER — on ANY routing tier, not just its literal identities — an organizer answers by editing their own copy, and filing it here would schedule invitations on their behalf)"
           },
           "404": {
-            "description": "Mailbox not found, or it has no calendar to file into"
+            "description": "Mailbox not found, it has no calendar to file into, or — on the messageId form — the message is unknown (`not_found`) or carries no scheduling part (`no_invitation`)"
           },
           "409": {
             "description": "conflict — the copy changed concurrently under the reply; retry"
+          },
+          "413": {
+            "description": "messageId form: message_too_large | invitation_too_large"
+          },
+          "422": {
+            "description": "messageId form: unparseable_message | message_too_complex"
           }
         },
         "summary": "File an emailed invitation if needed, then record this mailbox's reply",
@@ -9175,6 +9481,17 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "Case-insensitive substring over each event's summary and location",
+            "in": "query",
+            "name": "text",
+            "required": false,
+            "schema": {
+              "description": "Case-insensitive substring over each event's summary and location",
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9189,7 +9506,7 @@
             "description": "One page of objects; `nextCursor` when more remain, `instances` per object when expand=true"
           },
           "400": {
-            "description": "expand_requires_range"
+            "description": "expand_requires_range, or search_term_too_long"
           },
           "404": {
             "description": "No such collection, or mailbox not accessible"
@@ -9487,6 +9804,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects/{href}/move": {
       "post": {
+        "description": "The DAV MOVE. `to` is the new resource name; `toCalendarId` re-files the object into a different calendar — omit either to leave that half alone.\n\n**The object keeps its identity.** Same ULID (so the same JMAP id), same UID, same ETag: the bytes did not change, so neither did the version. A DAV client syncing the source sees the old href reported gone; a JMAP client sees an update, never a destroy.\n\n**Use this rather than PUT-then-DELETE.** Emulating a move that way makes the DELETE an organizer deleting a scheduled event, so every attendee is mailed a CANCEL and then a fresh REQUEST. This changes no schedule, so it sends nothing — and it commits once, so a failure cannot leave the event in both calendars or in neither.",
         "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}_move",
         "parameters": [
           {
@@ -9535,14 +9853,16 @@
               "schema": {
                 "properties": {
                   "to": {
+                    "description": "New resource name; omit to keep it",
                     "maxLength": 512,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "toCalendarId": {
+                    "description": "Destination calendar (ULID or name slug); omit to stay put",
+                    "type": "string"
                   }
                 },
-                "required": [
-                  "to"
-                ],
                 "type": "object"
               }
             }
@@ -9554,6 +9874,10 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "collectionId": {
+                      "description": "Where the object now lives",
+                      "type": "string"
+                    },
                     "etag": {
                       "type": "string"
                     },
@@ -9567,7 +9891,8 @@
                   "required": [
                     "id",
                     "etag",
-                    "syncToken"
+                    "syncToken",
+                    "collectionId"
                   ],
                   "type": "object"
                 }
@@ -9576,22 +9901,25 @@
             "description": "Moved. The ULID (and the JMAP id) survive; the old href is reported deleted by the sync diff"
           },
           "400": {
-            "description": "invalid_href"
+            "description": "invalid_href, or nothing_to_move (neither field given)"
           },
           "403": {
-            "description": "forbidden — read-only grant"
+            "description": "forbidden — read-only grant on the source OR the destination"
           },
           "404": {
             "description": "No such object, collection, or mailbox"
           },
           "409": {
-            "description": "href_taken"
+            "description": "href_taken (the destination already has that resource name), or uid_conflict (it already holds this UID — uniqueness is per collection, so only a re-parent can hit this)"
           },
           "412": {
             "description": "precondition_failed — If-Match not satisfied"
+          },
+          "507": {
+            "description": "too_many_objects — the destination collection is full"
           }
         },
-        "summary": "Rename one calendar object (the DAV MOVE within a collection)",
+        "summary": "Move one calendar object: rename it, re-file it into another calendar, or both",
         "tags": [
           "PIM"
         ]
@@ -11697,6 +12025,66 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/messages/restore": {
+      "post": {
+        "description": "The batch form of `POST .../messages/{messageId}/restore`, and the undo of the batch `DELETE .../messages` — so undoing a bulk delete is one round trip against the mailbox rather than one per message, and lands in a single commit rather than an arbitrary partial subset. Each message is re-attached under its pre-expunge labels with fresh UIDs (as IMAP requires), or INBOX if none survive. Per-message outcomes ride in `results`, in request order; an id that is missing, already live, or purged is `not_found` for itself and does not refuse the others.",
+        "operationId": "post_MessageBatchRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ids"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchRestoreResult"
+                }
+              }
+            },
+            "description": "Per-message outcomes, in request order"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Restore many expunged messages from the trash in one atomic call",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}": {
       "delete": {
         "operationId": "delete_MessageDelete",
@@ -11977,6 +12365,58 @@
         "summary": "Structured message content: decoded headers, text/html bodies inline, attachments as references",
         "tags": [
           "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/invitation": {
+      "get": {
+        "description": "Locates the message's `text/calendar` scheduling part, parses it, and merges in what this mailbox has already filed and answered — the single call behind a mail client's RSVP banner.\n\n`section` is the handle for `POST …/calendars/invitations/respond`; `canRespond` is that endpoint's own acceptance predicate, so buttons rendered from it will work. `myAddress` and `myPartstat` are resolved from the directory and the stored copy, which is what makes an invitation sent to an ALIAS show up as the reader's own.\n\nResolves a TRASHED message too, exactly as `/content` and `/parts` do — the reader renders the banner inside messages it can open.",
+        "operationId": "get_MessageInvitationRoute",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageInvitation"
+                }
+              }
+            },
+            "description": "The invitation, parsed, with this mailbox's standing on it"
+          },
+          "404": {
+            "description": "not_found (mailbox or message) or no_invitation (the message carries no top-level text/calendar part — the ordinary answer for ordinary mail)"
+          },
+          "413": {
+            "description": "message_too_large (no part index and the blob exceeds the lazy-walk ceiling) or invitation_too_large (the scheduling part itself is not a scheduling message)"
+          },
+          "422": {
+            "description": "unparseable_message | message_too_complex"
+          },
+          "500": {
+            "description": "blob_missing — the part's R2 range read failed"
+          }
+        },
+        "summary": "The invitation carried by a message: parsed, plus whether it is already filed",
+        "tags": [
+          "PIM"
         ]
       }
     },
@@ -13272,6 +13712,19 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "Also return highlighted <mark> excerpts (subject + body preview) for this page's results, correlated by id. Each excerpt costs a body read, so at most the first 50 results carry one",
+            "in": "query",
+            "name": "snippet",
+            "required": false,
+            "schema": {
+              "description": "Also return highlighted <mark> excerpts (subject + body preview) for this page's results, correlated by id. Each excerpt costs a body read, so at most the first 50 results carry one",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -13287,6 +13740,13 @@
                     "results": {
                       "items": {
                         "$ref": "#/components/schemas/MessageMeta"
+                      },
+                      "type": "array"
+                    },
+                    "snippets": {
+                      "description": "Highlighted excerpts, present only when snippet=true. Covers at most the first 50 results of the page.",
+                      "items": {
+                        "$ref": "#/components/schemas/EmailSearchSnippet"
                       },
                       "type": "array"
                     }
@@ -14667,6 +15127,153 @@
         "summary": "Stage a binary upload, returning a blobId to attach later (REST twin of JMAP /upload)",
         "tags": [
           "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/vacation": {
+      "get": {
+        "description": "Returns the RFC 8621 §8 VacationResponse document plus its opaque `state` token (feed it back as `If-Match` on the PUT). A mailbox that has never configured vacation reads as disabled with null fields.",
+        "operationId": "get_VacationGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vacation"
+                }
+              }
+            },
+            "description": "The vacation document and its state"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read a mailbox's vacation (out-of-office) auto-reply setting",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "put": {
+        "description": "Replaces the whole document. Enabling it starts a new absence: every correspondent becomes eligible for one auto-reply again. Editing the text while already away deliberately does NOT re-notify anyone. Send `If-Match: <state>` for a compare-and-swap (`412 state_conflict` on a stale token). A write that changes nothing is a no-op and does not reset anyone's reply period.",
+        "operationId": "put_VacationPut",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "CAS on the current `state`; absent or `*` writes unconditionally",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "description": "CAS on the current `state`; absent or `*` writes unconditionally",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "fromDate": {
+                    "default": null,
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "htmlBody": {
+                    "default": null,
+                    "maxLength": 32768,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "isEnabled": {
+                    "type": "boolean"
+                  },
+                  "subject": {
+                    "default": null,
+                    "maxLength": 512,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "textBody": {
+                    "default": null,
+                    "maxLength": 32768,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "toDate": {
+                    "default": null,
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "isEnabled"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vacation"
+                }
+              }
+            },
+            "description": "Stored; the document and its new state"
+          },
+          "400": {
+            "description": "validation_failed — malformed document"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "412": {
+            "description": "state_conflict — If-Match did not match the current state"
+          },
+          "422": {
+            "description": "invalid_window (fromDate is not before toDate) or empty_body (isEnabled with neither textBody nor htmlBody — it could never reply)"
+          }
+        },
+        "summary": "Replace a mailbox's vacation (out-of-office) auto-reply setting",
+        "tags": [
+          "Sieve"
         ]
       }
     },

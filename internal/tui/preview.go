@@ -90,10 +90,12 @@ func (p *previewPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		if msg.String() == "esc" {
 			return p, popPane
 		}
-		// `i` opens the scheduling part, when there is one to open.
+		// `i` opens the scheduling part, when there is one to open. The pane
+		// locates it server-side, so only the decision to offer the key is made
+		// from the content view here.
 		if msg.String() == "i" {
-			if part := calendarPart(p.content); part != nil {
-				return p, pushPane(newInvitationPane(p.ctx, p.ui, p.mailboxID, p.meta.ID, part.Section))
+			if calendarPart(p.content) != nil {
+				return p, pushPane(newInvitationPane(p.ctx, p.ui, p.mailboxID, p.meta.ID))
 			}
 			return p, nil
 		}

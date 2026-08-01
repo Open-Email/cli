@@ -97,11 +97,14 @@ func contractPairings() []pairing {
 		{val: PatchResult{}, comp: "MessageUpdateResult"},
 		{val: DeleteResult{}, comp: "MessageDeleteResult"},
 		{val: RestoreResult{}, comp: "MessageRestoreResult"},
+		{val: BatchRestoreResult{}, comp: "BatchRestoreResult"},
+		{val: BatchRestoreEntry{}, comp: "BatchRestoreEntry"},
 		{val: SieveScript{}, comp: "SieveScript"},
 		{val: SieveScriptBody{}, comp: "SieveScriptBody"},
 		{val: SievePutResult{}, comp: "SievePutResult"},
 		{val: SieveCheckResult{}, comp: "SieveCheckResult"},
 		{val: SieveCapabilities{}, comp: "SieveCapabilities"},
+		{val: Vacation{}, comp: "Vacation"},
 		// Staged uploads + the structured send.
 		{val: UploadResult{}, comp: "UploadResult"},
 		{val: SendResult{}, comp: "SendResult"},
@@ -147,6 +150,7 @@ func contractPairings() []pairing {
 		{val: PimTokenCreated{}, comp: "PimTokenCreated"},
 		{val: PimObjectJSON{}, comp: "PimObjectJson"},
 		{val: PimInvitationStatus{}, comp: "PimInvitationStatus"},
+		{val: MessageInvitation{}, comp: "MessageInvitation"},
 		{val: PimRsvpResult{}, comp: "PimRsvpResult"},
 		{val: Prefs{}, comp: "Prefs"},
 	}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,7 @@ func newInvitationsCmd(a *app) *cobra.Command {
 			"  openemail messages part <id> <section> | openemail calendars invitations respond accepted",
 	}
 	cmd.AddCommand(
+		newInvitationShowCmd(a),
 		newInvitationStatusCmd(a),
 		newInvitationRespondCmd(a),
 	)
@@ -71,18 +73,127 @@ func newInvitationStatusCmd(a *app) *cobra.Command {
 	}
 }
 
+// newInvitationShowCmd reads the invitation a message carries. It is the call
+// behind a mail client's RSVP banner: core locates the scheduling part, parses
+// the iCalendar, and merges in what this mailbox has already filed and answered
+// — so nothing here interprets RFC 5545, and the times arrive already resolved
+// against the event's timezone.
+func newInvitationShowCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:     "show <messageId>",
+		Aliases: []string{"get"},
+		Short:   "Show the invitation a message carries, and whether you can answer it",
+		Long: "Reads the scheduling part of a received message: the event, who is invited,\n" +
+			"which of your addresses it names, and what you have answered so far.\n\n" +
+			"The line that matters before you reply is \"can answer\". It is the respond\n" +
+			"endpoint's own verdict, not a guess — an organizer, or a message that is\n" +
+			"itself a reply or a cancellation, cannot be answered from here.\n\n" +
+			"A message with no scheduling part is reported plainly and exits 0: ordinary\n" +
+			"mail is not an error.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
+			if err != nil {
+				return err
+			}
+			inv, err := client.GetMessageInvitation(cmd.Context(), mbx, args[0])
+			// `no_invitation` is the ordinary answer for ordinary mail, so it is
+			// a result rather than a failure.
+			if coreapi.IsNotFound(err) {
+				a.out.Emit(map[string]any{"messageId": args[0], "invitation": nil}, func(w io.Writer) {
+					a.out.Msgf("%s carries no invitation", args[0])
+				})
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			a.out.Emit(inv, func(w io.Writer) {
+				rows := [][]string{
+					{"Event", strOr(inv.Summary, "(no summary)")},
+					{"When", invitationWhen(inv)},
+					{"Where", strOr(inv.Location, "—")},
+					{"Organizer", strOr(inv.Organizer, "—")},
+					{"Method", strOr(inv.Method, "—")},
+					{"Component", strOr(inv.Component, "—")},
+					{"UID", strOr(inv.UID, "—")},
+					{"Section", inv.Section},
+					{"Attendees", fmt.Sprintf("%d", inv.AttendeeCount)},
+					{"Your address", strOr(inv.MyAddress, "— (you are not an attendee)")},
+					{"Your reply", strOr(inv.MyPartstat, "not answered")},
+					{"In your calendar", boolYN(inv.Found)},
+					{"Can answer", boolYN(inv.CanRespond)},
+				}
+				printTable(w, a.out, []string{"FIELD", "VALUE"}, rows)
+				if inv.CanRespond {
+					a.out.Msgf("answer it with `openemail calendars invitations respond <partstat> --message %s`", args[0])
+					return
+				}
+				a.out.Warnf("%s", invitationRefusal(inv))
+			})
+			return nil
+		},
+	}
+}
+
+// invitationWhen renders the window core already resolved — epoch seconds with
+// the event's timezone applied, so there is no VTIMEZONE to interpret here.
+func invitationWhen(inv *coreapi.MessageInvitation) string {
+	if inv.DTStart == nil {
+		return "—"
+	}
+	when := fmtEpoch(*inv.DTStart)
+	if inv.DTEnd != nil {
+		when += " → " + fmtEpoch(*inv.DTEnd)
+	}
+	if inv.RRule != nil {
+		if *inv.RRule == "RDATE" {
+			when += "  (repeats on set dates)"
+		} else {
+			when += "  (repeats: " + *inv.RRule + ")"
+		}
+	}
+	return when
+}
+
+// invitationRefusal says WHICH of core's reasons applies, so a user who cannot
+// answer knows whether to fix something or to go elsewhere.
+func invitationRefusal(inv *coreapi.MessageInvitation) string {
+	switch {
+	case inv.IsOrganizer:
+		return "you are the organizer — answer by editing the event in your own calendar (`openemail calendars objects put`)"
+	case inv.MyAddress == nil:
+		return "this invitation names none of your addresses as an attendee"
+	case inv.Method != nil && *inv.Method == "REPLY":
+		return "this message is someone else's reply, not an invitation — there is nothing to answer"
+	case inv.Method != nil && *inv.Method == "CANCEL":
+		return "this message cancels the event — there is nothing to answer"
+	default:
+		return "this invitation cannot be answered from here"
+	}
+}
+
 func newInvitationRespondCmd(a *app) *cobra.Command {
-	var file string
+	var file, message, section string
 	cmd := &cobra.Command{
 		Use:     "respond <accepted|declined|tentative|needs-action>",
 		Aliases: []string{"rsvp"},
-		Short:   "Answer an invitation from its raw .ics part (files it if new, tells the organizer)",
-		Long: "Answer an invitation you received by email. Give it the raw text/calendar part\n" +
-			"(--file, or stdin) and a reply: core files an attendee copy into your default\n" +
-			"calendar if the event is not stored yet, records the reply, and tells the\n" +
-			"organizer — patching their copy when they are local, mailing a METHOD:REPLY\n" +
-			"when they are not.\n\n" +
-			"  openemail messages part <id> 2 | openemail calendars invitations respond accepted\n\n" +
+		Short:   "Answer an invitation that arrived by email (files it if new, tells the organizer)",
+		Long: "Answer an invitation you received by email. Core files an attendee copy into\n" +
+			"your default calendar if the event is not stored yet, records the reply, and\n" +
+			"tells the organizer — patching their copy when they are local, mailing a\n" +
+			"METHOD:REPLY when they are not.\n\n" +
+			"  openemail calendars invitations respond accepted --message <messageId>\n\n" +
+			"Name the message and the server reads the scheduling part itself; --section\n" +
+			"pins a particular one, but omitted it picks the message's own. Prefer this to\n" +
+			"piping the part in: the bytes are already on the server, so the inline form\n" +
+			"only makes the client fetch them, decode the charset, and post them back.\n\n" +
+			"For an .ics that is not in a mailbox at all, the inline form still applies:\n\n" +
+			"  openemail calendars invitations respond accepted --file invite.ics\n\n" +
 			"To re-answer an event already in a calendar, use `openemail calendars respond`.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -90,26 +201,45 @@ func newInvitationRespondCmd(a *app) *cobra.Command {
 			if err != nil {
 				return usageError(err)
 			}
+			if message != "" && file != "" {
+				return usageError(errors.New("--message and --file name the same invitation two ways — pass one"))
+			}
+			if message == "" && section != "" {
+				return usageError(errors.New("--section only applies to --message"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
-			raw, err := readRawInput(file)
-			if err != nil {
-				return err
+
+			// The inline form reads stdin when --file is absent, so it must stay
+			// behind the --message check: reaching it with a message id would
+			// block on a terminal forever rather than doing the obvious thing.
+			var ics string
+			if message == "" {
+				raw, rerr := readRawInput(file)
+				if rerr != nil {
+					return rerr
+				}
+				ics = strings.TrimSpace(string(raw))
+				if ics == "" {
+					return usageError(errors.New("no calendar data on stdin — pass --message <id>, --file, or pipe the message part"))
+				}
+				if !strings.Contains(ics, "BEGIN:VCALENDAR") {
+					return usageError(errors.New("that does not look like a text/calendar part (no BEGIN:VCALENDAR)"))
+				}
 			}
-			ics := strings.TrimSpace(string(raw))
-			if ics == "" {
-				return usageError(errors.New("no calendar data on stdin — pass --file, or pipe the message part"))
-			}
-			if !strings.Contains(ics, "BEGIN:VCALENDAR") {
-				return usageError(errors.New("that does not look like a text/calendar part (no BEGIN:VCALENDAR)"))
-			}
+
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
 				return err
 			}
-			res, err := client.RespondToInvitation(cmd.Context(), mbx, ics, partstat)
+			var res *coreapi.PimRsvpResult
+			if message != "" {
+				res, err = client.RespondToMessageInvitation(cmd.Context(), mbx, message, section, partstat)
+			} else {
+				res, err = client.RespondToInvitation(cmd.Context(), mbx, ics, partstat)
+			}
 			if err != nil {
 				return err
 			}
@@ -136,6 +266,8 @@ func newInvitationRespondCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "read the .ics part from a file (default: stdin)")
+	cmd.Flags().StringVar(&message, "message", "", "answer the invitation carried by this message (preferred)")
+	cmd.Flags().StringVar(&section, "section", "", "with --message: the scheduling part's section (default: the server picks it)")
+	cmd.Flags().StringVar(&file, "file", "", "inline form: read the .ics from a file (default: stdin)")
 	return cmd
 }

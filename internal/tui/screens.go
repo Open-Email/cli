@@ -232,6 +232,9 @@ func mailboxesDesc() resourceDesc {
 			{key: "P", label: "P prefs", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				return newScreenPane(ctx, ui, prefsDesc(item.(coreapi.Mailbox)))
 			}},
+			{key: "V", label: "V vacation", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return vacationFormPane(ctx, ui, item.(coreapi.Mailbox))
+			}},
 		},
 	}
 }

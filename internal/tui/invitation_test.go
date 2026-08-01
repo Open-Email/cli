@@ -36,164 +36,91 @@ func TestCalendarPartAbsent(t *testing.T) {
 	}
 }
 
-// RFC 5545 folds long lines by continuing them with a leading space; a scan
-// that does not unfold reads a truncated UID and looks up the wrong event.
-func TestScanICSUnfolds(t *testing.T) {
-	ics := strings.Join([]string{
-		"BEGIN:VCALENDAR",
-		"METHOD:REQUEST",
-		"BEGIN:VEVENT",
-		"UID:abc-123-very-long",
-		" -continued",
-		"SUMMARY:Weekly sync\\, standup",
-		"ORGANIZER;CN=Ann:mailto:ann@x.test",
-		"LOCATION:Room 1\\; upstairs",
-		"DTSTART:20260801T090000Z",
-		"DTEND:20260801T093000Z",
-		"END:VEVENT",
-		"END:VCALENDAR",
-	}, "\r\n")
-	info := scanICS(ics)
-	if info.uid != "abc-123-very-long-continued" {
-		t.Errorf("uid = %q (unfolding failed)", info.uid)
-	}
-	if info.method != "REQUEST" {
-		t.Errorf("method = %q", info.method)
-	}
-	if info.summary != "Weekly sync, standup" {
-		t.Errorf("summary = %q (escaping not reversed)", info.summary)
-	}
-	if info.location != "Room 1; upstairs" {
-		t.Errorf("location = %q", info.location)
-	}
-	// The mailto: prefix is transport, not the address a reader wants shown.
-	if info.organizer != "ann@x.test" {
-		t.Errorf("organizer = %q", info.organizer)
-	}
-	if !strings.Contains(info.dtStart, "(local)") {
-		t.Errorf("a UTC DTSTART should render in local time, got %q", info.dtStart)
-	}
+func loadedPane(t *testing.T, inv *coreapi.MessageInvitation) *invitationPane {
+	t.Helper()
+	p := newInvitationPane(context.Background(), &Options{}, "01M", "01X")
+	p.inv = inv
+	p.setSize(80, 24)
+	return p
 }
 
-// A VTIMEZONE's STANDARD/DAYLIGHT rules each carry their own DTSTART — a 1970
-// rule date — and every mainstream producer emits VTIMEZONE BEFORE the VEVENT.
-// With first-occurrence-wins and no component awareness, the pane showed the
-// rule date as the meeting time and the user answered against it.
-func TestScanICSSkipsVTimezone(t *testing.T) {
-	ics := strings.Join([]string{
-		"BEGIN:VCALENDAR",
-		"METHOD:REQUEST",
-		"BEGIN:VTIMEZONE",
-		"TZID:Europe/Berlin",
-		"BEGIN:DAYLIGHT",
-		"DTSTART:19700329T020000",
-		"TZOFFSETFROM:+0100",
-		"END:DAYLIGHT",
-		"BEGIN:STANDARD",
-		"DTSTART:19701025T030000",
-		"END:STANDARD",
-		"END:VTIMEZONE",
-		"BEGIN:VEVENT",
-		"UID:evt-1@google.com",
-		"SUMMARY:Budget review",
-		"DTSTART;TZID=Europe/Berlin:20260801T100000",
-		"DTEND;TZID=Europe/Berlin:20260801T110000",
-		"END:VEVENT",
-		"END:VCALENDAR",
-	}, "\r\n")
-	info := scanICS(ics)
-	if info.dtStart != "2026-08-01 10:00 Europe/Berlin" {
-		t.Errorf("dtStart = %q — a VTIMEZONE rule date leaked in as the meeting time", info.dtStart)
+// canRespond is the RESPOND endpoint's own acceptance predicate, so gating on it
+// is what makes "the buttons that are drawn will work" true by construction. The
+// previous version guessed from the iTIP METHOD alone and offered an organizer
+// buttons the write then refused with 403 is_organizer.
+func TestInvitationRespondsOnlyWhenTheServerWould(t *testing.T) {
+	addr := "alice@x.test"
+	organizer := &coreapi.MessageInvitation{
+		Section: "2", MyAddress: &addr, IsOrganizer: true, CanRespond: false,
 	}
-	if info.dtEnd != "2026-08-01 11:00 Europe/Berlin" {
-		t.Errorf("dtEnd = %q", info.dtEnd)
+	p := loadedPane(t, organizer)
+	for _, key := range []string{"a", "x", "t"} {
+		next, cmd := p.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		inv := next.(*invitationPane)
+		if inv.submitting || cmd != nil {
+			t.Fatalf("key %q answered an invitation the server would refuse", key)
+		}
+		if !strings.Contains(inv.errMsg, "organizer") {
+			t.Errorf("errMsg = %q — it should say why", inv.errMsg)
+		}
 	}
-	// METHOD is a VCALENDAR-level property: skipping the timezone must not cost
-	// it, since respond() and hints() both gate on it.
-	if info.method != "REQUEST" {
-		t.Errorf("method = %q — skipping VTIMEZONE must not skip calendar-level properties", info.method)
+	if strings.Contains(p.hints(), "a accept") {
+		t.Errorf("hints = %q — buttons must not be advertised when canRespond is false", p.hints())
 	}
-	if info.uid != "evt-1@google.com" || info.summary != "Budget review" {
-		t.Errorf("uid = %q, summary = %q", info.uid, info.summary)
-	}
-}
 
-// The FIRST occurrence wins: a REPLY carries the organizer's UID once, and a
-// later VALARM or nested component must not overwrite what was already read.
-func TestScanICSKeepsFirstValue(t *testing.T) {
-	info := scanICS("UID:first\nSUMMARY:one\nUID:second\nSUMMARY:two\n")
-	if info.uid != "first" || info.summary != "one" {
-		t.Errorf("got uid=%q summary=%q, want the first of each", info.uid, info.summary)
+	answerable := &coreapi.MessageInvitation{Section: "2", MyAddress: &addr, CanRespond: true}
+	for _, key := range []string{"a", "x", "t"} {
+		p := loadedPane(t, answerable)
+		next, cmd := p.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		if !next.(*invitationPane).submitting || cmd == nil {
+			t.Errorf("key %q should answer the invitation", key)
+		}
 	}
-}
-
-// A zoned or floating time is shown as written: resolving a TZID needs the
-// VTIMEZONE this scan does not read, so converting would be a guess.
-func TestFormatICSTimeZoned(t *testing.T) {
-	if got := formatICSTime("20260801T090000", "TZID=Europe/Berlin"); got != "2026-08-01 09:00 Europe/Berlin" {
-		t.Errorf("zoned = %q", got)
-	}
-	if got := formatICSTime("20260801T090000", ""); got != "2026-08-01 09:00" {
-		t.Errorf("floating = %q", got)
-	}
-	if got := formatICSTime("20260801", ""); got != "2026-08-01 (all day)" {
-		t.Errorf("date = %q", got)
-	}
-	// Unparseable values pass through rather than being dropped: showing the
-	// raw value beats showing nothing.
-	if got := formatICSTime("not-a-time", ""); got != "not-a-time" {
-		t.Errorf("passthrough = %q", got)
+	if !strings.Contains(loadedPane(t, answerable).hints(), "a accept") {
+		t.Error("an answerable invitation must advertise its keys")
 	}
 }
 
 // The pane forwards unhandled keys to a viewport whose default keymap binds
 // half-page scrolling to `d` and `u`. The preview pane one level up scrolls with
 // those keys, so binding an RSVP to one of them means a reader scrolling out of
-// habit mails the organizer a DECLINE with no undo.
+// habit mails the organizer a decline with no undo.
 func TestInvitationRsvpKeysAvoidTheViewportKeymap(t *testing.T) {
-	// bubbles/viewport DefaultKeyMap.
-	scroll := []string{"d", "u", "f", "b", "j", "k", " ", "pgup", "pgdown"}
-	ics := "BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:u1\nEND:VEVENT\nEND:VCALENDAR"
-
-	for _, key := range scroll {
-		p := newInvitationPane(context.Background(), &Options{}, "01M", "01X", "2")
-		p.ics, p.info = ics, scanICS(ics)
+	addr := "alice@x.test"
+	for _, key := range []string{"d", "u", "f", "b", "j", "k", " ", "pgup", "pgdown"} {
+		p := loadedPane(t, &coreapi.MessageInvitation{Section: "2", MyAddress: &addr, CanRespond: true})
 		next, _ := p.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
-		inv := next.(*invitationPane)
-		// respond() sets submitting before issuing the request; anything still
-		// false means the key scrolled instead of answering.
-		if inv.submitting {
+		if next.(*invitationPane).submitting {
 			t.Errorf("key %q triggered an RSVP — it is a viewport scroll key", key)
-		}
-	}
-
-	// …and the three that ARE bound still answer.
-	for _, key := range []string{"a", "x", "t"} {
-		p := newInvitationPane(context.Background(), &Options{}, "01M", "01X", "2")
-		p.ics, p.info = ics, scanICS(ics)
-		next, cmd := p.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
-		if !next.(*invitationPane).submitting || cmd == nil {
-			t.Errorf("key %q should answer the invitation", key)
 		}
 	}
 }
 
-// A REPLY or CANCEL has nothing to answer; pressing an RSVP key must say so
-// rather than posting one.
-func TestInvitationRefusesToAnswerAReply(t *testing.T) {
-	ics := "BEGIN:VCALENDAR\nMETHOD:REPLY\nBEGIN:VEVENT\nUID:u1\nEND:VEVENT\nEND:VCALENDAR"
-	p := newInvitationPane(context.Background(), &Options{}, "01M", "01X", "2")
-	p.ics, p.info = ics, scanICS(ics)
-	next, cmd := p.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	inv := next.(*invitationPane)
-	if inv.submitting || cmd != nil {
-		t.Fatal("a METHOD:REPLY must not be answerable")
+// Each refusal gets its own sentence: "not allowed" leaves a reader with nothing
+// to do next.
+func TestCannotRespondReason(t *testing.T) {
+	addr := "alice@x.test"
+	reply, cancel := "REPLY", "CANCEL"
+	cases := []struct {
+		name string
+		inv  coreapi.MessageInvitation
+		want string
+	}{
+		{"organizer", coreapi.MessageInvitation{IsOrganizer: true, MyAddress: &addr}, "you are the organizer"},
+		{"not an attendee", coreapi.MessageInvitation{}, "does not name any of your addresses"},
+		{"a reply", coreapi.MessageInvitation{MyAddress: &addr, Method: &reply}, "someone else's reply"},
+		{"a cancellation", coreapi.MessageInvitation{MyAddress: &addr, Method: &cancel}, "cancels the event"},
 	}
-	if !strings.Contains(inv.errMsg, "REPLY") {
-		t.Errorf("errMsg = %q — it should name what this message actually is", inv.errMsg)
+	for _, tc := range cases {
+		if got := cannotRespondReason(&tc.inv); !strings.Contains(got, tc.want) {
+			t.Errorf("%s: got %q, want it to mention %q", tc.name, got, tc.want)
+		}
 	}
-	if strings.Contains(p.hints(), "a accept") {
-		t.Errorf("hints = %q — a REPLY must not advertise RSVP keys", p.hints())
+	// Organizer wins over every other reading: it is the one that says "edit
+	// your own copy" rather than "you cannot".
+	both := coreapi.MessageInvitation{IsOrganizer: true, Method: &reply}
+	if got := cannotRespondReason(&both); !strings.Contains(got, "organizer") {
+		t.Errorf("organizer should take precedence, got %q", got)
 	}
 }
 
@@ -214,5 +141,60 @@ func TestRsvpOutcomeIsExclusive(t *testing.T) {
 	}
 	if got := rsvpOutcome(nil); got != "answered" {
 		t.Errorf("nil = %q", got)
+	}
+}
+
+// Times come from the server as epoch seconds with the object's timezone already
+// applied — the whole reason the client-side iCalendar scan is gone, since it
+// read a VTIMEZONE rule's 1970 DTSTART as the meeting time.
+func TestInvitationRendering(t *testing.T) {
+	start, end := int64(1785312000), int64(1785315600)
+	summary, org, loc := "Budget review", "boss@acme.test", "Room 1"
+	rrule := "FREQ=WEEKLY"
+	inv := &coreapi.MessageInvitation{
+		Section: "2", Summary: &summary, Organizer: &org, Location: &loc,
+		DTStart: &start, DTEnd: &end, RRule: &rrule,
+		Attendees: []coreapi.PimAttendee{
+			{Email: "a@x.test", CN: "Ann", Partstat: "ACCEPTED"},
+			{Email: "b@x.test", Partstat: "NEEDS-ACTION"},
+		},
+		AttendeeCount: 5,
+	}
+	when := invWhen(inv)
+	if !strings.Contains(when, "→") || when != fmtEpoch(start)+" → "+fmtEpoch(end) {
+		t.Errorf("when = %q", when)
+	}
+	if invWhen(&coreapi.MessageInvitation{}) != "" {
+		t.Error("a dateless invitation must render no When row")
+	}
+
+	att := invAttendees(inv)
+	if !strings.Contains(att, "Ann (accepted)") {
+		t.Errorf("attendees = %q — a real answer should show", att)
+	}
+	if strings.Contains(att, "needs-action") {
+		t.Errorf("attendees = %q — NEEDS-ACTION is the default and says nothing", att)
+	}
+	// The list is truncated to the iTIP fan-out bound, so the real total must
+	// survive or a 5-person meeting reads as a 2-person one.
+	if !strings.Contains(att, "5 total") {
+		t.Errorf("attendees = %q — the real count must survive truncation", att)
+	}
+
+	p := loadedPane(t, inv)
+	view := p.view()
+	for _, want := range []string{"Budget review", "Room 1", "boss@acme.test"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view is missing %q", want)
+		}
+	}
+}
+
+// An RDATE-only series has no RRULE to print; the sentinel must not leak.
+func TestInvitationRdateSeries(t *testing.T) {
+	rrule := "RDATE"
+	p := loadedPane(t, &coreapi.MessageInvitation{Section: "2", RRule: &rrule})
+	if !strings.Contains(p.view(), "on set dates") {
+		t.Errorf("view = %q", p.view())
 	}
 }

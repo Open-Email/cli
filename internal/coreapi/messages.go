@@ -309,6 +309,39 @@ func (c *Client) LearnMessage(ctx context.Context, mailboxID, messageID, class s
 	return out.Status, err
 }
 
+// BatchRestoreEntry is one message's outcome in a batch restore. Message is
+// present iff Status is "restored" (and carries the FRESH label UIDs the
+// restore minted, as IMAP requires). An id that is missing, already live, or
+// already purged is "not_found" for itself and does not refuse the others.
+type BatchRestoreEntry struct {
+	ID      string       `json:"id"`
+	Status  string       `json:"status"` // restored | not_found
+	Message *MessageMeta `json:"message,omitempty"`
+}
+
+// BatchRestoreResult carries per-message outcomes in REQUEST order, so a caller
+// can pair them with the ids it sent without matching on id.
+type BatchRestoreResult struct {
+	Results []BatchRestoreEntry `json:"results"`
+}
+
+// RestoreMessages restores up to 200 expunged messages in ONE call — the undo
+// of a batch delete. The point is atomicity: N per-message calls can half-fail
+// and leave the trash in a state nobody chose, while this lands in a single
+// commit against the mailbox. Each message is re-attached under its pre-expunge
+// labels, or INBOX if none survive.
+func (c *Client) RestoreMessages(ctx context.Context, mailboxID string, ids []string) (*BatchRestoreResult, error) {
+	var out BatchRestoreResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost, path: c.messagesPath(mailboxID) + "/restore",
+		body: mustJSON(map[string]any{"ids": ids}), contentType: "application/json",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // EmptyTrash permanently purges every message currently in the trash.
 func (c *Client) EmptyTrash(ctx context.Context, mailboxID string) (int64, error) {
 	q := url.Values{}
