@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"golang.org/x/term"
 )
@@ -122,15 +121,4 @@ func int64Or(p *int64, dash string) string {
 		return dash
 	}
 	return fmt.Sprintf("%d", *p)
-}
-
-// indentLines prefixes every non-empty line of s.
-func indentLines(s, prefix string) string {
-	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	for i, l := range lines {
-		if l != "" {
-			lines[i] = prefix + l
-		}
-	}
-	return strings.Join(lines, "\n")
 }

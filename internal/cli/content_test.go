@@ -30,7 +30,7 @@ func TestPrintContent(t *testing.T) {
 			{Section: "3", Filename: "logo.png", ContentType: "image/png", Size: 800, Inline: true, ContentID: strptr("<logo@x>")},
 		},
 	}
-	printContent(&buf, p, "mbx", "m1", c)
+	printContent(&buf, p, "m1", c)
 	out := buf.String()
 
 	for _, want := range []string{

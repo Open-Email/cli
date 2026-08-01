@@ -103,7 +103,7 @@ func vacationEditPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cur
 						return "", nil, fmt.Errorf("the auto-reply changed elsewhere while this was open — reopen and re-apply")
 					}
 					if ae.Code == "invalid_window" {
-						return "", nil, fmt.Errorf("From must be before Until")
+						return "", nil, fmt.Errorf("the From date must be before the Until date")
 					}
 				}
 				return "", nil, err

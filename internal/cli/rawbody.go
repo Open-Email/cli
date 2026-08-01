@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/spf13/cobra"
 )
 
 // openRawBody yields a re-openable reader + its exact byte length for a streaming
@@ -50,10 +48,4 @@ func openRawBody(path string) (getBody func() (io.ReadCloser, error), length int
 	}
 	get := func() (io.ReadCloser, error) { return os.Open(tmpPath) }
 	return get, n, rm, nil
-}
-
-// rawBodyPath returns the --file value, or "" to read stdin.
-func rawBodyPath(cmd *cobra.Command, flag string) string {
-	v, _ := cmd.Flags().GetString(flag)
-	return v
 }

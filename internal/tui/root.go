@@ -118,7 +118,7 @@ func (m *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.stack = m.stack[:len(m.stack)-1]
 			m.sizeTop()
 		}
-		return m.forwardTop(refreshMsg{flash: msg.flash})
+		return m.forwardTop(refreshMsg(msg))
 
 	case tea.KeyMsg:
 		return m.updateKey(msg)

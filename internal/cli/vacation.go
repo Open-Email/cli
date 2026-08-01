@@ -72,21 +72,18 @@ func (v *vacationContent) register(cmd *cobra.Command) {
 // than resetting anyone's reply period with a no-op PUT.
 func (v *vacationContent) apply(cmd *cobra.Command, in *coreapi.VacationInput) (bool, error) {
 	changed := false
-	str := func(name, value string, dst **string) error {
+	str := func(name, value string, dst **string) {
 		if !cmd.Flags().Changed(name) {
-			return nil
+			return
 		}
 		changed = true
 		if value == "" {
 			*dst = nil // an explicitly emptied flag clears the field
-			return nil
+			return
 		}
 		*dst = &value
-		return nil
 	}
-	if err := str("subject", v.subject, &in.Subject); err != nil {
-		return false, err
-	}
+	str("subject", v.subject, &in.Subject)
 	// A body given by file wins over the inline flag, matching `compose`.
 	text, err := vacationBody(cmd, "text", v.text, v.textFile)
 	if err != nil {

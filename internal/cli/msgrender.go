@@ -145,7 +145,7 @@ func bodySummary(b *coreapi.ContentBody) string {
 
 // printContent renders the structured content view (headers + bodies +
 // attachments) in the FIELD/VALUE + table house style.
-func printContent(w io.Writer, p *Printer, mbx, id string, c *coreapi.ContentResult) {
+func printContent(w io.Writer, p *Printer, id string, c *coreapi.ContentResult) {
 	h := c.Headers
 	rows := [][]string{
 		{"From", fmtContentAddrs(h.From)},

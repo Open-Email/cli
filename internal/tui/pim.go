@@ -40,8 +40,7 @@ func pimScopeFor(mbx coreapi.Mailbox) coreapi.PimScope {
 // listing; i shows the collection detail (sync token etc.).
 func pimCollectionsDesc(mbx coreapi.Mailbox, kind coreapi.PimKind) resourceDesc {
 	scope := pimScopeFor(mbx)
-	var desc resourceDesc
-	desc = resourceDesc{
+	desc := resourceDesc{
 		key:  string(kind) + ":" + mbx.ID,
 		name: pimTitle(kind) + " — " + mailboxLabel(&mbx),
 		columns: []column{
@@ -237,13 +236,22 @@ func pimContentKVs(body io.Reader) []kv {
 	kvs := []kv{{}, {v: "Content"}}
 	sc := bufio.NewScanner(io.LimitReader(body, 64<<10))
 	n := 0
+	truncated := false
 	for sc.Scan() {
 		if n >= maxLines {
-			kvs = append(kvs, kv{k: " ", v: "… truncated"})
+			truncated = true
 			break
 		}
 		kvs = append(kvs, kv{k: " ", v: sc.Text()})
 		n++
+	}
+	// A read error or an over-long line ends Scan early; say so rather than
+	// presenting a silently short object as the whole content.
+	if !truncated && sc.Err() != nil {
+		truncated = true
+	}
+	if truncated {
+		kvs = append(kvs, kv{k: " ", v: "… truncated"})
 	}
 	return kvs
 }

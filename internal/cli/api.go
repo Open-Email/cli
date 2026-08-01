@@ -98,7 +98,7 @@ func newAPICmd(a *app) *cobra.Command {
 				return err
 			}
 			a.out.Msgf("%s %s → %d", method, path, resp.Status)
-			writeAPIBody(a.out, resp.Body)
+			writeAPIBody(resp.Body)
 			if resp.Status >= 400 {
 				return silentExit(1)
 			}
@@ -124,7 +124,7 @@ func normalizeAPIPath(p string) string {
 }
 
 // writeAPIBody pretty-prints a JSON body (indented) or streams it verbatim.
-func writeAPIBody(p *Printer, body []byte) {
+func writeAPIBody(body []byte) {
 	if len(body) == 0 {
 		return
 	}

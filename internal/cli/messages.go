@@ -215,7 +215,7 @@ func newMessageContentCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			a.out.Emit(c, func(w io.Writer) { printContent(w, a.out, mbx, args[0], c) })
+			a.out.Emit(c, func(w io.Writer) { printContent(w, a.out, args[0], c) })
 			return nil
 		},
 	}
