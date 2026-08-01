@@ -290,6 +290,25 @@ func (c *Client) RestoreMessage(ctx context.Context, mailboxID, messageID string
 	return &out, nil
 }
 
+// LearnMessage teaches the spam filter from a message: class "spam" marks it
+// junk, "ham" marks it legitimate. The sample trains THIS mailbox's personal
+// overlay, so one mailbox's idea of junk never becomes another's.
+//
+// Fire-and-forget by design — a 202 means the sample was accepted for
+// submission, not that the filter has learned it, and repeated calls on the
+// same message dedupe filter-side. 503 learning_unavailable when the deployment
+// has no spam filter configured at all.
+func (c *Client) LearnMessage(ctx context.Context, mailboxID, messageID, class string) (string, error) {
+	var out struct {
+		Status string `json:"status"`
+	}
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost, path: c.messagePath(mailboxID, messageID) + "/learn",
+		body: mustJSON(map[string]string{"class": class}), contentType: "application/json",
+	}, &out)
+	return out.Status, err
+}
+
 // EmptyTrash permanently purges every message currently in the trash.
 func (c *Client) EmptyTrash(ctx context.Context, mailboxID string) (int64, error) {
 	q := url.Values{}

@@ -13,12 +13,81 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// bodyFlags are the message-body inputs three verbs share — `compose` (send),
+// `threads reply` (send, threaded) and `messages compose` (file without
+// sending). They differ in envelope and destination, never in how a body,
+// attachment or extra header is expressed, so that part lives here once.
+type bodyFlags struct {
+	text     string
+	bodyFile string
+	htmlBody string
+	htmlFile string
+	attach   []string
+	header   []string
+}
+
+func (b *bodyFlags) register(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.StringVar(&b.text, "text", "", "plain-text body")
+	f.StringVar(&b.bodyFile, "body-file", "", "read the plain-text body from a file (- for stdin)")
+	f.StringVar(&b.htmlBody, "html", "", "HTML body")
+	f.StringVar(&b.htmlFile, "html-file", "", "read the HTML body from a file (- for stdin)")
+	f.StringArrayVar(&b.attach, "attach", nil, "attach a file (staged via an upload), repeatable")
+	f.StringArrayVar(&b.header, "header", nil, "extra header as \"Name: value\", repeatable")
+}
+
+// bodies resolves the text and HTML parts. require makes an empty message an
+// error — true for anything that gets sent, since a body is the whole point.
+func (b *bodyFlags) bodies(cmd *cobra.Command, require bool) (text, html *string, err error) {
+	text, err = composeBody(b.text, b.bodyFile, cmd.Flags().Changed("text"))
+	if err != nil {
+		return nil, nil, err
+	}
+	html, err = composeBody(b.htmlBody, b.htmlFile, cmd.Flags().Changed("html"))
+	if err != nil {
+		return nil, nil, err
+	}
+	if require && text == nil && html == nil {
+		return nil, nil, usageError(errors.New("need a body — pass --text, --body-file, --html, or --html-file"))
+	}
+	return text, html, nil
+}
+
+func (b *bodyFlags) headers() (map[string]string, error) {
+	if len(b.header) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(b.header))
+	for _, h := range b.header {
+		name, value, ok := strings.Cut(h, ":")
+		if !ok || strings.TrimSpace(name) == "" {
+			return nil, usageError(fmt.Errorf("invalid --header %q: expected Name: value", h))
+		}
+		out[strings.TrimSpace(name)] = strings.TrimSpace(value)
+	}
+	return out, nil
+}
+
+// stage uploads every --attach file. It runs before the message is submitted so
+// a failed upload cannot leave a half-composed message sent.
+func (b *bodyFlags) stage(cmd *cobra.Command, a *app, client *coreapi.Client, mailboxID string) ([]coreapi.SendAttachment, error) {
+	var out []coreapi.SendAttachment
+	for _, path := range b.attach {
+		att, err := uploadAttachment(cmd, a, client, mailboxID, path)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *att)
+	}
+	return out, nil
+}
+
 func newComposeCmd(a *app) *cobra.Command {
 	var (
-		from, subject, text, htmlBody, bodyFile, htmlFile string
-		to, cc, bcc, replyTo, attach, header              []string
-		inReplyTo                                         string
-		references                                        []string
+		body                     bodyFlags
+		from, subject, inReplyTo string
+		to, cc, bcc, replyTo     []string
+		references               []string
 	)
 	cmd := &cobra.Command{
 		Use:     "compose",
@@ -63,42 +132,19 @@ func newComposeCmd(a *app) *cobra.Command {
 				*spec.dst = list
 			}
 
-			body, err := composeBody(text, bodyFile, cmd.Flags().Changed("text"))
-			if err != nil {
+			if req.Text, req.HTML, err = body.bodies(cmd, true); err != nil {
 				return err
 			}
-			req.Text = body
-			html, err := composeBody(htmlBody, htmlFile, cmd.Flags().Changed("html"))
-			if err != nil {
+			if req.Headers, err = body.headers(); err != nil {
 				return err
-			}
-			req.HTML = html
-			if req.Text == nil && req.HTML == nil {
-				return usageError(errors.New("need a body — pass --text, --body-file, --html, or --html-file"))
-			}
-			if len(header) > 0 {
-				req.Headers = map[string]string{}
-				for _, h := range header {
-					name, value, ok := strings.Cut(h, ":")
-					if !ok || strings.TrimSpace(name) == "" {
-						return usageError(fmt.Errorf("invalid --header %q: expected Name: value", h))
-					}
-					req.Headers[strings.TrimSpace(name)] = strings.TrimSpace(value)
-				}
 			}
 
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
 				return err
 			}
-			// Stage every attachment before sending: a failed upload must not
-			// leave a half-composed message sent.
-			for _, path := range attach {
-				att, uerr := uploadAttachment(cmd, a, client, mbx, path)
-				if uerr != nil {
-					return uerr
-				}
-				req.Attachments = append(req.Attachments, *att)
+			if req.Attachments, err = body.stage(cmd, a, client, mbx); err != nil {
+				return err
 			}
 
 			res, raw, err := client.SendMessage(cmd.Context(), mbx, req)
@@ -123,12 +169,7 @@ func newComposeCmd(a *app) *cobra.Command {
 	cmd.Flags().StringArrayVar(&bcc, "bcc", nil, "Bcc recipient, repeatable (appears only on your Sent copy)")
 	cmd.Flags().StringArrayVar(&replyTo, "reply-to", nil, "Reply-To address, repeatable")
 	cmd.Flags().StringVar(&subject, "subject", "", "subject")
-	cmd.Flags().StringVar(&text, "text", "", "plain-text body")
-	cmd.Flags().StringVar(&bodyFile, "body-file", "", "read the plain-text body from a file (- for stdin)")
-	cmd.Flags().StringVar(&htmlBody, "html", "", "HTML body")
-	cmd.Flags().StringVar(&htmlFile, "html-file", "", "read the HTML body from a file (- for stdin)")
-	cmd.Flags().StringArrayVar(&attach, "attach", nil, "attach a file (staged via an upload), repeatable")
-	cmd.Flags().StringArrayVar(&header, "header", nil, "extra header as \"Name: value\", repeatable")
+	body.register(cmd)
 	cmd.Flags().StringVar(&inReplyTo, "in-reply-to", "", "In-Reply-To message-id header")
 	cmd.Flags().StringArrayVar(&references, "references", nil, "References message-id, repeatable")
 	return cmd

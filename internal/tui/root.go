@@ -37,8 +37,15 @@ func newRoot(ctx context.Context, opts Options) *rootModel {
 		{key: "patterns", label: "Patterns"},
 		{key: "keys", label: "API Keys"},
 	}
+	// System-only screens. Suppressions and DKIM are refused with
+	// system_credentials_required for anyone else, so offering them would be a
+	// menu entry that can only ever answer 403.
 	if opts.Role == coreapi.PrincipalSystem {
-		items = append(items, sideItem{key: "accounts", label: "Accounts"})
+		items = append(items,
+			sideItem{key: "accounts", label: "Accounts"},
+			sideItem{key: "suppressions", label: "Suppressions"},
+			sideItem{key: "dkim", label: "DKIM"},
+		)
 	}
 	m := &rootModel{
 		ctx:   ctx,

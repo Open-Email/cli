@@ -60,7 +60,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | Group | What it does |
 |---|---|
 | `login` / `logout` / `whoami` / `status` | auth lifecycle and identity |
-| `ui` (alias `console`) | full-screen console: sidebar + tables for mailboxes/domains/routes/patterns/keys/accounts with create/edit forms, confirm-gated deletes, and group-member editing; drill into a mailbox for a live message list (events WebSocket), compose-and-send, previews, flag toggles, label editing, and a trash view with restore |
+| `ui` (alias `console`) | full-screen console: sidebar + tables for mailboxes/domains/routes/patterns/keys/accounts (plus Suppressions and DKIM on a system key) with create/edit forms, confirm-gated deletes, and group-member editing. A mailbox row drills into credentials, filters (and Sieve scripts behind them), calendars, addressbooks, pickups and preferences; enter opens a live message list (events WebSocket) with compose, reply, search, previews, invitation RSVP, junk training, flag toggles, label editing, and a trash view with restore |
 | `mailboxes` | create/list/get/update/delete/restore, `use` (set default) |
 | `keys` | account API keys: create/list/revoke |
 | `accounts` | accounts (create/list are system-only), get; `create --with-key` also mints the account's first API key |
@@ -69,9 +69,9 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's login credentials (app-passwords; `--expires-in` for session-scoped ones, @-free usernames for mail-less identities) |
 | `identities` | `get [id]` — the durable identity and its bound stores (mail + PIM facets with usage); a calendar-only identity shows no mail facet |
-| `messages` | list/get/`raw`/`append`/`flag`/`label`/`move`/`delete`/`restore`/`trash empty`/`mime` |
+| `messages` | list/get/`raw`/`append`/`compose` (file from fields without sending — drafts, imports)/`junk`/`not-junk` (train this mailbox's spam filter)/`flag`/`label`/`move`/`delete`/`restore`/`trash empty`/`mime` |
 | `labels` | list/create/rename/delete/`messages`/`expunge` |
-| `threads` | list, get (with reply context) |
+| `threads` | list, get (with reply context), `reply` — the server derives recipient, subject and threading headers from the conversation |
 | `search [query]` | full-text search, or a structured filter search when any of `--from/--to/--before/--after/--unread/--has-attachment/--sort/…` is passed (`--snippet` for highlighted excerpts, `--total` for the match count) |
 | `rules` | filter rules — the simple alternative to writing Sieve: `list`/`get`/`put`/`delete`, plus `add`/`remove`/`enable`/`disable`/`move` edits and `script` (the Sieve they compile to) |
 | `sieve` | `scripts {list,get,put,delete,rename}`, `activate`/`deactivate`/`active`, `check`, `capabilities` |
@@ -85,7 +85,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
 | `deliver` | `check --to <addr>` (RCPT pre-flight), `inbound` (inject a test message) |
 | `api` | call any route directly (escape hatch), `--list-routes` |
-| `admin` | operator-only: `reindex`, `verify-login`, `pickup ingest\|report` (system keys) |
+| `admin` | operator-only (system keys): `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys) |
 | `completion` / `upgrade` / `version` | shells, upgrade help, version |
 
 Run `openemail <group> --help` for the full flag set of any command.
@@ -138,6 +138,20 @@ openemail search --unread --has-attachment --label INBOX --position 25
 openemail compose --from me@example.com --to a@x.com --to b@x.com \
   --cc c@x.com --subject "Report" --text "See attached." --attach report.pdf
 
+# Reply to a conversation. Prefer this over `compose`: the recipient, the
+# "Re: …" subject and the In-Reply-To/References chain are derived server-side,
+# which is where every mail client's threading quietly breaks.
+openemail threads reply <threadId> --text "On it, thanks."
+openemail threads reply <threadId> --body-file reply.txt --attach notes.pdf --show-context
+
+# File a message without sending it — a draft, an import, a seeded thread.
+openemail messages compose --from me@example.com --to you@example.com \
+  --subject "Half written" --text "…" --draft        # flags draft,seen into Drafts
+
+# Teach this mailbox's spam filter. Training only: nothing is moved or flagged.
+openemail messages junk <id>
+openemail messages not-junk <id>
+
 # Manage Sieve filters.
 openemail sieve check -f filter.sieve            # dry-run compile (exit 1 if invalid)
 openemail sieve scripts put main -f filter.sieve
@@ -175,6 +189,16 @@ openemail identities get <id>                     # facets: pim bound, no mail s
 
 # Rotate a webhook route's URL while KEEPING its signing secret (omit the secret).
 openemail routes update hook@example.com --type webhook --webhook-url https://new/hook
+
+# Operator: is an address on the do-not-send list, and why? (system key)
+openemail admin suppressions get bounced@example.com
+openemail admin suppressions list --all
+openemail admin suppressions lift bounced@example.com   # only once the cause is fixed
+
+# Operator: what is signing outbound mail, and what must a customer publish?
+openemail admin dkim status --domain example.com   # paste-ready CNAME rows
+openemail admin dkim rotate                        # stage the next key (7-day soak)
+openemail admin dkim activate                      # flip early, once DNS resolves
 
 # Hit any endpoint the CLI doesn't wrap yet.
 openemail api GET /domains/example.com/traffic --query range=7d

@@ -106,6 +106,12 @@ func contractPairings() []pairing {
 		{val: UploadResult{}, comp: "UploadResult"},
 		{val: SendResult{}, comp: "SendResult"},
 		{val: SendRecipientResult{}, comp: "SendRecipientResult"},
+		// Operator surfaces (system-only).
+		{val: Suppression{}, comp: "Suppression"},
+		{val: DkimStatus{}, comp: "DkimStatus"},
+		{val: DkimKey{}, comp: "DkimKey"},
+		{val: DkimCname{}, comp: "DkimCname"},
+		{val: DkimRotated{}, comp: "DkimRotated"},
 		// Structured search. EmailSearchRequest/Filter are free-form on the wire
 		// (additionalProperties), so only the response shapes are pinned.
 		{val: EmailSearchResult{}, comp: "EmailSearchResult"},

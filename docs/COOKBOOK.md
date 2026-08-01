@@ -61,6 +61,64 @@ forward / group / relay — the final outcome shows up in the traffic log). Each
 send generates a ULID `X-Delivery-Id` and reuses it on retry, so a 5xx never
 duplicates the message.
 
+## Reply to a conversation
+
+```sh
+# Everything but the body is derived from the thread.
+openemail threads reply 01THREADID… --text "On it, thanks."
+
+# See who is about to be answered before it goes.
+openemail threads reply 01THREADID… --body-file reply.txt --show-context
+
+# With an attachment, and without keeping a Sent copy.
+openemail threads reply 01THREADID… --text "Signed." --attach contract.pdf --no-save
+```
+
+Prefer this over `compose` whenever a reply is what you mean. There is no `--to`,
+no `--subject` and no `--in-reply-to` on purpose: the answerable address (Reply-To
+before From, and the *recipient* when the newest member is your own Sent copy),
+the `Re: …` subject, and a trimmed `References` chain are all computed server-side.
+Rebuilding those client-side is the classic mail-client bug — a broken chain is
+invisible to the sender and only shows up as someone else's client failing to
+group the conversation.
+
+`--subject` overrides the derived subject, which **renames the thread** for the
+recipient; pass it only when you mean that. A thread with nobody to answer (a
+null-sender bounce, say) is refused with `no_reply_target` rather than sent into
+the void. The result is the same per-recipient shape as `compose`.
+
+## File a message without sending it
+
+```sh
+# A draft: flagged draft+seen and filed into Drafts.
+openemail messages compose --from alice@example.com --to bob@example.com \
+  --subject "Half written" --text "…" --draft
+
+# An import into an arbitrary label, backdated.
+openemail messages compose --from old@example.com --to alice@example.com \
+  --subject "From the archive" --body-file old.txt \
+  --label Archive --internaldate 1600000000
+```
+
+Routing, relay and the Sent copy are all bypassed — nothing leaves the platform.
+Use `openemail compose` when the message is meant to go somewhere, and
+`openemail messages append` when you already hold raw RFC 5322 bytes rather than
+fields. An explicit `--label` wins over `--draft`'s default.
+
+## Train the spam filter
+
+```sh
+openemail messages junk 01MSGID…       # this is spam
+openemail messages not-junk 01MSGID…   # this was wrongly classified
+```
+
+The sample trains **this mailbox's** personal overlay, so one person's idea of
+junk never becomes another's. It is training only: nothing is moved, flagged or
+deleted — pair it with `openemail messages move` if you also want it out of the
+inbox. Accepted fire-and-forget (a success means submitted, not learned), and
+repeated calls on the same message dedupe filter-side. A deployment with no spam
+filter configured answers `learning_unavailable`.
+
 ## Read a message and download an attachment
 
 ```sh
@@ -93,17 +151,34 @@ to `content` for the structured object.
 # `D` on the Mailboxes screen shows restorable tombstones, where `u` restores.
 # Open a mailbox for a LIVE message list (fed by the events WebSocket): enter
 # previews, `c` composes a message FROM that mailbox (same semantics as
-# `openemail send` compose mode, with a Save-to-Sent toggle), `t` toggles read,
-# `!` toggles flagged, `l` edits labels (a move is one atomic patch), `d` moves
-# to trash, `T` opens the trash view where `u` restores.
+# `openemail send` compose mode, with a Save-to-Sent toggle), `R` replies to the
+# selected message's thread, `/` opens a search form, `t` toggles read,
+# `!` toggles flagged, `l` edits labels (a move is one atomic patch), `s`/`S`
+# report junk / not-junk, `d` moves to trash, `T` opens the trash view where
+# `u` restores. In a preview, `i` opens a calendar invitation to RSVP.
 openemail ui
 ```
 
+A mailbox row on the Mailboxes screen drills into its sub-resources: `C`
+credentials, `F` filter rules (and `s` from there for the Sieve scripts behind
+them), `c` calendars, `b` addressbooks, `p` POP3 pickups, `P` preferences. With a
+system key the sidebar also carries **Suppressions** (the do-not-send list, `u`
+lifts an entry) and **DKIM** (key generations, `n` stages a rotation, `A`
+activates a staged key).
+
+Two screens deliberately state a verdict rather than just listing rows, because
+the row set alone does not answer the question people open them for: Filters and
+Sieve both say whether anything is *actually* filtering delivered mail (only one
+script can be active across both surfaces), and Pickups flags sources core has
+auto-disabled — a broken pickup is otherwise silent, mail just stops arriving.
+
 Console mutations mirror the flag commands' semantics exactly — create-and-bind
 for mailbox addresses, atomic destination replace for routes/patterns, webhook
-secrets preserved when left empty on edit. The rare destructive operations
-(domain delete, purges, trash empty) stay CLI-only on purpose. Needs an account
-or system key (a mailbox app-password can't browse the directory).
+secrets preserved when left empty on edit, compare-and-swap on a preferences
+edit. The rare destructive operations (domain delete, purges, trash empty,
+forcing a DKIM activation past the resolver check) stay CLI-only on purpose.
+Needs an account or system key (a mailbox app-password can't browse the
+directory).
 
 ## Tail live events
 
@@ -323,3 +398,53 @@ openemail admin verify-login alice@example.com --password …   # check IMAP/SMT
 openemail admin reindex <mailboxId>                            # rebuild the FTS index
 openemail --json api GET /accounts | jq '.accounts[].id'      # any route + jq
 ```
+
+## "Why is mail to this address not going out?" (operator)
+
+```sh
+openemail admin suppressions get bounced@example.com   # 404 here means clear to send
+openemail admin suppressions list --all                 # the whole do-not-send list
+openemail admin suppressions lift bounced@example.com   # once the cause is fixed
+```
+
+The suppression list is **deployment-global**: an address on it is refused for
+every account, because the evidence is a receiver's own hard bounce or spam
+complaint rather than a per-tenant setting. Rows are only ever written by the
+feedback-loop consumer, which is why there is no `add` verb. `get` on a clear
+address is a normal "not suppressed" answer, not a failure.
+
+Lift with care. A hard bounce that is still a hard bounce simply re-suppresses on
+the next attempt, and a lifted complaint means mailing someone who asked you to
+stop — the exact thing that damages a sending reputation. The prompt shows the
+recorded reason and diagnostic first; `--yes` skips it.
+
+## Check what is signing outbound mail (operator)
+
+```sh
+openemail admin dkim status                        # generations, active selector, alarm
+openemail admin dkim status --domain example.com   # paste-ready customer CNAME rows
+openemail admin dkim rotate                        # stage the next key
+openemail admin dkim activate                      # flip early, once DNS resolves
+```
+
+One shared key signs all outbound mail, with `d=` set to each sender's own domain
+so DMARC still aligns; customers publish two CNAMEs once and never touch DNS
+again, because rotation happens on our side by alternating selectors. The cycle
+is automatic (generate + publish every 30 days, 7-day soak, then flip) — these
+commands observe it, and `rotate`/`activate` only make it happen sooner.
+
+`rotate` does not change what is signing today: the current key keeps signing
+through the soak. On a deployment with no keys at all it bootstraps the first
+one, active immediately. A `rotate` that races the scheduler answers `409
+rotation_in_progress`, which is the scheduler having got there first rather than
+an error to work around.
+
+`activate` is refused with `dkim_dns_not_ready` while the staged TXT is not
+resolver-visible. `--force` skips that check and signs with a key receivers may
+not be able to fetch — every message sent before the record propagates fails DKIM
+and DMARC with it. Use it only when you know the DoH view is stale rather than
+the record missing.
+
+Unset config (`DKIM_ZONE_ID` / `DKIM_DNS_ROOT` / `CF_DNS_API_TOKEN` / `DKIM_KEK`)
+leaves the whole feature inert: `status` says so plainly, and mail relays
+unsigned rather than deferring.

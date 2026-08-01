@@ -90,6 +90,13 @@ func (p *previewPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		if msg.String() == "esc" {
 			return p, popPane
 		}
+		// `i` opens the scheduling part, when there is one to open.
+		if msg.String() == "i" {
+			if part := calendarPart(p.content); part != nil {
+				return p, pushPane(newInvitationPane(p.ctx, p.ui, p.mailboxID, p.meta.ID, part.Section))
+			}
+			return p, nil
+		}
 		var cmd tea.Cmd
 		p.vp, cmd = p.vp.Update(msg)
 		return p, cmd
@@ -126,6 +133,17 @@ func (p *previewPane) setContent() {
 	hdr("Cc", fmtAddrs(c.Headers.Cc))
 	hdr("Date", fmtEpochPtr(c.Headers.Date))
 	hdr("Subject", strOr(c.Headers.Subject, "(no subject)"))
+	// A scheduling part is the one attachment that is not really an attachment:
+	// it is something to act on. Say so above the body, or it reads as an
+	// "invite.ics" file nobody opens.
+	//
+	// The wording stops at "open it": only the content TYPE is known here, and a
+	// METHOD:REPLY (someone declining YOUR meeting) or METHOD:CANCEL carries the
+	// same type while having nothing to answer. Promising an RSVP the pane then
+	// refuses would be worse than saying less.
+	if part := calendarPart(c); part != nil {
+		fmt.Fprintf(&b, "\n  %s\n", stLive.Render(truncate("📅 Calendar item — press i to open it", max(10, w-4))))
+	}
 	fmt.Fprintf(&b, "\n%s\n\n", stDim.Render(strings.Repeat("─", max(4, w-2))))
 
 	switch {
@@ -173,7 +191,12 @@ func (p *previewPane) title() string {
 	return truncate(strOr(p.meta.Subject, "(no subject)"), 32)
 }
 
-func (p *previewPane) hints() string       { return "↑/↓ scroll · esc back" }
+func (p *previewPane) hints() string {
+	if calendarPart(p.content) != nil {
+		return "i calendar · ↑/↓ scroll · esc back"
+	}
+	return "↑/↓ scroll · esc back"
+}
 func (p *previewPane) capturesInput() bool { return false }
 func (p *previewPane) close()              {}
 

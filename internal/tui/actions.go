@@ -961,3 +961,57 @@ func composeFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox) pane
 		title: "Compose — from " + strOr(mbx.PrimaryAddress, mbx.ID), build: build, submit: submit,
 	})
 }
+
+// replyFormPane answers a thread. There is no To field and no subject field on
+// purpose: core derives the recipient, the "Re: …" subject and the
+// In-Reply-To/References chain from the conversation itself. Rebuilding those
+// client-side is how threading quietly breaks, so the form collects only what
+// the user actually writes.
+func replyFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, m coreapi.MessageMeta, threadID string) pane {
+	var (
+		body       string
+		save       = true
+		deliveryID = compose.NewDeliveryID()
+	)
+	build := func() *huh.Form {
+		return huh.NewForm(huh.NewGroup(
+			huh.NewText().Title("Reply").Lines(10).
+				Description("recipient, subject and threading headers come from the conversation").
+				Value(&body).Validate(required("reply")),
+			huh.NewSelect[bool]().Title("Send").
+				Description("enter sends · esc cancels").
+				Options(
+					huh.NewOption("send and save a copy to Sent", true),
+					huh.NewOption("send without a Sent copy", false),
+				).
+				Value(&save),
+		))
+	}
+	submit := func(sctx context.Context, c *coreapi.Client) (string, pane, error) {
+		text := body
+		res, _, err := c.ReplyToThread(sctx, mbx.ID, threadID,
+			coreapi.ThreadReplyRequest{Text: &text},
+			coreapi.SendOptions{Save: &save, DeliveryID: deliveryID})
+		if err != nil {
+			return "", nil, err
+		}
+		// The reply has one recipient, but the result is the per-recipient
+		// shape: report the actual outcome rather than a blanket "sent".
+		for _, r := range res.Recipients {
+			if r.Status == "failed" {
+				return "", nil, fmt.Errorf("reply to %s failed: %s", r.Address, r.Error)
+			}
+		}
+		flash := "replied"
+		if len(res.Recipients) > 0 {
+			flash = "replied to " + res.Recipients[0].Address + " — " + res.Recipients[0].Status
+		}
+		if res.SentCopy != "" && res.SentCopy != "over_quota" {
+			flash += " · Sent copy stored"
+		}
+		return flash, nil, nil
+	}
+	return newFormPane(ctx, ui, formSpec{
+		title: "Reply — " + truncate(strOr(m.Subject, "(no subject)"), 40), build: build, submit: submit,
+	})
+}

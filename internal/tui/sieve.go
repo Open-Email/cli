@@ -1,0 +1,221 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/Open-Email/cli/internal/coreapi"
+	"github.com/charmbracelet/huh"
+)
+
+// rulesScriptName is the reserved script the JSON rules document compiles into.
+// Core write-protects it on the Sieve surface, so the console must not offer to
+// edit or rename it — the Filters screen is where that document is managed.
+const rulesScriptName = "openemail.rules"
+
+// sieveDesc lists one mailbox's Sieve scripts. At most one is ACTIVE, and that
+// is the whole point of the screen: which script (if any) actually filters
+// delivered mail. Everything else is storage.
+//
+// Authoring stays CLI-side — a Sieve editor is a text editor, not a listing —
+// so the console owns what a listing is good at: see the active one, switch it,
+// rename, delete, and read a script's source.
+func sieveDesc(mbx coreapi.Mailbox) resourceDesc {
+	st := &sieveScreenState{}
+	return resourceDesc{
+		key:  "sieve:" + mbx.ID,
+		name: "Sieve scripts — " + mailboxLabel(&mbx),
+		summary: func(w int) []string {
+			return st.summaryLines(w)
+		},
+		columns: []column{
+			{title: "NAME", flex: true},
+			{title: "ACTIVE", width: 6},
+			{title: "OWNER", width: 12},
+			{title: "UPDATED", width: 16},
+		},
+		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
+			scripts, err := c.ListSieveScripts(ctx, mbx.ID)
+			if err != nil {
+				return nil, "", err
+			}
+			st.set(scripts)
+			rows := make([]rowData, len(scripts))
+			for i, s := range scripts {
+				rows[i] = rowData{
+					cells: []string{s.Name, yn(s.Active), sieveOwner(s.Name), fmtEpoch(s.UpdatedAt)},
+					item:  s,
+				}
+			}
+			return rows, "", nil // scripts are unpaginated
+		},
+		detail: func(item any) []kv {
+			s := item.(coreapi.SieveScript)
+			return []kv{
+				{k: "name", v: s.Name},
+				{k: "active", v: yn(s.Active)},
+				{k: "owner", v: sieveOwner(s.Name)},
+				{k: "updated", v: fmtEpoch(s.UpdatedAt)},
+			}
+		},
+		// The source is what a reader actually came for, so the detail pane
+		// fetches it rather than making them drop to the CLI.
+		extra: func(ctx context.Context, c *coreapi.Client, item any) ([]kv, error) {
+			s := item.(coreapi.SieveScript)
+			body, err := c.GetSieveScript(ctx, mbx.ID, s.Name)
+			if err != nil {
+				return nil, err
+			}
+			kvs := []kv{{}, {v: "Source"}}
+			for _, line := range strings.Split(strings.TrimRight(body.Script, "\n"), "\n") {
+				kvs = append(kvs, kv{v: line})
+			}
+			return kvs, nil
+		},
+		actions: []action{
+			{key: "a", label: "a activate", needsRow: true, do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
+				s := item.(coreapi.SieveScript)
+				if s.Active {
+					return "", fmt.Errorf("%q is already the active filter", s.Name)
+				}
+				if err := c.ActivateSieve(ctx, mbx.ID, s.Name); err != nil {
+					return "", err
+				}
+				return s.Name + " is now the active filter", nil
+			}},
+			{key: "x", label: "x deactivate", run: func(ctx context.Context, ui *Options, _ any) pane {
+				return sieveDeactivateConfirm(ctx, ui, mbx)
+			}},
+			{key: "R", label: "R rename", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return sieveRenameFormPane(ctx, ui, mbx, item.(coreapi.SieveScript))
+			}},
+			{key: "d", label: "d delete", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return sieveDeleteConfirm(ctx, ui, mbx, item.(coreapi.SieveScript))
+			}},
+		},
+	}
+}
+
+// sieveOwner labels the reserved name the Filters screen writes to. It reads
+// the NAME, which is all the listing exposes — core's own refusal is
+// OWNERSHIP-aware (it checks whether `source_json` is set), so a pre-v14 mailbox
+// whose owner hand-wrote a script called `openemail.rules` still owns it and can
+// still delete it. The label is therefore hedged rather than asserted.
+func sieveOwner(name string) string {
+	if name == rulesScriptName {
+		return "reserved"
+	}
+	return "hand-written"
+}
+
+// sieveScreenState is written by the fetch goroutine and read by the render
+// loop, so it takes a mutex. A slice header is three words: without one, a
+// reader can see the new pointer with the old length and index past the backing
+// array. Every screen with a summary shares this shape.
+type sieveScreenState struct {
+	mu      sync.Mutex
+	loaded  bool
+	scripts []coreapi.SieveScript
+}
+
+func (s *sieveScreenState) set(scripts []coreapi.SieveScript) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loaded, s.scripts = true, scripts
+}
+
+// summaryLines answers the screen's one real question: what is filtering mail
+// right now?
+func (s *sieveScreenState) summaryLines(w int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.loaded {
+		return nil
+	}
+	for _, sc := range s.scripts {
+		if sc.Active {
+			line := fmt.Sprintf("ACTIVE: %s — this script filters delivered mail", sc.Name)
+			if sc.Name == rulesScriptName {
+				line += " (generated by the Filters screen)"
+			}
+			return []string{stLive.Render(truncate(line, w))}
+		}
+	}
+	if len(s.scripts) == 0 {
+		return []string{stDim.Render(truncate("no scripts — delivery is unfiltered", w))}
+	}
+	return []string{stErr.Render(truncate(
+		"NO ACTIVE SCRIPT — delivery is unfiltered; press a on a row to activate one", w))}
+}
+
+func sieveDeactivateConfirm(ctx context.Context, ui *Options, mbx coreapi.Mailbox) pane {
+	return newConfirmPane(ctx, ui, confirmSpec{
+		title: "Deactivate the filter — " + mailboxLabel(&mbx),
+		body: "Clears the active script. Every script is kept; nothing is deleted. Delivery " +
+			"to this mailbox becomes unfiltered until a script is activated again, so mail " +
+			"that was being filed or discarded will land in the inbox.",
+		verb: "deactivate",
+		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
+			if err := c.DeactivateSieve(sctx, mbx.ID); err != nil {
+				return "", err
+			}
+			return "no active filter — delivery is unfiltered", nil
+		},
+	})
+}
+
+func sieveDeleteConfirm(ctx context.Context, ui *Options, mbx coreapi.Mailbox, s coreapi.SieveScript) pane {
+	body := "Permanently removes this script. There is no undo."
+	if s.Active {
+		body += " It is the ACTIVE filter, so deleting it leaves this mailbox with no filter " +
+			"and delivery becomes unfiltered."
+	}
+	if s.Name == rulesScriptName {
+		body += " This is the name the Filters screen writes to. If those rules generated it, " +
+			"core refuses the delete from here so the two surfaces cannot disagree about what " +
+			"is active — delete them from the Filters screen instead. If you hand-wrote a " +
+			"script under this name, it is yours and this will remove it."
+	}
+	return newConfirmPane(ctx, ui, confirmSpec{
+		title: "Delete script " + s.Name,
+		body:  body,
+		verb:  "delete script",
+		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
+			if err := c.DeleteSieveScript(sctx, mbx.ID, s.Name); err != nil {
+				return "", err
+			}
+			return "script " + s.Name + " deleted", nil
+		},
+	})
+}
+
+func sieveRenameFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, s coreapi.SieveScript) pane {
+	newName := s.Name
+	return newFormPane(ctx, ui, formSpec{
+		title: "Rename script " + s.Name,
+		build: func() *huh.Form {
+			return huh.NewForm(huh.NewGroup(
+				huh.NewInput().Title("New name").Value(&newName).
+					Description("Renaming the active script keeps it active."),
+			))
+		},
+		submit: func(sctx context.Context, c *coreapi.Client) (string, pane, error) {
+			name := strings.TrimSpace(newName)
+			// A silent no-op here is indistinguishable from a successful rename:
+			// both just pop the form. Refuse an emptied field so the form
+			// re-opens with the error, and say plainly when nothing changed.
+			if name == "" {
+				return "", nil, fmt.Errorf("a script needs a name")
+			}
+			if name == s.Name {
+				return "name unchanged", nil, nil
+			}
+			if err := c.RenameSieveScript(sctx, mbx.ID, s.Name, name); err != nil {
+				return "", nil, err
+			}
+			return "renamed to " + name, nil, nil
+		},
+	})
+}

@@ -28,6 +28,9 @@ func newMessagesCmd(a *app) *cobra.Command {
 		newMessageContentCmd(a),
 		newMessagePartCmd(a),
 		newMessageAppendCmd(a),
+		newMessageComposeCmd(a),
+		newMessageLearnCmd(a, "junk", "spam"),
+		newMessageLearnCmd(a, "not-junk", "ham"),
 		newMessageFlagCmd(a),
 		newMessageLabelCmd(a),
 		newMessageMoveCmd(a),
@@ -357,6 +360,204 @@ func newMessageAppendCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&envFrom, "envelope-from", "", "X-Envelope-From (recorded verbatim)")
 	cmd.Flags().StringVar(&envTo, "envelope-to", "", "X-Envelope-To (recorded verbatim)")
 	return cmd
+}
+
+// newMessageComposeCmd files a structured message WITHOUT sending it. It is the
+// sibling of `openemail compose`: same fields, same server-side MIME assembly,
+// but routing, relay and the Sent copy are all bypassed.
+func newMessageComposeCmd(a *app) *cobra.Command {
+	var (
+		body                 bodyFlags
+		from, subject        string
+		to, cc, bcc, replyTo []string
+		inReplyTo            string
+		references           []string
+		label, deliveryID    string
+		flags                []string
+		internalDate         int64
+		filter, draft        bool
+	)
+	cmd := &cobra.Command{
+		Use:   "compose",
+		Short: "File a message into this mailbox from fields, without sending it",
+		Long: "Build a message from fields and store it — drafts, imports, seeded threads.\n" +
+			"Nothing leaves the platform: routing, relay and the Sent copy are all bypassed.\n\n" +
+			"  openemail messages compose --from me@x --to you@y --subject Hi --text '…' --draft\n" +
+			"  openemail messages compose --from a@x --label Archive --body-file old.txt\n\n" +
+			"Use `openemail compose` when the message is meant to go somewhere, and\n" +
+			"`openemail messages append` when you already hold raw RFC 5322 bytes rather\n" +
+			"than fields.\n\n" +
+			"--draft means what a mail client means by a draft: the message is flagged\n" +
+			"draft and seen (so it is not counted unread in its own author's mailbox) and\n" +
+			"filed into Drafts rather than the inbox. An explicit --label wins.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			if from == "" {
+				return usageError(errors.New("--from is required (it becomes the message's From header)"))
+			}
+			// Core refuses a message addressed to nobody (400 no_recipients)
+			// even though nothing is sent — say so here rather than after a
+			// round trip that may have already staged attachments.
+			if len(to)+len(cc)+len(bcc) == 0 {
+				return usageError(errors.New("need at least one recipient — pass --to, --cc, or --bcc"))
+			}
+			fromAddr, err := parseSendAddress(from)
+			if err != nil {
+				return usageError(fmt.Errorf("--from: %w", err))
+			}
+			req := coreapi.SendRequest{From: *fromAddr, Subject: subject, InReplyTo: inReplyTo, References: references}
+			for _, spec := range [...]struct {
+				flag string
+				vals []string
+				dst  *[]coreapi.SendAddress
+			}{
+				{"--to", to, &req.To}, {"--cc", cc, &req.Cc},
+				{"--bcc", bcc, &req.Bcc}, {"--reply-to", replyTo, &req.ReplyTo},
+			} {
+				list, perr := parseSendAddresses(spec.vals)
+				if perr != nil {
+					return usageError(fmt.Errorf("%s: %w", spec.flag, perr))
+				}
+				*spec.dst = list
+			}
+			// A stored message needs no body — an empty draft is a real thing to
+			// file — so the body is optional here, unlike on the sending verbs.
+			if req.Text, req.HTML, err = body.bodies(cmd, false); err != nil {
+				return err
+			}
+			if req.Headers, err = body.headers(); err != nil {
+				return err
+			}
+			if draft {
+				flags = append(flags, "draft", "seen")
+				// A draft filed into the inbox is not where any mail client
+				// looks for it. Drafts is a system label, present on every
+				// mailbox, so this cannot fail with unknown_label.
+				if !cmd.Flags().Changed("label") {
+					label = "Drafts"
+				}
+			}
+			if err := normalizeFlags(flags); err != nil {
+				return usageError(err)
+			}
+			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
+			if err != nil {
+				return err
+			}
+			if req.Attachments, err = body.stage(cmd, a, client, mbx); err != nil {
+				return err
+			}
+
+			opts := coreapi.ComposeOptions{
+				Label: label, Flags: flags, Filter: filter,
+				// Always carry a delivery id so a post-commit 5xx retry converges
+				// instead of filing the message twice.
+				DeliveryID: firstNonEmpty(deliveryID, newDeliveryID()),
+			}
+			if cmd.Flags().Changed("internaldate") {
+				opts.InternalDate = &internalDate
+			}
+			res, raw, err := client.ComposeMessage(cmd.Context(), mbx, req, opts)
+			if err != nil {
+				return err
+			}
+			a.out.EmitRaw(raw, func(w io.Writer) {
+				if res.Status == "filtered" {
+					a.out.Successf("Filtered by Sieve (redirected=%v) — nothing stored", res.Redirected)
+					return
+				}
+				if res.Duplicate {
+					a.out.Successf("Duplicate compose (already stored) — message %s", res.MessageID)
+					return
+				}
+				a.out.Successf("Stored message %s", res.MessageID)
+				// The response carries no label, and with --filter an active
+				// Sieve `fileinto` can put the message somewhere other than the
+				// one asked for — so report the uid and let the caller look
+				// rather than assert a location that may be wrong.
+				if res.UID != nil {
+					a.out.Msgf("  uid %d (uidvalidity %s)", *res.UID, int64Or(res.UIDValidity, "—"))
+				}
+				if filter {
+					a.out.Msgf("  filtered on the way in — check the label with `openemail messages get %s`", res.MessageID)
+				}
+			})
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&from, "from", "", "From address: address or \"Name <addr>\" (required)")
+	cmd.Flags().StringArrayVar(&to, "to", nil, "To recipient, repeatable")
+	cmd.Flags().StringArrayVar(&cc, "cc", nil, "Cc recipient, repeatable")
+	cmd.Flags().StringArrayVar(&bcc, "bcc", nil, "Bcc recipient, repeatable")
+	cmd.Flags().StringArrayVar(&replyTo, "reply-to", nil, "Reply-To address, repeatable")
+	cmd.Flags().StringVar(&subject, "subject", "", "subject")
+	body.register(cmd)
+	cmd.Flags().StringVar(&inReplyTo, "in-reply-to", "", "In-Reply-To message-id header")
+	cmd.Flags().StringArrayVar(&references, "references", nil, "References message-id, repeatable")
+	cmd.Flags().StringVar(&label, "label", "", "target label (default: inbox)")
+	cmd.Flags().StringSliceVar(&flags, "flags", nil, "initial flags, comma-separated (seen,answered,flagged,draft,deleted)")
+	cmd.Flags().BoolVar(&draft, "draft", false, "file as a draft: flags draft,seen into the Drafts label")
+	cmd.Flags().Int64Var(&internalDate, "internaldate", 0, "receivedAt as epoch seconds (default: now)")
+	cmd.Flags().BoolVar(&filter, "filter", false, "run the mailbox's active filter on the stored message")
+	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID)")
+	return cmd
+}
+
+// newMessageLearnCmd builds one of the two spam-training verbs. They are
+// separate commands rather than `learn --class`, because the two directions are
+// what a user actually means and a mistyped class silently trains backwards.
+func newMessageLearnCmd(a *app, use, class string) *cobra.Command {
+	short := "Report this message as junk (trains this mailbox's spam filter)"
+	long := "Teach the filter that this message is spam. The sample trains THIS mailbox's\n" +
+		"personal overlay, so your idea of junk never becomes anyone else's.\n\n" +
+		"This is training only — it does not move, flag or delete the message. Pair it\n" +
+		"with `openemail messages move` if you also want it out of the inbox."
+	if class == "ham" {
+		short = "Report this message as NOT junk (trains this mailbox's spam filter)"
+		long = "Teach the filter that this message is legitimate — the correction for something\n" +
+			"that was wrongly classified as spam. The sample trains THIS mailbox's personal\n" +
+			"overlay.\n\n" +
+			"This is training only — it does not move or unflag the message."
+	}
+	return &cobra.Command{
+		Use:   use + " <messageId>",
+		Short: short,
+		Long: long + "\n\nAccepted fire-and-forget: a success means the sample was submitted to the\n" +
+			"filter, not that it has already been learned. Repeated calls on the same\n" +
+			"message dedupe filter-side, so re-running is harmless.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
+			if err != nil {
+				return err
+			}
+			status, err := client.LearnMessage(cmd.Context(), mbx, args[0], class)
+			if err != nil {
+				// A deployment with no filter configured is a fact about the
+				// platform, not a mistake the user made.
+				if ae, ok := coreapi.AsAPIError(err); ok && ae.Code == "learning_unavailable" {
+					a.out.Warnf("this deployment has no spam filter configured — nothing to train")
+				}
+				return err
+			}
+			a.out.Emit(map[string]any{"status": status, "class": class}, func(w io.Writer) {
+				verb := "junk"
+				if class == "ham" {
+					verb = "not junk"
+				}
+				a.out.Successf("Reported %s as %s — submitted to the filter", args[0], verb)
+			})
+			return nil
+		},
+	}
 }
 
 func newMessageFlagCmd(a *app) *cobra.Command {

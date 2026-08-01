@@ -115,6 +115,13 @@ func rulesDesc(mbx coreapi.Mailbox) resourceDesc {
 			{key: "X", label: "X delete all", run: func(ctx context.Context, ui *Options, _ any) pane {
 				return rulesDeleteAllConfirm(ctx, ui, mbx)
 			}},
+			// Sieve scripts live behind this screen rather than beside it: they
+			// are the same concern (what filters mail) and core allows only one
+			// active filter across both surfaces, so seeing them together is the
+			// only way the "NOT ACTIVE" line above makes sense.
+			{key: "s", label: "s scripts", run: func(ctx context.Context, ui *Options, _ any) pane {
+				return newScreenPane(ctx, ui, sieveDesc(mbx))
+			}},
 		},
 	}
 }

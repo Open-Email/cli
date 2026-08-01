@@ -15,13 +15,15 @@ import (
 // system-only) happens in newRoot; the map itself is principal-agnostic.
 func allDescriptors() map[string]resourceDesc {
 	return map[string]resourceDesc{
-		"domains":   domainsDesc(),
-		"traffic":   trafficPickerDesc(),
-		"mailboxes": mailboxesDesc(),
-		"routes":    routesDesc(),
-		"patterns":  patternsDesc(),
-		"keys":      keysDesc(),
-		"accounts":  accountsDesc(),
+		"domains":      domainsDesc(),
+		"traffic":      trafficPickerDesc(),
+		"mailboxes":    mailboxesDesc(),
+		"routes":       routesDesc(),
+		"patterns":     patternsDesc(),
+		"keys":         keysDesc(),
+		"accounts":     accountsDesc(),
+		"suppressions": suppressionsDesc(),
+		"dkim":         dkimDesc(),
 	}
 }
 
@@ -223,6 +225,12 @@ func mailboxesDesc() resourceDesc {
 			}},
 			{key: "b", label: "b addressbooks", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				return newScreenPane(ctx, ui, pimCollectionsDesc(item.(coreapi.Mailbox), coreapi.PimAddressbooks))
+			}},
+			{key: "p", label: "p pickups", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return newScreenPane(ctx, ui, pickupsDesc(item.(coreapi.Mailbox)))
+			}},
+			{key: "P", label: "P prefs", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return newScreenPane(ctx, ui, prefsDesc(item.(coreapi.Mailbox)))
 			}},
 		},
 	}

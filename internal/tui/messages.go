@@ -33,6 +33,14 @@ type msgActMsg struct {
 	err    error
 }
 
+// msgLearnMsg is completed spam-filter training. It is separate from msgActMsg
+// because nothing about the message changed — re-fetching the list would only
+// flicker it.
+type msgLearnMsg struct {
+	paneID int64
+	flash  string
+}
+
 // labelsMsg caches the mailbox's labels for the label editor (best-effort).
 type labelsMsg struct {
 	paneID int64
@@ -160,6 +168,13 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		}
 		return p, p.refresh()
 
+	case msgLearnMsg:
+		if msg.paneID == p.id {
+			p.errMsg = ""
+			p.flash = msg.flash
+		}
+		return p, nil
+
 	case msgActMsg:
 		if msg.paneID != p.id {
 			return p, nil
@@ -274,6 +289,26 @@ func (p *messagesPane) updateKey(msg tea.KeyMsg) (pane, tea.Cmd) {
 		return p, p.toggleFlagCmd("flagged")
 	case "c":
 		return p, pushPane(composeFormPane(p.ctx, p.ui, p.mbx))
+	case "/":
+		return p, pushPane(searchFormPane(p.ctx, p.ui, p.mbx))
+	case "R":
+		idx := p.tbl.Cursor()
+		if idx < 0 || idx >= len(p.all) {
+			return p, nil
+		}
+		m := p.all[idx]
+		// Replying needs a conversation to derive the recipient and threading
+		// headers from. A message with no thread id predates threading or was
+		// never resolved, and core has nothing to answer.
+		if m.ThreadID == nil {
+			p.errMsg = "this message has no thread — reply from `openemail compose` instead"
+			return p, nil
+		}
+		return p, pushPane(replyFormPane(p.ctx, p.ui, p.mbx, m, *m.ThreadID))
+	case "s":
+		return p, p.learnCmd("spam")
+	case "S":
+		return p, p.learnCmd("ham")
 	case "l":
 		idx := p.tbl.Cursor()
 		if idx < 0 || idx >= len(p.all) || len(p.labels) == 0 {
@@ -309,6 +344,30 @@ func (p *messagesPane) updateKey(msg tea.KeyMsg) (pane, tea.Cmd) {
 		return p, tea.Batch(cmd, p.spin.Tick, p.fetchCmd(p.next, false))
 	}
 	return p, cmd
+}
+
+// learnCmd reports the selected message to the spam filter. Training is
+// fire-and-forget and changes nothing about the message itself, so the row does
+// not move and the only feedback is the flash.
+func (p *messagesPane) learnCmd(class string) tea.Cmd {
+	idx := p.tbl.Cursor()
+	if idx < 0 || idx >= len(p.all) || p.loading {
+		return nil
+	}
+	m := p.all[idx]
+	id, client, ctx, mbxID := p.id, p.ui.Client, p.ctx, p.mbx.ID
+	verb := "junk"
+	if class == "ham" {
+		verb = "not junk"
+	}
+	return func() tea.Msg {
+		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		if _, err := client.LearnMessage(cctx, mbxID, m.ID, class); err != nil {
+			return msgActMsg{paneID: id, err: err}
+		}
+		return msgLearnMsg{paneID: id, flash: "reported as " + verb}
+	}
 }
 
 // toggleFlagCmd flips one flag on the selected message; the follow-up refresh
@@ -434,7 +493,8 @@ func (p *messagesPane) title() string {
 }
 
 func (p *messagesPane) hints() string {
-	h := "enter open · c compose · t read/unread · ! flag · l labels · d trash · T trash view · r refresh · esc back"
+	h := "enter open · c compose · R reply · / search · t read/unread · ! flag · l labels · " +
+		"s junk · S not-junk · d trash · T trash view · r refresh · esc back"
 	if p.next != "" {
 		h += " · m more"
 	}
