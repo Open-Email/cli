@@ -7470,6 +7470,9 @@
             },
             "description": "Deleted; objectsDestroyed counts the members that went with it"
           },
+          "403": {
+            "description": "default_collection — the default calendar/addressbook cannot be deleted. Inbound iTIP files into it by role, and nothing re-provisions it, so losing it would be silent and permanent"
+          },
           "404": {
             "description": "No such collection, or mailbox not accessible"
           }
@@ -8198,7 +8201,7 @@
             "description": "Created"
           },
           "400": {
-            "description": "empty_body, invalid_href, multiple_uids (the body is an export file carrying several UIDs — import objects one per resource), or — for a JSON body — invalid_json / invalid_object (with `property` naming the offending member)"
+            "description": "empty_body, invalid_href, multiple_uids (the body is an export file carrying several UIDs — import objects one per resource), unrepresentable_name (vCard text carrying a property/group/parameter name this server could not write back out — in practice a lone CR inside a name; `description` says which position), or — for a JSON body — invalid_json / invalid_object (with `property` naming the offending member)"
           },
           "403": {
             "description": "forbidden — read-only grant"
@@ -9023,6 +9026,9 @@
             },
             "description": "Deleted; objectsDestroyed counts the members that went with it"
           },
+          "403": {
+            "description": "default_collection — the default calendar/addressbook cannot be deleted. Inbound iTIP files into it by role, and nothing re-provisions it, so losing it would be silent and permanent"
+          },
           "404": {
             "description": "No such collection, or mailbox not accessible"
           }
@@ -9784,7 +9790,7 @@
             "description": "Created"
           },
           "400": {
-            "description": "empty_body, invalid_href, multiple_uids (the body is an export file carrying several UIDs — import objects one per resource), or — for a JSON body — invalid_json / invalid_object (with `property` naming the offending member)"
+            "description": "empty_body, invalid_href, multiple_uids (the body is an export file carrying several UIDs — import objects one per resource), unrepresentable_name (vCard text carrying a property/group/parameter name this server could not write back out — in practice a lone CR inside a name; `description` says which position), or — for a JSON body — invalid_json / invalid_object (with `property` naming the offending member)"
           },
           "403": {
             "description": "forbidden — read-only grant"
