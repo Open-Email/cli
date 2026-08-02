@@ -194,14 +194,16 @@ type TrafficEvent struct {
 
 // DomainEvents is GET /domains/:domain/events — a keyset-paginated page of the
 // per-event traffic log. Cursor rides the response's `cursor` field (string or
-// null; null on the last page). Estimated is always false (this is the
+// null; null on the last page); NextCursor is its API-wide mirror, present
+// only while more pages exist. Estimated is always false (this is the
 // unsampled durable record, unlike DomainTraffic).
 type DomainEvents struct {
-	Domain    string         `json:"domain"`
-	Range     string         `json:"range"`
-	Events    []TrafficEvent `json:"events"`
-	Cursor    *string        `json:"cursor"`
-	Estimated bool           `json:"estimated"`
+	Domain     string         `json:"domain"`
+	Range      string         `json:"range"`
+	Events     []TrafficEvent `json:"events"`
+	Cursor     *string        `json:"cursor"`
+	NextCursor *string        `json:"nextCursor,omitempty"`
+	Estimated  bool           `json:"estimated"`
 }
 
 func (c *Client) ListDomains(ctx context.Context, limit int, cursor string) (Page[Domain], error) {

@@ -29,11 +29,14 @@ type ReplyContext struct {
 
 // ThreadView is a single thread with its messages (oldest-first) and reply
 // context. CanonicalThreadID is present only when the requested id had been
-// merged away and was recovered.
+// merged away and was recovered. NextCursor mirrors the top-level `cursor`
+// the anonymous GetThread wrapper decodes — present only while more pages
+// exist.
 type ThreadView struct {
 	ThreadID          string        `json:"threadId"`
 	CanonicalThreadID *string       `json:"canonicalThreadId,omitempty"`
 	Messages          []MessageMeta `json:"messages"`
+	NextCursor        *string       `json:"nextCursor,omitempty"`
 	MessageCount      int64         `json:"messageCount"`
 	ReplyContext      *ReplyContext `json:"replyContext"`
 }

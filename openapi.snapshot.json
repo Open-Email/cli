@@ -1592,6 +1592,9 @@
           "domain": {
             "type": "string"
           },
+          "nextCursor": {
+            "type": "string"
+          },
           "reports": {
             "items": {
               "$ref": "#/components/schemas/DmarcReport"
@@ -1689,6 +1692,9 @@
               "$ref": "#/components/schemas/TrafficEvent"
             },
             "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
           },
           "range": {
             "type": "string"
@@ -4760,6 +4766,9 @@
               "$ref": "#/components/schemas/MessageMeta"
             },
             "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
           },
           "replyContext": {
             "anyOf": [
@@ -11177,6 +11186,10 @@
                             "$ref": "#/components/schemas/MessageMeta"
                           },
                           "type": "array"
+                        },
+                        "nextCursor": {
+                          "description": "Same keyset position as cursor, in the API-wide spelling; absent on the last page",
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -11199,6 +11212,10 @@
                             "$ref": "#/components/schemas/ExpungedMessageMeta"
                           },
                           "type": "array"
+                        },
+                        "nextCursor": {
+                          "description": "Same keyset position as cursor, in the API-wide spelling; absent on the last page",
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -14768,6 +14785,10 @@
                         "null"
                       ]
                     },
+                    "nextCursor": {
+                      "description": "Same keyset position as cursor, in the API-wide spelling; absent on the last page",
+                      "type": "string"
+                    },
                     "threads": {
                       "items": {
                         "$ref": "#/components/schemas/ThreadListItem"
@@ -14783,7 +14804,7 @@
                 }
               }
             },
-            "description": "threads: [{ threadId, messageCount, unseenCount, lastReceivedAt, exemplar: MessageMeta of the newest live member }]; cursor present when a further page exists. threadId is opaque and convergent, NOT stable — a merge re-stamps the losing thread (GET /threads/:threadId recovers a merged-away id)"
+            "description": "threads: [{ threadId, messageCount, unseenCount, lastReceivedAt, exemplar: MessageMeta of the newest live member }]; nextCursor present while a further page exists (cursor, its always-present null-terminated twin, stays for existing clients). threadId is opaque and convergent, NOT stable — a merge re-stamps the losing thread (GET /threads/:threadId recovers a merged-away id)"
           },
           "404": {
             "description": "Mailbox (or, as unknown_label, the label filter) not found"
