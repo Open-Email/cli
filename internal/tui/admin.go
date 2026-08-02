@@ -10,14 +10,18 @@ import (
 	"github.com/Open-Email/cli/internal/coreapi"
 )
 
-// suppressionsDesc lists the deployment-global do-not-send list. Nothing here
-// creates a row: they are written by the feedback-loop consumer from a
-// receiver's own hard bounce or spam complaint. The only operator verb is lift.
+// suppressionsDesc lists the deployment-global do-not-send list. Rows are
+// normally written by the feedback-loop consumer from a receiver's own hard
+// bounce or spam complaint; the console's only verb is lift. A row CAN be
+// entered by hand for a complaint that consumer could not attribute — that is
+// `openemail admin suppressions add`, deliberately CLI-only, because it is a
+// deployment-wide write no report backs and it should not be one keystroke away
+// while browsing a list.
 func suppressionsDesc() resourceDesc {
 	return resourceDesc{
 		key:     "suppressions",
 		name:    "Suppressions",
-		caption: "deployment-global do-not-send list · written from bounce and complaint reports, never by hand",
+		caption: "deployment-global do-not-send list · normally written from bounce and complaint reports",
 		columns: []column{
 			{title: "ADDRESS", flex: true},
 			{title: "REASON", width: 12},

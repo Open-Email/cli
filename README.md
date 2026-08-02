@@ -86,7 +86,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
 | `deliver` | `check --to <addr>` (RCPT pre-flight), `inbound` (inject a test message) |
 | `api` | call any route directly (escape hatch), `--list-routes` |
-| `admin` | operator-only (system keys): `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys) |
+| `admin` | operator-only (system keys): `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,add,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys) |
 | `completion` / `upgrade` / `version` | shells, upgrade help, version |
 
 Run `openemail <group> --help` for the full flag set of any command.
@@ -201,6 +201,12 @@ openemail routes update hook@example.com --type webhook --webhook-url https://ne
 openemail admin suppressions get bounced@example.com
 openemail admin suppressions list --all
 openemail admin suppressions lift bounced@example.com   # only once the cause is fixed
+
+# Operator: a real complaint the feedback-loop consumer refused to act on.
+# It suppresses only what it can prove we sent, so a complaint about mail with
+# no correlatable submission is logged (`fbl_suppression_refused`) and dropped —
+# leaving the platform still mailing a complainant. This closes that by hand.
+openemail admin suppressions add angry@example.com --note "AOL FBL, ticket 4711"
 
 # Operator: what is signing outbound mail, and what must a customer publish?
 openemail admin dkim status --domain example.com   # paste-ready CNAME rows

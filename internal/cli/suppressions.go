@@ -11,24 +11,27 @@ import (
 )
 
 // newAdminSuppressionsCmd exposes the deployment-global do-not-send list. Rows
-// are written by the FBL consumer from DSN/ARF reports; nothing here creates
-// one, which is deliberate — a suppression is evidence a receiver rejected or
-// complained about mail, not an operator preference.
+// are normally written by the FBL consumer from DSN/ARF reports; `add` is the
+// narrow exception, for a complaint that consumer could not PROVE and therefore
+// refused to act on (see newSuppressionAddCmd).
 func newAdminSuppressionsCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "suppressions",
 		Aliases: []string{"suppression"},
-		Short:   "Inspect and lift the do-not-send list (system-only)",
+		Short:   "Inspect, add to and lift the do-not-send list (system-only)",
 		Long: "The suppression list is deployment-global: an address on it is refused for\n" +
 			"every account, because the evidence is a receiver's own hard bounce or spam\n" +
 			"complaint rather than a per-tenant setting.\n\n" +
-			"Rows are only ever written by the feedback-loop consumer, so there is no\n" +
-			"`add` verb — the only operator action is `lift`, for an address whose\n" +
-			"delivery problem has actually been fixed.",
+			"Rows are normally written by the feedback-loop consumer, and that remains the\n" +
+			"way an address should get here. `add` is the exception for one specific gap:\n" +
+			"the consumer only acts on a complaint it can prove we sent, so a genuine\n" +
+			"complaint about mail with no correlatable submission is logged and dropped.\n" +
+			"`lift` is for an address whose delivery problem has actually been fixed.",
 	}
 	cmd.AddCommand(
 		newSuppressionListCmd(a),
 		newSuppressionGetCmd(a),
+		newSuppressionAddCmd(a),
 		newSuppressionLiftCmd(a),
 	)
 	return cmd
@@ -126,6 +129,77 @@ func newSuppressionGetCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// newSuppressionAddCmd is the operator's stand-in for evidence the pipeline
+// could not produce.
+//
+// Core's FBL consumer suppresses only an address it can PROVE we sent to — a
+// VERP-decoded envelope recipient, or one a recorded submission correlates to —
+// because the report body is attacker-controlled and this list is global, so
+// acting on a body-claimed address would be a denial-of-delivery primitive. Only
+// JMAP submissions record a correlatable row, so a real complaint about mail
+// sent via REST /send, group expansion, Sieve redirect or forwarding is refused
+// with an `fbl_suppression_refused` log line and NOTHING happens — the platform
+// keeps mailing someone who pressed "this is spam". This verb closes that loop
+// by hand, which is why it confirms by default and why core logs every call.
+func newSuppressionAddCmd(a *app) *cobra.Command {
+	var (
+		reason string
+		note   string
+		yes    bool
+	)
+	cmd := &cobra.Command{
+		Use:     "add <address>",
+		Aliases: []string{"create", "suppress"},
+		Short:   "Suppress an address by hand",
+		Long: "Stops the platform sending to this address, for every account.\n\n" +
+			"Prefer letting the feedback-loop consumer do this: a row it writes carries the\n" +
+			"report as evidence. Reach for `add` when a complaint arrived that the consumer\n" +
+			"could not attribute to a recorded submission (look for `fbl_suppression_refused`\n" +
+			"in the logs) and the platform is therefore still mailing a complainant.\n\n" +
+			"Repeat calls converge on the same row — no duplicate entry, no inflated tally.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Reject a bad value here rather than spending a round trip on a 400
+			// that says the same thing less clearly.
+			if reason != "" && reason != "complaint" && reason != "hard_bounce" {
+				return usageError(fmt.Errorf("--reason must be complaint or hard_bounce, got %q", reason))
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			if !yes {
+				// Say plainly that the blast radius is the whole deployment: this
+				// is the one write to the list that no report backs.
+				a.out.Warnf("This suppresses %s for EVERY account on this deployment.", args[0])
+				if !confirm(fmt.Sprintf("Suppress %s?", args[0])) {
+					return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
+				}
+			}
+			s, err := client.AddSuppression(cmd.Context(), coreapi.SuppressionCreate{
+				Address: args[0], Reason: reason, Note: note,
+			})
+			if err != nil {
+				return err
+			}
+			a.out.Emit(s, func(w io.Writer) {
+				a.out.Successf("%s is suppressed (%s) — the platform will not send to it", s.Address, s.Reason)
+				printTable(w, a.out, []string{"FIELD", "VALUE"}, [][]string{
+					{"Address", s.Address},
+					{"Reason", s.Reason},
+					{"Events", fmt.Sprintf("%d", s.EventCount)},
+					{"Detail", strOr(s.Detail, "—")},
+				})
+			})
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "complaint (default) or hard_bounce")
+	cmd.Flags().StringVar(&note, "note", "", "why this was entered by hand; stored on the row so `get` can answer it later")
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	return cmd
 }
 
 func newSuppressionLiftCmd(a *app) *cobra.Command {

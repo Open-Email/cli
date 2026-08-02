@@ -1788,7 +1788,7 @@
       },
       "EmailSearchFilter": {
         "additionalProperties": {},
-        "description": "An RFC 8621 §4.4 FilterCondition or a boolean tree ({operator: AND|OR|NOT, conditions: [...]}) over them. Supported keys: inMailbox, inMailboxOtherThan, before, after, minSize, maxSize, hasKeyword, notKeyword, allInThreadHaveKeyword, someInThreadHaveKeyword, noneInThreadHaveKeyword, hasAttachment, from, to, cc, text, subject, body, header. At most one full-text condition (text/subject/body), never under OR/NOT. Mailbox ids are label ids as L<n>.",
+        "description": "An RFC 8621 §4.4 FilterCondition or a boolean tree ({operator: AND|OR|NOT, conditions: [...]}) over them. Supported keys: inMailbox, inMailboxOtherThan, before, after, minSize, maxSize, hasKeyword, notKeyword, allInThreadHaveKeyword, someInThreadHaveKeyword, noneInThreadHaveKeyword, hasAttachment, from, to, cc, text, subject, body, header. At most one full-text condition (text/subject/body), never under OR/NOT. Mailbox ids are label ids as L<n>. Bounded, and refused (never truncated) past the bound: a full-text condition is at most 512 characters and 64 words, a substring needle (from/to/cc/header) at most 50 bytes as a LIKE pattern, the tree at most 32 levels deep and 512 nodes, and at most 64 bound values in total (an inMailboxOtherThan element costs one each).",
         "type": "object"
       },
       "EmailSearchRequest": {
@@ -4646,14 +4646,14 @@
             "type": "string"
           },
           "detail": {
-            "description": "Diagnostic snippet or ARF feedback type, verbatim from the report",
+            "description": "Diagnostic snippet or ARF feedback type, verbatim from the report — or, for a hand-entered suppression, the operator note behind a `manual` marker",
             "type": [
               "string",
               "null"
             ]
           },
           "eventCount": {
-            "description": "Distinct reports recorded for this address",
+            "description": "Distinct reports recorded for this address (0 if hand-entered)",
             "format": "int64",
             "type": "integer"
           },
@@ -4673,7 +4673,7 @@
             "type": "string"
           },
           "sourceDeliveryId": {
-            "description": "X-Delivery-Id of the most recent report that wrote this row",
+            "description": "X-Delivery-Id of the most recent report that wrote this row; null when no report ever did",
             "type": [
               "string",
               "null"
@@ -6154,6 +6154,7 @@
                     "type": "boolean"
                   },
                   "dmarc": {
+                    "description": "Aggregate-report ingestion domain. Same rule as fbl: only a system caller may turn it on",
                     "type": "boolean"
                   },
                   "domain": {
@@ -6164,6 +6165,7 @@
                     "type": "boolean"
                   },
                   "fbl": {
+                    "description": "Report-ingestion domain. Only a system caller may turn it on (403 ingestion_not_writable). A re-POST that advances an existing domain never WRITES this flag, but asking to turn it on is refused there rather than ignored — a non-system caller is never answered 200 for a sink it did not get. Re-sending the flag the domain already has is accepted and changes nothing",
                     "type": "boolean"
                   },
                   "itip": {
@@ -6194,6 +6196,9 @@
           },
           "400": {
             "description": "validation_failed, domain_not_verified (the account's TXT is not published — the response carries the record to create), account_required (system caller omitted accountId — pass an account id or an explicit null), unknown_account, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+          },
+          "403": {
+            "description": "ingestion_not_writable — fbl and dmarc turn the whole domain into a report-ingestion sink and are operator state; only a system caller may turn one on. Re-sending the value the domain already carries (as well as false, or omitting them) is unaffected"
           },
           "409": {
             "description": "domain_claimed_elsewhere (the caller proved control, but another account holds the domain — an operator must transfer it), domain_unavailable (identical for every other conflict — no tenant enumeration), or alias_conflict"
@@ -6304,15 +6309,18 @@
                     "type": "boolean"
                   },
                   "canSend": {
+                    "description": "Outbound submission. Only a system caller may send true, and that holds even on a domain that already sends (403 sending_not_writable) — an owner earns sending by publishing DNS and re-POSTing /domains, never by asserting it here, so omit the field to edit such a domain. false stays open to the owner",
                     "type": "boolean"
                   },
                   "dav": {
                     "type": "boolean"
                   },
                   "dmarc": {
+                    "description": "Aggregate-report ingestion domain. Same rule as fbl: only a system caller may turn it on",
                     "type": "boolean"
                   },
                   "dnsStatus": {
+                    "description": "The resolved DNS health verdict. System callers only (403 dns_status_not_writable) — POST /domains/:domain/dns/check is what writes it",
                     "properties": {
                       "dav": {
                         "type": "boolean"
@@ -6342,6 +6350,7 @@
                     "type": "boolean"
                   },
                   "fbl": {
+                    "description": "Report-ingestion domain. Only a system caller may TURN IT ON (403 ingestion_not_writable); turning it off, and re-sending the value the domain already has, stay open to the owner",
                     "type": "boolean"
                   },
                   "itip": {
@@ -6371,7 +6380,7 @@
             "description": "validation_failed, empty_patch, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
           },
           "403": {
-            "description": "sending_not_writable — account callers earn canSend by publishing DNS and re-POSTing /domains; only a system caller may grant it outright"
+            "description": "sending_not_writable — account callers earn canSend by publishing DNS and re-POSTing /domains; only a system caller may grant it outright. Refused for ANY canSend:true from a non-system caller, a domain that already sends included, since the assertion is never what grants sending. ingestion_not_writable — the fbl/dmarc ingestion flags are operator state, so only a system caller may turn one on (an owner may turn them off, and may re-send an unchanged value; a re-send racing an operator's revoke is refused, never re-enabled, and then nothing else in the patch is applied either). dns_status_not_writable — dnsStatus is the platform's resolved verdict, written by POST /domains/:domain/dns/check"
           },
           "404": {
             "description": "Domain not found or not accessible to this principal"
@@ -6380,7 +6389,7 @@
             "description": "domain_in_use, domain_is_alias_target, alias_fbl_exclusive, or alias_conflict"
           }
         },
-        "summary": "Update domain state (enabled/canSend/canReceive/fbl/dnsStatus)",
+        "summary": "Update domain state (enabled/canSend/canReceive/aliasOf/jmap/dav/itip). TURNING ON either ingestion flag (fbl/dmarc) is system-only — an owner may turn them off, and may re-send the value the domain already has. canSend:true is system-only in every case, including on a domain that already sends (an owner earns sending from DNS via POST /domains, so omit the field unless you are switching it off), and dnsStatus is system-only in both directions",
         "tags": [
           "Directory"
         ]
@@ -12319,6 +12328,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/content": {
       "get": {
+        "description": "Cacheable: the body is a pure function of the message's immutable blob, so it carries a strong `ETag` and `Cache-Control: private, max-age=604800, immutable`. Send the ETag back as `If-None-Match` to revalidate — a match answers **304** before any body bytes are read.",
         "operationId": "get_MessageGetContent",
         "parameters": [
           {
@@ -12348,6 +12358,9 @@
               }
             },
             "description": "Structured message content"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the content ETag)"
           },
           "404": {
             "description": "Mailbox or message not found (purged or unknown) — a TRASHED message still resolves"
@@ -13807,7 +13820,7 @@
             "description": "One page of matches (JMAP-visible tier), plus position and optional total/limit/snippets"
           },
           "400": {
-            "description": "validation_failed, unsupported_filter, unsupported_sort, or invalid_filter (with a `detail` naming the offending condition)"
+            "description": "validation_failed, unsupported_filter, unsupported_sort, or invalid_filter (with a `detail` naming the offending condition). A filter that outgrows the shared translator's size bounds — term length, word count, tree depth or node count, bound values — is an unsupported_filter refusal carrying the bound in `detail`, never a truncated page of results"
           },
           "404": {
             "description": "Mailbox not found or not accessible to this principal"
@@ -16249,6 +16262,66 @@
           }
         },
         "summary": "List suppressed recipient addresses (system callers only)",
+        "tags": [
+          "Suppressions"
+        ]
+      },
+      "post": {
+        "operationId": "post_SuppressionCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "Recipient to stop sending to; stored normalized (lowercased)",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$",
+                    "type": "string"
+                  },
+                  "note": {
+                    "description": "Operator note, stored in `detail` behind a `manual` marker so the list still answers \"why is this address here\"",
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "Why the address is being suppressed (default `complaint` — the case this verb exists for is a real complaint the FBL proof gate refused). A `hard_bounce` never downgrades an address already recorded as `complaint`",
+                    "enum": [
+                      "complaint",
+                      "hard_bounce"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "address"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Suppression"
+                }
+              }
+            },
+            "description": "The address is suppressed. Repeat calls converge on the same row (no new tally, no error) rather than creating a second entry"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Suppress an address by hand (system callers only)",
         "tags": [
           "Suppressions"
         ]
