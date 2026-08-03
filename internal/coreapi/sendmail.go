@@ -97,12 +97,22 @@ type SendResult struct {
 // SendMessage submits a structured message to one or more recipients. The raw
 // bytes are never built client-side — core assembles the MIME, so attachments,
 // multipart structure, and encoding are its job.
-func (c *Client) SendMessage(ctx context.Context, mailboxID string, req SendRequest) (*SendResult, []byte, error) {
-	var out SendResult
-	raw, err := c.doJSONRaw(ctx, request{
+//
+// opts carries the same knobs ReplyToThread takes, and the DeliveryID among
+// them is not optional in practice. /send answers 207 with a PER-RECIPIENT
+// result precisely so a caller can retry and converge only the failures — core
+// keys that on X-Delivery-Id. Submitting without one means every retry is a
+// brand-new send, so the recipients who already received the message receive it
+// again; that is the failure mode the structured API exists to avoid, and it is
+// the shape a script hits first (207 → non-zero exit → re-run).
+func (c *Client) SendMessage(ctx context.Context, mailboxID string, req SendRequest, opts SendOptions) (*SendResult, []byte, error) {
+	r := request{
 		method: http.MethodPost, path: "/mailboxes/" + escapeSegment(mailboxID) + "/send",
 		body: mustJSON(req), contentType: "application/json",
-	}, &out)
+	}
+	opts.apply(&r)
+	var out SendResult
+	raw, err := c.doJSONRaw(ctx, r, &out)
 	if err != nil {
 		return nil, nil, err
 	}

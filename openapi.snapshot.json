@@ -5634,7 +5634,7 @@
             "description": "Recipient is deliverable — the MTA accepts the RCPT"
           },
           "403": {
-            "description": "receiving_disabled (address resolves but the domain is disabled or not receiving) or insufficient_scope (mailbox principals never check) — the MTA rejects permanently"
+            "description": "TWO meanings, split by error code — the MTA must NOT map this status alone. receiving_disabled = a recipient verdict (the address resolves but its domain is disabled or not receiving): reject permanently (550). insufficient_scope = this caller may not check at all (mailbox principals never can): a fault in the CALLER's configuration, not a fact about the recipient — defer (451), or a config typo hard-bounces every message the MTA sees"
           },
           "404": {
             "description": "unknown_address — no route resolves (also any recipient outside an account caller's own domains) — the MTA rejects permanently"
@@ -5949,13 +5949,19 @@
             "description": "Accepted (delivered / duplicate / filtered) — pop3-fetch may DELE"
           },
           "400": {
-            "description": "empty_body / bad length"
+            "description": "empty_body — keep upstream"
           },
           "403": {
-            "description": "system credentials required"
+            "description": "system credentials required — keep upstream (our config, not the message)"
           },
           "404": {
             "description": "unknown source / mailbox_gone — keep upstream"
+          },
+          "411": {
+            "description": "length_required — keep upstream"
+          },
+          "413": {
+            "description": "too_large — keep upstream (permanent; re-fetched every run)"
           },
           "500": {
             "description": "internal (inbox label missing) — keep upstream"
@@ -12525,7 +12531,7 @@
             "description": "learning_unavailable — no spam filter is configured (FILTER_API_URL unset)"
           }
         },
-        "summary": "Teach the spam filter from this message (junk / not-junk feedback). Fire-and-forget: the sample is submitted to the filter in the background, keyed to this mailbox so it trains the mailbox's personal overlay. Repeated calls on the same message dedupe filter-side.",
+        "summary": "Teach the spam filter from this message (junk / not-junk feedback). Fire-and-forget: the sample is submitted to the filter in the background, keyed to this mailbox so it trains the mailbox's personal overlay. Repeated calls on the same message dedupe filter-side WITHIN THE CURRENT UTC HOUR, and per class — so a corrective not-junk after a junk adds an opposite sample rather than retracting the first. Present it as 'also train this', not as an undo.",
         "tags": [
           "Messages"
         ]

@@ -499,6 +499,14 @@ func newPimObjListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 				if window == nil {
 					window = page.Window
 				}
+				// Stall guard, same as coreapi.Depaginate's — a cursor that fails
+				// to advance would loop forever and accumulate unboundedly. This
+				// loop is hand-rolled (it must not drain without --all, and it
+				// needs the trailing cursor and the window the helper discards),
+				// so the guard has to be repeated here rather than inherited.
+				if all && page.NextCursor != "" && page.NextCursor == opts.Cursor {
+					return fmt.Errorf("pagination cursor did not advance (%q) — aborting", page.NextCursor)
+				}
 				next = page.NextCursor
 				if !all || next == "" {
 					break

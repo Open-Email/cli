@@ -118,7 +118,14 @@ type DomainCreateInput struct {
 	AliasOf    *string `json:"aliasOf,omitempty"`
 	FBL        *bool   `json:"fbl,omitempty"`
 	DMARC      *bool   `json:"dmarc,omitempty"`
-	AccountID  *string `json:"accountId,omitempty"`
+	// The three per-domain capability opt-ins. JMAP and DAV add their RFC 6764 /
+	// RFC 8620 SRV records to the DNS checklist; ITIP turns on inbound
+	// auto-filing of calendar invitations, which is a WRITE path arriving mail
+	// can reach, hence off by default.
+	JMAP      *bool   `json:"jmap,omitempty"`
+	DAV       *bool   `json:"dav,omitempty"`
+	ITIP      *bool   `json:"itip,omitempty"`
+	AccountID *string `json:"accountId,omitempty"`
 	// Platform marks a platform-owned domain (no tenant): marshals as an
 	// explicit `"accountId": null`, which core's system-caller contract
 	// requires — an omitted accountId answers 400 account_required so an

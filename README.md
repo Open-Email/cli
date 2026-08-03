@@ -64,7 +64,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `mailboxes` | create/list/get/update/delete/restore, `use` (set default) |
 | `keys` | account API keys: create/list/revoke |
 | `accounts` | accounts (create/list are system-only), get; `create --with-key` also mints the account's first API key |
-| `domains` | domains (`create` is create-or-advance: requires your verification TXT, activates sending once SPF + both DKIM CNAMEs resolve), `dns <domain>` (required records + liveness) + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness), `dmarc-sources <domain>`, `dmarc-reports <domain>` — all `--window 7d\|30d\|90d` |
+| `domains` | domains (`create` is create-or-advance: requires your verification TXT, activates sending once SPF + both DKIM CNAMEs resolve), `dns <domain>` (required records + liveness) + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness) and `dmarc-sources <domain>` take `--window 7d\|30d\|90d`; `dmarc-reports <domain>` pages the raw reports over the full retention (`--limit/--cursor/--all`, no window) |
 | `routes` | address routes + `members list\|add\|remove\|replace` |
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's login credentials (app-passwords; `--expires-in` for session-scoped ones, @-free usernames for mail-less identities) |
@@ -138,6 +138,12 @@ openemail search --unread --has-attachment --label INBOX --position 25
 # Send with attachments to several recipients (server assembles the MIME).
 openemail compose --from me@example.com --to a@x.com --to b@x.com \
   --cc c@x.com --subject "Report" --text "See attached." --attach report.pdf
+
+# A multi-recipient send can partly fail: one result per recipient, exit 1.
+# Retry with the SAME --delivery-id and only the failures are re-attempted —
+# without it, everyone who already got the message gets it twice.
+openemail compose --delivery-id 01J8ZQ... --from me@example.com \
+  --to a@x.com --to b@x.com --subject "Report" --text "See attached."
 
 # Reply to a conversation. Prefer this over `compose`: the recipient, the
 # "Re: …" subject and the In-Reply-To/References chain are derived server-side,

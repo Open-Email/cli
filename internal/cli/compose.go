@@ -88,6 +88,8 @@ func newComposeCmd(a *app) *cobra.Command {
 		from, subject, inReplyTo string
 		to, cc, bcc, replyTo     []string
 		references               []string
+		deliveryID               string
+		save, bounce             bool
 	)
 	cmd := &cobra.Command{
 		Use:     "compose",
@@ -99,6 +101,9 @@ func newComposeCmd(a *app) *cobra.Command {
 			"  openemail compose --from me@x --to a@y --to b@y --cc c@z --attach report.pdf\n\n" +
 			"Each --attach file is staged with an upload first, so attachment bytes never\n" +
 			"ride inside the JSON body. Addresses take a bare address or \"Name <addr>\".\n\n" +
+			"A send to several recipients can partly fail (exit 1, per-recipient table).\n" +
+			"To retry ONLY the failures, re-run with the same --delivery-id the first\n" +
+			"attempt reported: the recipients who already received it are not mailed again.\n\n" +
 			"For raw RFC 5322 bytes you already hold, use `openemail send --file`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -147,7 +152,16 @@ func newComposeCmd(a *app) *cobra.Command {
 				return err
 			}
 
-			res, raw, err := client.SendMessage(cmd.Context(), mbx, req)
+			// The idempotency key is what makes the per-recipient result useful:
+			// a 207 exits non-zero, the obvious next move is to re-run, and
+			// without a key that re-run mails everyone who already succeeded a
+			// second time. Defaulted to a fresh ULID so a single send is still
+			// one call, and settable so a retry converges.
+			opts := coreapi.SendOptions{DeliveryID: firstNonEmpty(deliveryID, newDeliveryID())}
+			opts.Save = boolPtrIfChanged(cmd, "save", save)
+			opts.Bounce = boolPtrIfChanged(cmd, "bounce", bounce)
+
+			res, raw, err := client.SendMessage(cmd.Context(), mbx, req, opts)
 			if err != nil {
 				return err
 			}
@@ -172,6 +186,9 @@ func newComposeCmd(a *app) *cobra.Command {
 	body.register(cmd)
 	cmd.Flags().StringVar(&inReplyTo, "in-reply-to", "", "In-Reply-To message-id header")
 	cmd.Flags().StringArrayVar(&references, "references", nil, "References message-id, repeatable")
+	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID; pass the same one to retry a partial send)")
+	cmd.Flags().BoolVar(&save, "save", true, "write a Sent copy in the sender's mailbox")
+	cmd.Flags().BoolVar(&bounce, "bounce", false, "deliver a DSN on terminal relay failure")
 	return cmd
 }
 

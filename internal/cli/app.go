@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/Open-Email/cli/internal/config"
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -149,6 +150,26 @@ func (a *app) clientWithToken(token string) (*coreapi.Client, error) {
 func (a *app) authedClient() (*coreapi.Client, error) {
 	if a.token == "" {
 		return nil, authRequired(fmt.Sprintf("not authenticated for profile %q — run `openemail login`", a.profileName))
+	}
+	// A STORED key belongs to the deployment it was minted against. --api-url and
+	// OPENEMAIL_API_URL redirect the request but do not change which secret is
+	// loaded, so pointing a logged-in profile at a staging host (or any host)
+	// used to send the production bearer there — a credential handed to whoever
+	// runs the other end, from a flag that reads like it only changes an address.
+	// The default profile points at PROD, which makes this the easy mistake.
+	//
+	// A key supplied explicitly for this invocation (--api-key / OPENEMAIL_API_KEY)
+	// is the caller saying which credential goes with which host, so it is never
+	// blocked.
+	if a.tokenSource == "profile" && a.profile.APIURL != "" && a.apiURL != a.profile.APIURL {
+		return nil, authRequired(fmt.Sprintf(
+			"profile %q holds a key for %s, but this call targets %s — a stored key is not sent to another deployment.\n"+
+				"Pass --api-key (or OPENEMAIL_API_KEY) with a key for %s, or `openemail login` on a separate --profile.",
+			a.profileName, a.profile.APIURL, a.apiURL, a.apiURL))
+	}
+	if a.tokenSource == "profile" && strings.HasPrefix(a.apiURL, "http://") &&
+		!strings.HasPrefix(a.apiURL, "http://localhost") && !strings.HasPrefix(a.apiURL, "http://127.0.0.1") {
+		a.out.Warnf("sending a stored key over plain HTTP to %s", a.apiURL)
 	}
 	return a.client()
 }

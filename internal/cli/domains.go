@@ -86,6 +86,7 @@ func newDomainListCmd(a *app) *cobra.Command {
 func newDomainCreateCmd(a *app) *cobra.Command {
 	var (
 		enabled, canSend, canReceive, fbl, dmarc, platform bool
+		jmap, dav, itip                                    bool
 		aliasOf, account                                   string
 	)
 	cmd := &cobra.Command{
@@ -112,6 +113,9 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 				CanReceive: boolPtrIfChanged(cmd, "can-receive", canReceive),
 				FBL:        boolPtrIfChanged(cmd, "fbl", fbl),
 				DMARC:      boolPtrIfChanged(cmd, "dmarc", dmarc),
+				JMAP:       boolPtrIfChanged(cmd, "jmap", jmap),
+				DAV:        boolPtrIfChanged(cmd, "dav", dav),
+				ITIP:       boolPtrIfChanged(cmd, "itip", itip),
 				Platform:   platform,
 			}
 			if cmd.Flags().Changed("alias-of") {
@@ -156,6 +160,9 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&canReceive, "can-receive", true, "domain may receive")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "FBL ingestion domain (parses DSN/ARF reports; mutually exclusive with alias)")
 	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "DMARC report-ingestion domain: swallows every local part and parses arriving aggregate (RUA) reports — NOT the _dmarc DNS record")
+	cmd.Flags().BoolVar(&jmap, "jmap", false, "JMAP autodiscovery: adds the _jmap._tcp SRV record to this domain's DNS checklist")
+	cmd.Flags().BoolVar(&dav, "dav", false, "CalDAV/CardDAV autodiscovery: adds the _caldavs._tcp/_carddavs._tcp SRV + TXT records to the checklist")
+	cmd.Flags().BoolVar(&itip, "itip", false, "inbound iTIP auto-apply: file arriving invitations into the recipient's calendar (off by default — it makes the calendar a write surface for arriving mail)")
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system keys; account keys always own their domains)")
 	cmd.Flags().BoolVar(&platform, "platform", false, "platform domain owned by no account (system keys only; invisible to tenants)")
@@ -226,6 +233,7 @@ func newDomainGetCmd(a *app) *cobra.Command {
 func newDomainUpdateCmd(a *app) *cobra.Command {
 	var (
 		enabled, canSend, canReceive, fbl, dmarc bool
+		jmap, dav, itip                          bool
 		aliasOf                                  string
 		clearAlias                               bool
 	)
@@ -257,6 +265,15 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 			if cmd.Flags().Changed("dmarc") {
 				patch["dmarc"] = dmarc
 			}
+			if cmd.Flags().Changed("jmap") {
+				patch["jmap"] = jmap
+			}
+			if cmd.Flags().Changed("dav") {
+				patch["dav"] = dav
+			}
+			if cmd.Flags().Changed("itip") {
+				patch["itip"] = itip
+			}
 			if clearAlias {
 				patch["aliasOf"] = nil
 			} else if cmd.Flags().Changed("alias-of") {
@@ -284,6 +301,9 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&canReceive, "can-receive", false, "set receive capability")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "set the FBL ingestion flag")
 	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "set the DMARC report-ingestion flag (aggregate/RUA parsing — NOT the _dmarc DNS record)")
+	cmd.Flags().BoolVar(&jmap, "jmap", false, "set JMAP autodiscovery (adds the _jmap._tcp SRV record to the DNS checklist)")
+	cmd.Flags().BoolVar(&dav, "dav", false, "set CalDAV/CardDAV autodiscovery (adds the _caldavs._tcp/_carddavs._tcp SRV + TXT records)")
+	cmd.Flags().BoolVar(&itip, "itip", false, "set inbound iTIP auto-apply: file arriving invitations into the recipient's calendar (off by default — it makes the calendar a write surface for arriving mail)")
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().BoolVar(&clearAlias, "clear-alias", false, "clear the alias (make it a normal domain)")
 	return cmd
@@ -425,6 +445,9 @@ func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 		{"Can receive", boolYN(d.CanReceive)},
 		{"FBL", boolYN(d.FBL)},
 		{"DMARC ingestion", boolYN(d.DMARC)},
+		{"JMAP autodiscovery", boolYN(d.JMAP)},
+		{"DAV autodiscovery", boolYN(d.DAV)},
+		{"Inbound iTIP", boolYN(d.ITIP)},
 		{"Alias of", strOr(d.AliasOf, "—")},
 		{"Account", strOr(d.AccountID, "platform (no account)")},
 		{"Created", fmtEpoch(d.CreatedAt)},
@@ -464,9 +487,15 @@ func printDNSRecords(w io.Writer, p *Printer, records []coreapi.DNSRecordCheck, 
 	for _, r := range records {
 		value := r.Value
 		// MX and SRV carry their numeric fields outside `value`, exactly as a DNS
-		// UI asks for them; show them so a row is usable as-is.
+		// UI asks for them; show them so a row is usable as-is. An SRV needs all
+		// FOUR — priority, weight, port, target — and dropping the weight made the
+		// _jmap._tcp and _caldavs._tcp rows silently incomplete on a surface whose
+		// whole promise is "publish exactly this".
 		if r.Priority != nil {
 			value = fmt.Sprintf("%d %s", *r.Priority, value)
+		}
+		if r.Weight != nil {
+			value = fmt.Sprintf("%s weight %d", value, *r.Weight)
 		}
 		if r.Port != nil {
 			value = fmt.Sprintf("%s (port %d)", value, *r.Port)

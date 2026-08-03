@@ -10,7 +10,7 @@ func newLogoutCmd(a *app) *cobra.Command {
 	var keepKey bool
 	cmd := &cobra.Command{
 		Use:   "logout",
-		Short: "Revoke this profile's key and remove stored credentials",
+		Short: "Remove stored credentials (revoking the CLI's own minted key)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runLogout(cmd, keepKey)
@@ -29,13 +29,33 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 
 	// Revoke the CLI's own minted key (best-effort — a already-revoked or missing
 	// key is not an error worth failing logout over).
+	//
+	// Only an ACCOUNT key the CLI minted can be revoked from here: `login` records
+	// a KeyID in exactly that branch. Everything else — a mailbox app-password
+	// login, a --no-mint login, a pasted system key — leaves a credential that is
+	// still fully valid after "logout", and saying so is the point. Removing a
+	// secret from this laptop is not revocation, and a user who believes it is
+	// will not go and revoke it.
+	revoked := false
 	if !keepKey && a.profile.Role == coreapi.PrincipalAccount && a.profile.KeyID != "" && a.token != "" {
 		client, err := a.client()
 		if err == nil {
 			if rerr := client.RevokeAPIKey(ctx, a.profile.KeyID); rerr != nil && !coreapi.IsNotFound(rerr) {
 				a.out.Warnf("could not revoke key %s on the server: %v", a.profile.KeyID, rerr)
+			} else {
+				revoked = true
 			}
 		}
+	}
+	stillLive := ""
+	switch {
+	case keepKey:
+		stillLive = "the key is still valid on the server (--keep-key)"
+	case revoked:
+	case a.profile.Role == coreapi.PrincipalMailbox:
+		stillLive = "the app password is still valid — revoke it with `openemail credentials revoke <mailboxId> <credentialId>`"
+	case a.token != "":
+		stillLive = "this key was not minted by the CLI, so it is still valid on the server — revoke it where it was created"
 	}
 
 	if err := secrets.Delete(a.cfg.ConfigDir(), a.profileName, a.profile.KeyStorage); err != nil {
@@ -62,6 +82,9 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 		return err
 	}
 
-	a.out.Successf("Logged out of profile %q.", a.profileName)
+	a.out.Successf("Removed stored credentials for profile %q.", a.profileName)
+	if stillLive != "" {
+		a.out.Warnf("%s", stillLive)
+	}
 	return nil
 }

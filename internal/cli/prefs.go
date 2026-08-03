@@ -24,9 +24,13 @@ func newPrefsCmd(a *app) *cobra.Command {
 			"The blob belongs to the IDENTITY, so it follows a user across every facet\n" +
 			"and device. --identity only changes which path spelling is used; both\n" +
 			"reach the same document, since an identity and its mail store share one id.\n\n" +
-			"Writes carry a version for compare-and-swap: `put` sends the version it\n" +
-			"read unless you pass --force, so two devices cannot silently clobber\n" +
-			"each other (412 version_conflict on a stale write).",
+			"Writes carry a version for compare-and-swap — but only when the input\n" +
+			"CARRIES one. `put` takes the guard from the envelope it is given (the\n" +
+			"default `get` output, or --if-match); a bare prefs object has no version\n" +
+			"in it, so `get --raw | put` writes unconditionally and can clobber a\n" +
+			"concurrent change. Pipe the envelope, not --raw, when that matters.\n" +
+			"--force drops the guard deliberately; a stale guard answers 412\n" +
+			"version_conflict.",
 	}
 	addMailboxFlag(cmd, a)
 	cmd.PersistentFlags().BoolVar(&identity, "identity", false,
@@ -131,6 +135,12 @@ func newPrefsPutCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
 				guard = "0"
 			case guard == "" && embedded != nil:
 				guard = strconv.FormatInt(*embedded, 10)
+			}
+			// Say so. A bare object writes with no compare-and-swap, which is the
+			// exact shape of the round trip the group help used to advertise —
+			// silently the one call with no protection.
+			if guard == "" && !force {
+				a.out.Warnf("no version in the input — writing unconditionally. Pipe `prefs get` (not --raw), or pass --if-match, for compare-and-swap.")
 			}
 			id, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
