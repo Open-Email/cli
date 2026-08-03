@@ -318,6 +318,42 @@ to the attendees the event names; `calendars respond <cal> <href> accepted`
 records your RSVP and tells the organizer — a local organizer's copy is patched
 in place, a remote one is mailed a `METHOD:REPLY`.
 
+## Track to-dos
+
+```sh
+openemail calendars tasks add tasks "Buy milk" --due 2026-08-10
+openemail calendars tasks list tasks --open
+openemail calendars tasks done tasks <href>
+openemail calendars tasks set tasks <href> --due 2026-08-14 --priority 1
+```
+
+A to-do is a `VTODO` stored in a calendar — same collection, same href, same
+ETag, same sharing and feed tokens as an event — so there is no separate `tasks`
+tree, and `calendars objects list <cal> --component task` reaches the same rows.
+What `tasks` adds is honesty about the differences: core keeps a to-do's **DUE**
+in the field an event uses for its end, most to-dos have no start at all, and
+`STATUS` is the only thing that says whether one is finished. So the task table
+shows `DUE` and `STATUS`, and the mixed listing labels the shared column
+`END/DUE`.
+
+`done` writes three properties, not one — `STATUS:COMPLETED`,
+`PERCENT-COMPLETE:100` and the `COMPLETED` timestamp — which is why setting
+`STATUS` by hand leaves other clients showing the task as partly done.
+`--reopen` is the exact inverse. `set` is a read-modify-write of the JSCalendar
+Task under `If-Match`, so recurrence, alarms and every property core preserved
+through its escape hatches survive an edit untouched.
+
+A bare `YYYY-MM-DD` due is a whole-day deadline; pass an RFC3339 timestamp for a
+particular moment. `--open` filters client-side, so pair it with `--all` on a
+calendar bigger than one page.
+
+Core schedules to-dos as well as events (RFC 5546 §3.4), so an assigned task
+arrives as mail and is answered exactly like an invitation — see below.
+Completing a task somebody assigned you updates your own copy only: the iTIP
+fan-out belongs to the organizer, so tell them with `calendars respond`. In the
+console (`openemail ui`), `t` on a calendar row toggles a to-do done or reopens
+it.
+
 ## Answer an invitation that arrived by email
 
 ```sh
