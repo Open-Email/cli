@@ -3338,6 +3338,10 @@
       },
       "PimInvitationStatus": {
         "properties": {
+          "amOrganizer": {
+            "description": "Whether this mailbox owns that ORGANIZER — by the directory's identity list OR the full routing ladder, the same predicate the iTIP fan-out gate applies. Resolved here because a client knows only its login address, so an event organized from an alias would read as somebody else's; an editor offered on a third party's copy would let one write replace the real organizer and, via UID, every attendee's copy with it",
+            "type": "boolean"
+          },
           "calendarId": {
             "description": "The collection holding the copy, if any",
             "type": [
@@ -3367,6 +3371,13 @@
               "string",
               "null"
             ]
+          },
+          "organizer": {
+            "description": "The stored copy's ORGANIZER, if it has one",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -3374,7 +3385,9 @@
           "calendarId",
           "href",
           "myPartstat",
-          "myAddress"
+          "myAddress",
+          "organizer",
+          "amOrganizer"
         ],
         "type": "object"
       },
@@ -3391,7 +3404,7 @@
               },
               "data": {
                 "additionalProperties": {},
-                "description": "JSCalendar Event (RFC 8984) or JSContact Card (RFC 9553); null when unmapped",
+                "description": "JSCalendar Event or Task (RFC 8984) or JSContact Card (RFC 9553); null when unmapped",
                 "type": [
                   "object",
                   "null"
@@ -7871,12 +7884,12 @@
             }
           },
           {
-            "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
+            "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VJOURNAL, or an unparseable body).",
             "in": "query",
             "name": "fields",
             "required": false,
             "schema": {
-              "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
+              "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VJOURNAL, or an unparseable body).",
               "enum": [
                 "meta",
                 "full",
@@ -8056,7 +8069,7 @@
         ]
       },
       "get": {
-        "description": "Two representations of the same resource. Without an `Accept: application/json` header you get the stored bytes verbatim — what a DAV client needs. With it you get a JSContact Card (RFC 9553), which is what a browser client wants: no vCard parser in the page, and unmapped properties preserved through a read-modify-write by the escape hatches.\n\n**The ETag is the hash of the WIRE bytes in both representations** — it validates the resource, not the encoding, so an `If-Match` taken from a JSON read is valid on a raw write and vice versa.\n\n`data` is null when the stored body has no JSON mapping (a VTODO, or a body that does not parse); `content` carries the wire text in that case. `writable` is false when the object converts to JSON but could not be converted back — it is display-only.",
+        "description": "Two representations of the same resource. Without an `Accept: application/json` header you get the stored bytes verbatim — what a DAV client needs. With it you get a JSContact Card (RFC 9553), which is what a browser client wants: no vCard parser in the page, and unmapped properties preserved through a read-modify-write by the escape hatches.\n\n**The ETag is the hash of the WIRE bytes in both representations** — it validates the resource, not the encoding, so an `If-Match` taken from a JSON read is valid on a raw write and vice versa.\n\n`data` is null when the stored body has no JSON mapping — a body that does not parse — and `content` carries the wire text in that case. `writable` is false when the object converts to JSON but could not be converted back — it is display-only.",
         "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
         "parameters": [
           {
@@ -9427,12 +9440,12 @@
             }
           },
           {
-            "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
+            "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VJOURNAL, or an unparseable body).",
             "in": "query",
             "name": "fields",
             "required": false,
             "schema": {
-              "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VTODO, or an unparseable body).",
+              "description": "meta omits each object's content — listings without body transfer. json replaces content with `data`: the JSCalendar/JSContact form, so a browser client renders a listing without parsing wire text. Under json, expanded instances carry no per-instance body (an occurrence's fields come from its parent's `data` plus the instance's own start/end), and `content` rides only on rows with no JSON mapping (a VJOURNAL, or an unparseable body).",
               "enum": [
                 "meta",
                 "full",
@@ -9645,7 +9658,7 @@
         ]
       },
       "get": {
-        "description": "Two representations of the same resource. Without an `Accept: application/json` header you get the stored bytes verbatim — what a DAV client needs. With it you get a JSCalendar Event (RFC 8984), which is what a browser client wants: no iCalendar parser in the page, and unmapped properties preserved through a read-modify-write by the escape hatches.\n\n**The ETag is the hash of the WIRE bytes in both representations** — it validates the resource, not the encoding, so an `If-Match` taken from a JSON read is valid on a raw write and vice versa.\n\n`data` is null when the stored body has no JSON mapping (a VTODO, or a body that does not parse); `content` carries the wire text in that case. `writable` is false when the object converts to JSON but could not be converted back — it is display-only.",
+        "description": "Two representations of the same resource. Without an `Accept: application/json` header you get the stored bytes verbatim — what a DAV client needs. With it you get a JSCalendar Event or Task (RFC 8984 — a VEVENT reads as an Event, a VTODO as a Task, and `@type` says which), which is what a browser client wants: no iCalendar parser in the page, and unmapped properties preserved through a read-modify-write by the escape hatches.\n\n**The ETag is the hash of the WIRE bytes in both representations** — it validates the resource, not the encoding, so an `If-Match` taken from a JSON read is valid on a raw write and vice versa.\n\n`data` is null when the stored body has no JSON mapping — a VJOURNAL, or a body that does not parse — and `content` carries the wire text in that case. `writable` is false when the object converts to JSON but could not be converted back — it is display-only.",
         "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
         "parameters": [
           {
@@ -9713,7 +9726,7 @@
         ]
       },
       "put": {
-        "description": "Accepts either representation. The default is raw text/calendar — the bytes are stored verbatim and the ETag is their hash.\n\nSend `Content-Type: application/json` to write a JSCalendar Event (RFC 8984) instead: it is converted to iCalendar server-side and then stored through the identical path, so idempotency, preconditions, scheduling and sync behave the same either way. `uid` may be omitted on create — the resource name (minus its extension) is used. Unmapped properties survive a read-modify-write via the escape hatches, so round-tripping a JSON read never drops what it did not model.\n\nRefusals specific to the JSON body: `invalid_json` (unparseable), `invalid_object` (a member this mapping cannot express — `property` names it).",
+        "description": "Accepts either representation. The default is raw text/calendar — the bytes are stored verbatim and the ETag is their hash.\n\nSend `Content-Type: application/json` to write a JSCalendar Event or Task (RFC 8984) instead: it is converted to iCalendar server-side and then stored through the identical path, so idempotency, preconditions, scheduling and sync behave the same either way. `@type: \"Task\"` writes a VTODO; anything else — including an absent `@type`, which every client written before tasks had a JSON form omits — writes a VEVENT. `uid` may be omitted on create — the resource name (minus its extension) is used. Unmapped properties survive a read-modify-write via the escape hatches, so round-tripping a JSON read never drops what it did not model.\n\nRefusals specific to the JSON body: `invalid_json` (unparseable), `invalid_object` (a member this mapping cannot express — `property` names it).",
         "operationId": "put__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
         "parameters": [
           {

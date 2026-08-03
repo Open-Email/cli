@@ -190,6 +190,49 @@ func TestInvitationRendering(t *testing.T) {
 	}
 }
 
+// Core schedules to-dos as well as events (RFC 5546 §3.4; this surface's
+// SCHEDULABLE set is {VEVENT, VTODO}), so a mailed to-do reaches this banner.
+// Rendering it as an "Event" whose "When" is blank hides both what it is and the
+// only date it has — core puts a to-do's DUE in `dtend` and leaves `dtstart`
+// empty for the commonest one.
+func TestInvitationRendersATask(t *testing.T) {
+	due := int64(1785312000)
+	summary, comp := "Ship the release notes", "VTODO"
+	p := loadedPane(t, &coreapi.MessageInvitation{
+		Section: "2", Component: &comp, Summary: &summary, DTEnd: &due,
+	})
+	view := p.view()
+	if !strings.Contains(view, "Due") {
+		t.Errorf("a to-do's deadline must be labelled Due:\n%s", view)
+	}
+	if !strings.Contains(view, fmtEpoch(due)) {
+		t.Errorf("a to-do's only date must render:\n%s", view)
+	}
+	if !strings.Contains(view, "Task") {
+		t.Errorf("the banner must say it is a task, not an event:\n%s", view)
+	}
+
+	// An event is unchanged: start-anchored, labelled When.
+	start := int64(1785300000)
+	ev := loadedPane(t, &coreapi.MessageInvitation{Section: "2", Summary: &summary, DTStart: &start})
+	if !strings.Contains(ev.view(), "When") {
+		t.Errorf("an event keeps its When label:\n%s", ev.view())
+	}
+}
+
+// A to-do's deadline lives in dtend; an event with only an end is not something
+// core produces, and inventing a time for one would be worse than saying nothing.
+func TestInvWhenForATask(t *testing.T) {
+	due := int64(1785312000)
+	comp := "VTODO"
+	if got := invWhen(&coreapi.MessageInvitation{Component: &comp, DTEnd: &due}); got != fmtEpoch(due) {
+		t.Errorf("due-only task = %q", got)
+	}
+	if got := invWhen(&coreapi.MessageInvitation{DTEnd: &due}); got != "" {
+		t.Errorf("startless event = %q, want no row", got)
+	}
+}
+
 // An RDATE-only series has no RRULE to print; the sentinel must not leak.
 func TestInvitationRdateSeries(t *testing.T) {
 	rrule := "RDATE"

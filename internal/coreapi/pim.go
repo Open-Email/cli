@@ -70,7 +70,7 @@ type PimObjectMeta struct {
 	Etag        string  `json:"etag"` // sha256 of the body, hex
 	Size        int64   `json:"size"`
 	ContentType string  `json:"contentType"`
-	Component   *string `json:"component"` // VEVENT | VTODO | VCARD
+	Component   *string `json:"component"` // VEVENT | VTODO | VJOURNAL | VCARD
 	Dtstart     *int64  `json:"dtstart"`
 	Dtend       *int64  `json:"dtend"`
 	// Rrule is the RRULE value; the literal "RDATE" marks a series recurring by
@@ -99,14 +99,22 @@ type PimObject struct {
 }
 
 // PimObjectJSON is the JSON representation of one object: a JSCalendar Event
-// (RFC 8984) or JSContact Card (RFC 9553) instead of wire text.
+// or Task (RFC 8984) or a JSContact Card (RFC 9553) instead of wire text.
 //
-// Data is null when the object has no mapping (a VTODO, or a body that could
-// not be parsed) — Content carries the wire text in exactly that case.
+// THE BODY decides which — never the caller. A VTODO reads back as a Task
+// (`"@type":"Task"`, with `due`/`progress`/`percentComplete`/`priority` where
+// an Event has `start`/`duration`/`status`), a VEVENT as an Event, a VCARD as
+// a Card. Reading a to-do as an Event-shaped document is exactly the mistake
+// that would drop `due` on a read-modify-write.
+//
+// Data is null only when the object has no mapping at all — a VJOURNAL (no
+// JSCalendar type models one) or a body that could not be parsed — and Content
+// carries the wire text in exactly that case.
+//
 // Writable is false when the object converts TO JSON but cannot be converted
 // back: the reader is more permissive than the writer (a VEVENT with no
-// DTSTART reads fine and could never be written), so this says up front that
-// an edit would be refused.
+// DTSTART, or a VTODO carrying DURATION without DTSTART, reads fine and could
+// never be written), so this says up front that an edit would be refused.
 type PimObjectJSON struct {
 	PimObjectMeta
 	Data     map[string]any `json:"data"`

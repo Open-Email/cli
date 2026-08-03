@@ -118,11 +118,18 @@ func pimCollectionsDesc(mbx coreapi.Mailbox, kind coreapi.PimKind) resourceDesc 
 // enter shows the object detail with its wire text.
 func pimObjectsDesc(mbx coreapi.Mailbox, kind coreapi.PimKind, col coreapi.PimCollection) resourceDesc {
 	scope := pimScopeFor(mbx)
+	// A calendar holds to-dos as well as events, and core overloads one extract
+	// for both: `dtend` is an event's end and a to-do's DUE. One table serves
+	// both, so the header says both rather than picking one and lying about half
+	// the calendar. STATUS earns its width for the same reason — it is the only
+	// field that says whether a to-do is done, and without it a finished one and
+	// an open one render identically.
 	cols := []column{
 		{title: "HREF", flex: true},
 		{title: "COMP", width: 6},
 		{title: "START", width: 16},
-		{title: "END", width: 16},
+		{title: "END/DUE", width: 16},
+		{title: "STATUS", width: 12},
 		{title: "RECURS", width: 6},
 		{title: "UPDATED", width: 16},
 	}
@@ -157,7 +164,7 @@ func pimObjectsDesc(mbx coreapi.Mailbox, kind coreapi.PimKind, col coreapi.PimCo
 				} else {
 					cells = []string{
 						o.Href, strOr(o.Component, "—"), fmtEpochPtr(o.Dtstart), fmtEpochPtr(o.Dtend),
-						yn(o.Rrule != nil), fmtEpoch(o.UpdatedAt),
+						strOr(o.EventStatus, "—"), yn(o.Rrule != nil), fmtEpoch(o.UpdatedAt),
 					}
 				}
 				rows[i] = rowData{cells: cells, item: o}
@@ -181,14 +188,34 @@ func pimObjectsDesc(mbx coreapi.Mailbox, kind coreapi.PimKind, col coreapi.PimCo
 					kv{k: "email", v: strOr(o.VcardEmail, "—")},
 				)
 			} else {
+				if coreapi.IsTaskObject(o) {
+					// A to-do's one timestamp is a DEADLINE, and RFC 5545 §3.6.2
+					// makes DTSTART optional — the commonest task has none — so
+					// an event's start/end labels describe the wrong object. The
+					// start row appears only when there is one, and STATUS moves
+					// up because on a to-do it is the headline fact.
+					if o.Dtstart != nil {
+						kvs = append(kvs, kv{k: "start", v: fmtEpochPtr(o.Dtstart)})
+					}
+					kvs = append(kvs,
+						kv{k: "due", v: fmtEpochPtr(o.Dtend)},
+						kv{k: "status", v: strOr(o.EventStatus, "—")},
+					)
+				} else {
+					kvs = append(kvs,
+						kv{k: "start", v: fmtEpochPtr(o.Dtstart)},
+						kv{k: "end", v: fmtEpochPtr(o.Dtend)},
+						kv{k: "status", v: strOr(o.EventStatus, "—")},
+					)
+				}
 				kvs = append(kvs,
-					kv{k: "start", v: fmtEpochPtr(o.Dtstart)},
-					kv{k: "end", v: fmtEpochPtr(o.Dtend)},
 					kv{k: "rrule", v: strOr(o.Rrule, "—")},
 					kv{k: "organizer", v: strings.TrimPrefix(strOr(o.Organizer, "—"), "mailto:")},
-					kv{k: "status", v: strOr(o.EventStatus, "—")},
 					kv{k: "sequence", v: fmt.Sprintf("%d", o.Sequence)},
 				)
+				// Attendees belong to both: core schedules to-dos (RFC 5546 §3.4),
+				// so an ASSIGNED task carries the same ORGANIZER/ATTENDEE pair an
+				// invitation does.
 				for i, at := range o.Attendees {
 					label := at.Email
 					if at.Partstat != "" {
@@ -219,14 +246,66 @@ func pimObjectsDesc(mbx coreapi.Mailbox, kind coreapi.PimKind, col coreapi.PimCo
 		}},
 	}
 	if kind == coreapi.PimCalendars {
-		desc.actions = append(desc.actions, action{
-			key: "p", label: "p rsvp", needsRow: true,
-			run: func(ctx context.Context, ui *Options, item any) pane {
-				return pimRsvpFormPane(ctx, ui, mbx, col, item.(coreapi.PimObject))
+		desc.actions = append(desc.actions,
+			action{
+				key: "p", label: "p rsvp", needsRow: true,
+				run: func(ctx context.Context, ui *Options, item any) pane {
+					return pimRsvpFormPane(ctx, ui, mbx, col, item.(coreapi.PimObject))
+				},
 			},
-		})
+			// Directly run rather than confirmed: completing a to-do is exactly
+			// reversible (the same key reopens it), and a modal on the one
+			// interaction a task list exists for would be noise. The flash says
+			// which way it went, since the row scrolls away on refresh.
+			action{
+				key: "t", label: "t done/reopen", needsRow: true,
+				do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
+					return toggleTaskDone(ctx, c, scope, col, item.(coreapi.PimObject))
+				},
+			},
+		)
 	}
 	return desc
+}
+
+// toggleTaskDone flips a to-do between complete and needs-action.
+//
+// It is a read-modify-write of the JSCalendar Task rather than a synthesized
+// body: the stored document carries members nothing here models (recurrence,
+// alarms, and every unmapped iCalendar property core kept through its escape
+// hatches), and re-authoring it would drop them. The If-Match comes from the
+// ETag of the very read that produced the document, so a concurrent DAV or JMAP
+// write loses with a 412 instead of being silently overwritten.
+func toggleTaskDone(ctx context.Context, c *coreapi.Client, scope coreapi.PimScope, col coreapi.PimCollection, o coreapi.PimObject) (string, error) {
+	if !coreapi.IsTaskObject(o) {
+		return "", fmt.Errorf("%s is not a to-do — only a VTODO can be completed", o.Href)
+	}
+	reopen := coreapi.TaskIsClosed(o)
+
+	obj, err := c.GetPimObjectJSON(ctx, scope, coreapi.PimCalendars, col.ID, o.Href, "")
+	if err != nil {
+		return "", err
+	}
+	doc, err := coreapi.TaskDocumentOf(obj)
+	if err != nil {
+		return "", err
+	}
+	edits := coreapi.TaskEdits{Progress: "completed", ProgressSet: true}
+	if reopen {
+		edits.Progress = "needs-action"
+	}
+	edited, err := coreapi.ApplyTaskEdits(doc, edits)
+	if err != nil {
+		return "", err
+	}
+	if _, err := c.PutPimObjectJSON(ctx, scope, coreapi.PimCalendars, col.ID, o.Href, edited,
+		coreapi.PimPutOpts{IfMatch: obj.Etag}); err != nil {
+		return "", err
+	}
+	if reopen {
+		return o.Href + " reopened (needs-action)", nil
+	}
+	return o.Href + " marked done", nil
 }
 
 // pimContentKVs renders a raw iCalendar/vCard stream as detail lines, bounded

@@ -60,16 +60,47 @@ func newInvitationStatusCmd(a *app) *cobra.Command {
 					}
 					return
 				}
-				printTable(w, a.out, []string{"FIELD", "VALUE"}, [][]string{
-					{"Filed", "yes"},
-					{"Calendar", strOr(st.CalendarID, "—")},
-					{"Href", strOr(st.Href, "—")},
-					{"Your address", strOr(st.MyAddress, "— (not an attendee)")},
-					{"Your reply", strOr(st.MyPartstat, "— (none yet)")},
-				})
+				printTable(w, a.out, []string{"FIELD", "VALUE"}, invitationStatusRows(st))
+				a.out.Msgf("%s", invitationStatusNextStep(st))
 			})
 			return nil
 		},
+	}
+}
+
+// invitationStatusRows renders the filed copy's standing.
+//
+// Organizer and "Yours to change" are the pair that answers the question the
+// probe exists for: is this object mine to edit? Neither can be computed here.
+// Core resolves `amOrganizer` through the directory's identity list AND the full
+// routing ladder — the same predicate the iTIP fan-out gate applies — while the
+// CLI knows only the address it logged in with, so an event or task organized
+// from an alias would read as somebody else's.
+func invitationStatusRows(st *coreapi.PimInvitationStatus) [][]string {
+	return [][]string{
+		{"Filed", "yes"},
+		{"Calendar", strOr(st.CalendarID, "—")},
+		{"Href", strOr(st.Href, "—")},
+		{"Organizer", strings.TrimPrefix(strOr(st.Organizer, "—"), "mailto:")},
+		{"Yours to change", boolYN(st.AmOrganizer)},
+		{"Your address", strOr(st.MyAddress, "— (not an attendee)")},
+		{"Your reply", strOr(st.MyPartstat, "— (none yet)")},
+	}
+}
+
+// invitationStatusNextStep turns the organizer/attendee split into the one
+// command that applies. The respond endpoint refuses an organizer outright
+// (403 is_organizer — filing an ICS naming you as organizer would schedule iTIP
+// on your behalf), so pointing them at RSVP sends them into a refusal.
+func invitationStatusNextStep(st *coreapi.PimInvitationStatus) string {
+	switch {
+	case st.AmOrganizer:
+		return "you organize this — change it with `openemail calendars objects put` " +
+			"(or `openemail calendars tasks set` for a to-do); RSVP is refused for organizers"
+	case st.MyAddress == nil:
+		return "you are not an attendee of this — nothing to answer"
+	default:
+		return "answer it with `openemail calendars respond <calendar> <href> <partstat>`"
 	}
 }
 
@@ -114,8 +145,8 @@ func newInvitationShowCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(inv, func(w io.Writer) {
 				rows := [][]string{
-					{"Event", strOr(inv.Summary, "(no summary)")},
-					{"When", invitationWhen(inv)},
+					{invitationSubject(inv), strOr(inv.Summary, "(no summary)")},
+					{invitationWhenLabel(inv), invitationWhen(inv)},
 					{"Where", strOr(inv.Location, "—")},
 					{"Organizer", strOr(inv.Organizer, "—")},
 					{"Method", strOr(inv.Method, "—")},
@@ -140,10 +171,40 @@ func newInvitationShowCmd(a *app) *cobra.Command {
 	}
 }
 
+// invitationSubject names what the message is about. Core schedules to-dos as
+// well as events (RFC 5546 §3.4 defines REQUEST/REPLY for a VTODO, and this
+// surface's SCHEDULABLE set is {VEVENT, VTODO}), so a mailed to-do reaches
+// here — calling it an "Event" makes the row a lie. An absent component keeps
+// the pre-existing wording.
+func invitationSubject(inv *coreapi.MessageInvitation) string {
+	if inv.Component != nil && strings.EqualFold(*inv.Component, "VTODO") {
+		return "Task"
+	}
+	return "Event"
+}
+
+// invitationWhenLabel: a to-do's one timestamp is a DEADLINE, not a meeting
+// time, so labelling it "When" reads as when to show up.
+func invitationWhenLabel(inv *coreapi.MessageInvitation) string {
+	if invitationSubject(inv) == "Task" {
+		return "Due"
+	}
+	return "When"
+}
+
 // invitationWhen renders the window core already resolved — epoch seconds with
 // the event's timezone applied, so there is no VTIMEZONE to interpret here.
+//
+// A to-do is the one shape with an end and no start: core puts DUE in `dtend`,
+// and RFC 5545 §3.6.2 makes DTSTART optional, so the commonest task ("buy milk
+// by Friday") carries a deadline alone. Requiring a start would render its only
+// date as a dash. An EVENT with no start stays a dash — core does not produce
+// one, and inventing a start from an end would be worse than saying nothing.
 func invitationWhen(inv *coreapi.MessageInvitation) string {
 	if inv.DTStart == nil {
+		if inv.DTEnd != nil && invitationSubject(inv) == "Task" {
+			return fmtEpoch(*inv.DTEnd)
+		}
 		return "—"
 	}
 	when := fmtEpoch(*inv.DTStart)

@@ -81,7 +81,7 @@ func newPimFamilyCmd(a *app, f pimFamily) *cobra.Command {
 		newPimTokensCmd(a, f, scope),
 	)
 	if f.kind == coreapi.PimCalendars {
-		cmd.AddCommand(newPimRespondCmd(a, f, scope), newInvitationsCmd(a))
+		cmd.AddCommand(newPimRespondCmd(a, f, scope), newInvitationsCmd(a), newPimTasksCmd(a, f, scope))
 	}
 	return cmd
 }
@@ -461,17 +461,21 @@ func newPimObjListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 		Short:   short,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
-			s, err := scope(cmd, client)
-			if err != nil {
-				return err
-			}
+			// Every flag is parsed BEFORE the client is built, so a typo costs
+			// nothing and never reaches core. --component in particular: core's
+			// query is a zod enum over the upper-case spellings, so
+			// `--component vtodo` comes back as a `validation_failed` naming a zod
+			// path, which tells a user nothing about what to type instead.
 			opts := coreapi.PimObjectListOpts{
 				Limit: limit, Cursor: cursor, Fields: fields, UID: uid,
-				Component: component, Expand: expand,
+				Expand: expand,
+			}
+			if cmd.Flags().Changed("component") {
+				normalized, cerr := coreapi.NormalizeComponent(component)
+				if cerr != nil {
+					return usageError(fmt.Errorf("--component: %w", cerr))
+				}
+				opts.Component = normalized
 			}
 			if cmd.Flags().Changed("start") {
 				sec, perr := parseTimeArg(start)
@@ -486,6 +490,14 @@ func newPimObjListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 					return usageError(fmt.Errorf("--end: %w", perr))
 				}
 				opts.End = &sec
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			s, err := scope(cmd, client)
+			if err != nil {
+				return err
 			}
 			var objs []coreapi.PimObject
 			var window *coreapi.PimWindow
@@ -510,11 +522,18 @@ func newPimObjListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 				payload["window"] = window
 			}
 			a.out.Emit(payload, func(w io.Writer) {
-				if expand {
+				switch {
+				case expand:
 					printPimInstances(a, w, objs)
-				} else if f.kind == coreapi.PimAddressbooks {
+				case f.kind == coreapi.PimAddressbooks:
 					printPimContacts(a, w, objs)
-				} else {
+				case opts.Component == coreapi.TaskComponent:
+					// The user asked for to-dos, so the table is a to-do's: DUE
+					// rather than END, and the STATUS that says whether it is done.
+					// Driven by the FLAG, not by the rows, so the shape of a
+					// listing never depends on what happens to be in it.
+					printPimTasks(a, w, objs)
+				default:
 					printPimEvents(a, w, objs)
 				}
 				if window != nil && window.Clamped {
@@ -533,22 +552,30 @@ func newPimObjListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	if f.kind == coreapi.PimCalendars {
 		cmd.Flags().StringVar(&start, "start", "", "range start (RFC3339, YYYY-MM-DD, or unix seconds)")
 		cmd.Flags().StringVar(&end, "end", "", "range end, exclusive (RFC3339, YYYY-MM-DD, or unix seconds)")
-		cmd.Flags().StringVar(&component, "component", "", "VEVENT | VTODO | VJOURNAL")
+		cmd.Flags().StringVar(&component, "component", "", "restrict to one kind: event | task | journal (VEVENT | VTODO | VJOURNAL)")
 		cmd.Flags().BoolVar(&expand, "expand", false, "expand recurring objects into occurrences (requires --start and --end)")
 	}
 	return cmd
 }
 
+// printPimEvents renders a calendar listing that may hold either kind.
+//
+// One column serves two meanings because core's extract does: `dtend` is a
+// VEVENT's end and a VTODO's DUE, so the header says END/DUE rather than
+// picking one and lying about the other half of the calendar. STATUS is here
+// for the same reason — without it a completed to-do and an open one render
+// identically, and the COMP column is the only hint anything differs.
 func printPimEvents(a *app, w io.Writer, objs []coreapi.PimObject) {
 	rows := make([][]string, 0, len(objs))
 	for _, o := range objs {
 		rows = append(rows, []string{
 			o.Href, strOr(o.Component, "—"), fmtEpochPtr(o.Dtstart), fmtEpochPtr(o.Dtend),
+			strOr(o.EventStatus, "—"),
 			truncate(strings.TrimPrefix(derefOr(o.Organizer, "—"), "mailto:"), 28),
 			boolYN(o.Rrule != nil), fmtEpoch(o.UpdatedAt),
 		})
 	}
-	printTable(w, a.out, []string{"HREF", "COMP", "START", "END", "ORGANIZER", "RECURS", "UPDATED"}, rows)
+	printTable(w, a.out, []string{"HREF", "COMP", "START", "END/DUE", "STATUS", "ORGANIZER", "RECURS", "UPDATED"}, rows)
 }
 
 func printPimContacts(a *app, w io.Writer, objs []coreapi.PimObject) {
@@ -635,7 +662,11 @@ func newPimObjGetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 // document itself, with the writability caveat stated rather than implied.
 func printPimObjectJSON(a *app, obj *coreapi.PimObjectJSON, f pimFamily) {
 	if obj.Data == nil {
-		a.out.Warnf("no %s mapping for this object — the wire text is below", f.jsonName)
+		// Narrow, and worth naming: core maps a VEVENT to an Event, a VTODO to a
+		// Task and a VCARD to a Card, so a null here means a VJOURNAL (which no
+		// JSCalendar type models) or a body core could not parse — never "this
+		// kind of object is unsupported".
+		a.out.Warnf("no %s mapping for this object (a journal entry, or a body that did not parse) — the wire text is below", f.jsonName)
 		fmt.Fprintln(os.Stdout, obj.Content)
 		return
 	}

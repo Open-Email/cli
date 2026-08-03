@@ -273,8 +273,8 @@ func (p *invitationPane) setContent() {
 		}
 		fmt.Fprintf(&b, "  %s%s\n", stKey.Render(fmt.Sprintf("%-11s", k)), stVal.Render(truncate(v, max(10, w-16))))
 	}
-	row("Event", strOr(inv.Summary, "(no summary)"))
-	row("When", invWhen(inv))
+	row(invSubject(inv), strOr(inv.Summary, "(no summary)"))
+	row(invWhenLabel(inv), invWhen(inv))
 	row("Where", strOr(inv.Location, ""))
 	row("Organizer", strOr(inv.Organizer, ""))
 	if inv.RRule != nil {
@@ -318,10 +318,40 @@ func (p *invitationPane) setContent() {
 	p.vp.SetContent(b.String())
 }
 
-// invWhen renders the start (and end) the SERVER resolved — epoch seconds, with
-// the object's timezone already applied, so there is no VTIMEZONE to interpret.
+// invSubject names what arrived. Core schedules to-dos as well as events —
+// RFC 5546 §3.4 defines REQUEST/REPLY for a VTODO, and this surface's
+// SCHEDULABLE set is {VEVENT, VTODO} — so an assigned task reaches this banner,
+// and calling it an "Event" makes the first line a lie. An absent component
+// keeps the pre-existing wording.
+func invSubject(inv *coreapi.MessageInvitation) string {
+	if inv.Component != nil && strings.EqualFold(*inv.Component, "VTODO") {
+		return "Task"
+	}
+	return "Event"
+}
+
+// invWhenLabel: a to-do's timestamp is a DEADLINE, not a meeting time, and
+// "When" on a task reads as when to show up.
+func invWhenLabel(inv *coreapi.MessageInvitation) string {
+	if invSubject(inv) == "Task" {
+		return "Due"
+	}
+	return "When"
+}
+
+// invWhen renders the window the SERVER resolved — epoch seconds, with the
+// object's timezone already applied, so there is no VTIMEZONE to interpret.
+//
+// A to-do is the one shape with an end and no start: core puts DUE in `dtend`,
+// and RFC 5545 §3.6.2 makes DTSTART optional, so the commonest assigned task
+// carries a deadline alone. Anchoring on the start would render its only date as
+// nothing at all. An EVENT with no start stays blank — core does not produce
+// one, and inventing a start from an end would be worse than saying nothing.
 func invWhen(inv *coreapi.MessageInvitation) string {
 	if inv.DTStart == nil {
+		if inv.DTEnd != nil && invSubject(inv) == "Task" {
+			return fmtEpoch(*inv.DTEnd)
+		}
 		return ""
 	}
 	when := fmtEpoch(*inv.DTStart)

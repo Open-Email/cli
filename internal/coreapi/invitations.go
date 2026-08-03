@@ -6,9 +6,9 @@ import (
 	"net/url"
 )
 
-// PimInvitationStatus answers whether an event with a given UID is already
-// filed anywhere in the mailbox, which calendar holds it, and what the caller
-// has answered so far. Deliberately cross-collection: an auto-filed or
+// PimInvitationStatus answers whether an event or to-do with a given UID is
+// already filed anywhere in the mailbox, which calendar holds it, and what the
+// caller has answered so far. Deliberately cross-collection: an auto-filed or
 // user-moved copy is found wherever it lives.
 type PimInvitationStatus struct {
 	Found      bool    `json:"found"`
@@ -19,6 +19,17 @@ type PimInvitationStatus struct {
 	// as an attendee.
 	MyPartstat *string `json:"myPartstat"`
 	MyAddress  *string `json:"myAddress"`
+	// Organizer is the stored copy's ORGANIZER, and AmOrganizer whether it is
+	// THIS mailbox's — resolved server-side by the directory's identity list or
+	// the full routing ladder, the same predicate the iTIP fan-out gate applies.
+	//
+	// A client cannot compute AmOrganizer for itself: it knows only the address
+	// it logged in with, so an event or task organized from an alias would read
+	// as somebody else's. It is the field that answers "is this mine to change"
+	// — an editor offered on a third party's copy lets one write replace the
+	// real organizer, and via the UID every attendee's copy with it.
+	Organizer   *string `json:"organizer"`
+	AmOrganizer bool    `json:"amOrganizer"`
 }
 
 // PimRsvpResult is the outcome of answering an invitation from its raw
