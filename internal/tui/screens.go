@@ -19,6 +19,7 @@ func allDescriptors() map[string]resourceDesc {
 		"traffic":      trafficPickerDesc(),
 		"mailboxes":    mailboxesDesc(),
 		"routes":       routesDesc(),
+		"groups":       groupsDesc(),
 		"patterns":     patternsDesc(),
 		"keys":         keysDesc(),
 		"accounts":     accountsDesc(),
@@ -259,7 +260,7 @@ func routesDesc() resourceDesc {
 			{title: "CREATED", width: 16},
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
-			pg, err := c.ListRoutes(ctx, "", "", pageLimit, cursor)
+			pg, err := c.ListRoutes(ctx, "", "", "", pageLimit, cursor)
 			if err != nil {
 				return nil, "", err
 			}
@@ -287,26 +288,10 @@ func routesDesc() resourceDesc {
 		},
 		actions: []action{
 			{key: "n", label: "n new", run: func(ctx context.Context, ui *Options, _ any) pane {
-				return routeFormPane(ctx, ui, nil)
+				return routeFormPane(ctx, ui, nil, "")
 			}},
 			{key: "e", label: "e edit", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
-				r := item.(coreapi.Route)
-				if r.DestinationType != "group" {
-					return routeFormPane(ctx, ui, &r)
-				}
-				// The list answer omits the group-only posting field, and a
-				// form defaulted blind would silently reset it — prefetch the
-				// single-route answer (which carries it) so the form opens on
-				// the CURRENT policy. Same load-then-build shape as
-				// keyCreatePane/vacationFormPane.
-				addr := r.Address
-				return newLoaderPane(ctx, ui, "Edit route "+addr, func(lctx context.Context, c *coreapi.Client) (pane, error) {
-					full, err := c.GetRoute(lctx, addr)
-					if err != nil {
-						return nil, err
-					}
-					return routeFormPane(ctx, ui, full), nil
-				})
+				return routeEditPane(ctx, ui, item.(coreapi.Route))
 			}},
 			{key: "d", label: "d delete", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				return routeDeleteConfirm(ctx, ui, item.(coreapi.Route))
@@ -324,13 +309,9 @@ func routesDesc() resourceDesc {
 			if r.DestinationType != "group" {
 				return nil, nil
 			}
-			// The list answer omits the group-only fields (posting, memberCount);
-			// the single-route answer carries them.
+			// The bare list answer omits the group-only fields (posting,
+			// memberCount); the single-route answer carries them.
 			full, err := c.GetRoute(ctx, r.Address)
-			if err != nil {
-				return nil, err
-			}
-			pg, err := c.ListMembers(ctx, r.Address, 100, "")
 			if err != nil {
 				return nil, err
 			}
@@ -338,18 +319,95 @@ func routesDesc() resourceDesc {
 			if full.Posting != "" {
 				kvs = append(kvs, kv{k: "posting", v: full.Posting})
 			}
-			count := len(pg.Items)
-			if full.MemberCount != nil {
-				count = int(*full.MemberCount)
+			preview, err := memberPreviewKVs(ctx, c, r.Address, full.MemberCount)
+			if err != nil {
+				return nil, err
 			}
-			kvs = append(kvs, kv{}, kv{v: fmt.Sprintf("Members (%d)", count)})
-			for i, m := range pg.Items {
-				kvs = append(kvs, kv{k: fmt.Sprintf("%d", i+1), v: m.MemberAddress})
+			return append(kvs, preview...), nil
+		},
+	}
+}
+
+// memberPreviewKVs builds a group's detail-pane member preview: a
+// "Members (N)" header (N from the enriched/single-route memberCount when
+// known, else the fetched page) plus the first page of members, with a
+// more-hint when truncated. Shared by the Routes and Groups screens.
+func memberPreviewKVs(ctx context.Context, c *coreapi.Client, address string, memberCount *int64) ([]kv, error) {
+	pg, err := c.ListMembers(ctx, address, 100, "")
+	if err != nil {
+		return nil, err
+	}
+	count := len(pg.Items)
+	if memberCount != nil {
+		count = int(*memberCount)
+	}
+	kvs := []kv{{}, {v: fmt.Sprintf("Members (%d)", count)}}
+	for i, m := range pg.Items {
+		kvs = append(kvs, kv{k: fmt.Sprintf("%d", i+1), v: m.MemberAddress})
+	}
+	if pg.NextCursor != "" {
+		kvs = append(kvs, kv{k: "…", v: "more — use `openemail routes members list`"})
+	}
+	return kvs, nil
+}
+
+// groupsDesc is the first-class groups console: the same routes narrowed to
+// type=group, whose listing core ENRICHES with posting + memberCount exactly
+// so this screen needs no per-row GetRoute. Groups still appear on the Routes
+// screen; this one is the discoverable home.
+func groupsDesc() resourceDesc {
+	return resourceDesc{
+		key:  "groups",
+		name: "Groups",
+		columns: []column{
+			{title: "ADDRESS", flex: true},
+			{title: "POSTING", width: 8},
+			{title: "MEMBERS", width: 7},
+			{title: "CREATED", width: 16},
+		},
+		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
+			pg, err := c.ListRoutes(ctx, "", "", "group", pageLimit, cursor)
+			if err != nil {
+				return nil, "", err
 			}
-			if pg.NextCursor != "" {
-				kvs = append(kvs, kv{k: "…", v: "more — use `openemail routes members list`"})
+			rows := make([]rowData, len(pg.Items))
+			for i, r := range pg.Items {
+				rows[i] = rowData{
+					cells: []string{r.Address, orDash(r.Posting), int64Or(r.MemberCount, "—"), fmtEpoch(r.CreatedAt)},
+					item:  r,
+				}
 			}
-			return kvs, nil
+			return rows, pg.NextCursor, nil
+		},
+		detail: func(item any) []kv {
+			r := item.(coreapi.Route)
+			return []kv{
+				{k: "address", v: r.Address},
+				{k: "domain", v: r.Domain},
+				{k: "posting", v: orDash(r.Posting)},
+				{k: "members", v: int64Or(r.MemberCount, "—")},
+				{k: "created", v: fmtEpoch(r.CreatedAt)},
+			}
+		},
+		actions: []action{
+			{key: "n", label: "n new", run: func(ctx context.Context, ui *Options, _ any) pane {
+				return routeFormPane(ctx, ui, nil, "group")
+			}},
+			{key: "e", label: "e edit", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return routeEditPane(ctx, ui, item.(coreapi.Route))
+			}},
+			{key: "M", label: "M members", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return newScreenPane(ctx, ui, membersDesc(item.(coreapi.Route)))
+			}},
+			{key: "d", label: "d delete", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return routeDeleteConfirm(ctx, ui, item.(coreapi.Route))
+			}},
+		},
+		extra: func(ctx context.Context, c *coreapi.Client, item any) ([]kv, error) {
+			r := item.(coreapi.Route)
+			// The enriched row already carries posting/memberCount (shown in
+			// the base detail); only the member preview needs a fetch.
+			return memberPreviewKVs(ctx, c, r.Address, r.MemberCount)
 		},
 	}
 }

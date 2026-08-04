@@ -34,6 +34,7 @@ func newRoot(ctx context.Context, opts Options) *rootModel {
 		{key: "domains", label: "Domains"},
 		{key: "traffic", label: "Traffic"},
 		{key: "routes", label: "Routes"},
+		{key: "groups", label: "Groups"},
 		{key: "patterns", label: "Patterns"},
 		{key: "keys", label: "API Keys"},
 	}

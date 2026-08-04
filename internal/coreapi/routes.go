@@ -46,13 +46,20 @@ type RouteCreateInput struct {
 	Posting string `json:"posting,omitempty"`
 }
 
-func (c *Client) ListRoutes(ctx context.Context, domain, mailboxID string, limit int, cursor string) (Page[Route], error) {
+// ListRoutes lists routes, optionally filtered by domain, mailbox, and/or
+// destination type (mailbox|webhook|remote|group; empty = all). A type=group
+// listing is ENRICHED: core adds posting + memberCount to every row precisely
+// so a groups console needs no per-row GetRoute — other listings stay bare.
+func (c *Client) ListRoutes(ctx context.Context, domain, mailboxID, routeType string, limit int, cursor string) (Page[Route], error) {
 	q := pageValues(limit, cursor)
 	if domain != "" {
 		q.Set("domain", domain)
 	}
 	if mailboxID != "" {
 		q.Set("mailboxId", mailboxID)
+	}
+	if routeType != "" {
+		q.Set("type", routeType)
 	}
 	var out struct {
 		Routes     []Route `json:"routes"`

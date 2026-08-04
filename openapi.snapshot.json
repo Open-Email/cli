@@ -4087,14 +4087,14 @@
             ]
           },
           "memberCount": {
-            "description": "Group member count — same single-route answers as posting",
+            "description": "Group member count — present wherever posting is",
             "type": "integer"
           },
           "paced": {
             "type": "boolean"
           },
           "posting": {
-            "description": "open | members — group posting policy. Group routes on single-route answers (create/get/update) only; absent on the list and for other kinds",
+            "description": "open | members — group posting policy. Present on single-route answers (create/get/update) and on the `type=group` listing; absent on other listings and for other kinds",
             "type": "string"
           },
           "remoteAddress": {
@@ -4511,6 +4511,42 @@
         "required": [
           "deliveryId",
           "recipients"
+        ],
+        "type": "object"
+      },
+      "SendUsage": {
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "msgsPerDay": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "rcptsPerDay": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "recipients": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "windowSeconds": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "messages",
+          "recipients",
+          "msgsPerDay",
+          "rcptsPerDay",
+          "disabled",
+          "windowSeconds"
         ],
         "type": "object"
       },
@@ -5954,7 +5990,7 @@
             "description": "Permanent — malformed request: missing_delivery_id, invalid delivery id, invalid_envelope, invalid_save/invalid_bounce, delivery_meta_too_large/_not_object/_invalid_json, empty_body, invalid_from (missing or unparseable RFC5322 From header — non-system callers), header_block_too_large (the header block runs past the 64 KB parse window, so a Bcc could not be ruled out and the message cannot safely be relayed)"
           },
           "403": {
-            "description": "Permanent — sender_not_owned (one indistinguishable reply for every not-yours case), sender_not_local, sending_disabled, from_not_owned (an RFC5322 From address is not an identity of the sending mailbox — collapsed like sender_not_owned), from_sending_disabled (a From identity's domain cannot send), or receiving_disabled (local recipient)"
+            "description": "Permanent — sender_not_owned (one indistinguishable reply for every not-yours case), sender_not_local, sending_disabled (the sending domain, OR this mailbox's send freeze — same code, same permanence), from_not_owned (an RFC5322 From address is not an identity of the sending mailbox — collapsed like sender_not_owned), from_sending_disabled (a From identity's domain cannot send), or receiving_disabled (local recipient)"
           },
           "404": {
             "description": "Permanent — mailbox_gone (sender's or local recipient's mailbox deleted mid-flight)"
@@ -5964,6 +6000,9 @@
           },
           "413": {
             "description": "Permanent — body exceeds MAX_MESSAGE_BYTES"
+          },
+          "429": {
+            "description": "Temporary — rate_limited: the sending mailbox is over its daily send allowance (`reason` = msgs_per_day | rcpts_per_day). Carries `Retry-After` plus `retryAfterSeconds` and `limit`. THE ONE 4xx THAT IS NOT PERMANENT — defer and retry with the same X-Delivery-Id, which converges on its own claim rather than being charged again"
           },
           "500": {
             "description": "Temporary — internal (e.g. sent/inbox label missing)"
@@ -6771,6 +6810,30 @@
             "schema": {
               "description": "Exact delivery id (the `X-Delivery-Id` you sent, or the `deliveryId` a send response returned). Returns that delivery's whole retry ladder — every deferred attempt plus the terminal outcome. Derived per-recipient and per-member keys (`<id>#rcpt:<addr>`, `<id>#mbx:<id>`) are their own ids.",
               "maxLength": 640,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact mailbox ULID. Everything that mailbox did on this domain — the filter to reach for when one sender is responsible for a spike, since the aggregate at GET /domains/{domain}/traffic has no per-mailbox axis.",
+            "in": "query",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "description": "Exact mailbox ULID. Everything that mailbox did on this domain — the filter to reach for when one sender is responsible for a spike, since the aggregate at GET /domains/{domain}/traffic has no per-mailbox axis.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact envelope sender (lowercased before matching). The same question as mailboxId asked from the address side, which is what a complaint gives you.",
+            "in": "query",
+            "name": "envelopeFrom",
+            "required": false,
+            "schema": {
+              "description": "Exact envelope sender (lowercased before matching). The same question as mailboxId asked from the address side, which is what a complaint gives you.",
+              "maxLength": 320,
               "minLength": 1,
               "type": "string"
             }
@@ -14279,6 +14342,41 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/send-usage": {
+      "get": {
+        "description": "Consumption over the rolling 24h window plus the limits in force. `messages` counts DISTINCT content (a fan-out that submits the same bytes once per recipient spends one), `recipients` counts envelope recipients. A null limit means that axis is not enforced; `disabled: true` means sending is frozen and every submission is refused regardless of usage.",
+        "operationId": "get_SendUsageGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendUsage"
+                }
+              }
+            },
+            "description": "Current window usage and the effective limits"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read a mailbox's outbound send-allowance usage for the current window",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/sieve/active": {
       "delete": {
         "operationId": "delete_SieveDeactivate",
@@ -15827,6 +15925,20 @@
             }
           },
           {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "mailbox",
+                "webhook",
+                "remote",
+                "group"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Page size (default 100)",
             "in": "query",
             "name": "limit",
@@ -15879,7 +15991,7 @@
             "description": "validation_failed"
           }
         },
-        "summary": "List routes",
+        "summary": "List routes. `type=group` is the groups/lists console listing: each row additionally carries `posting` and `memberCount` (the other listings stay bare — those fields cost joins only the group view needs)",
         "tags": [
           "Directory"
         ]

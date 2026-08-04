@@ -31,42 +31,41 @@ func newRoutesCmd(a *app) *cobra.Command {
 
 func newRouteListCmd(a *app) *cobra.Command {
 	var (
-		domain, mailbox string
-		all             bool
-		limit           int
-		cursor          string
+		domain, mailbox, typ string
+		all                  bool
+		limit                int
+		cursor               string
 	)
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List routes",
+		Short:   "List routes (--type group adds the enriched posting/member columns)",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
+			if err := validRouteType(typ); err != nil {
+				return usageError(err)
+			}
 			ctx := cmd.Context()
 			var items []coreapi.Route
 			next := ""
 			if all {
 				items, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.Route], error) {
-					return client.ListRoutes(ctx, domain, mailbox, limit, cur)
+					return client.ListRoutes(ctx, domain, mailbox, typ, limit, cur)
 				})
 			} else {
 				var page coreapi.Page[coreapi.Route]
-				page, err = client.ListRoutes(ctx, domain, mailbox, limit, cursor)
+				page, err = client.ListRoutes(ctx, domain, mailbox, typ, limit, cursor)
 				items, next = page.Items, page.NextCursor
 			}
 			if err != nil {
 				return err
 			}
 			a.out.Emit(map[string]any{"routes": items, "nextCursor": next}, func(w io.Writer) {
-				rows := make([][]string, 0, len(items))
-				for _, r := range items {
-					rows = append(rows, []string{r.Address, r.DestinationType, routeTarget(&r), boolYN(r.Paced)})
-				}
-				printTable(w, a.out, []string{"ADDRESS", "TYPE", "TARGET", "PACED"}, rows)
+				printRouteList(w, a.out, items, typ == "group")
 				a.moreHint(next)
 			})
 			return nil
@@ -74,10 +73,43 @@ func newRouteListCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&domain, "domain", "", "filter by domain")
 	cmd.Flags().StringVar(&mailbox, "mailbox", "", "filter by mailbox id")
+	cmd.Flags().StringVar(&typ, "type", "", "filter by destination type: mailbox|webhook|remote|group")
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
 	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–200)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor")
 	return cmd
+}
+
+// printRouteList renders the routes table. A type=group listing is enriched by
+// core (posting + memberCount on every row), so the group view carries the two
+// extra columns; other listings stay bare and print the base four.
+func printRouteList(w io.Writer, p *Printer, items []coreapi.Route, groupView bool) {
+	headers := []string{"ADDRESS", "TYPE", "TARGET", "PACED"}
+	if groupView {
+		headers = append(headers, "POSTING", "MEMBERS")
+	}
+	rows := make([][]string, 0, len(items))
+	for _, r := range items {
+		row := []string{r.Address, r.DestinationType, routeTarget(&r), boolYN(r.Paced)}
+		if groupView {
+			posting := r.Posting
+			if posting == "" {
+				posting = "—"
+			}
+			row = append(row, posting, int64Or(r.MemberCount, "—"))
+		}
+		rows = append(rows, row)
+	}
+	printTable(w, p, headers, rows)
+}
+
+// validRouteType accepts an unset filter or one of the four route kinds.
+func validRouteType(s string) error {
+	switch s {
+	case "", "mailbox", "webhook", "remote", "group":
+		return nil
+	}
+	return fmt.Errorf("--type must be mailbox, webhook, remote, or group, got %q", s)
 }
 
 func newRouteCreateCmd(a *app) *cobra.Command {

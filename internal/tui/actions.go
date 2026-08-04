@@ -444,7 +444,10 @@ func currentTarget(typ string, mailboxID, webhookURL, remote, alias *string) str
 	return ""
 }
 
-func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pane {
+// routeFormPane is the create/edit form. lockType (create only) pre-locks the
+// destination type — the Groups screen creates groups, so the type is a fact
+// there, not a question, and the select is omitted; "" keeps the full select.
+func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route, lockType string) pane {
 	var (
 		address, target, secret string
 		typ                     = "mailbox"
@@ -452,6 +455,10 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 		paced                   bool
 	)
 	title := "New route"
+	if lockType != "" {
+		typ = lockType
+		title = "New " + lockType + " route"
+	}
 	secretDesc := "webhook only — signing secret for delivery POSTs (optional)"
 	editingGroup := false
 	if existing != nil {
@@ -480,10 +487,13 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 				return validAddress(s)
 			}))
 		}
+		if lockType == "" || existing != nil {
+			fields = append(fields,
+				huh.NewSelect[string]().Title("Destination type").
+					Options(huh.NewOptions("mailbox", "webhook", "remote", "group")...).
+					Value(&typ))
+		}
 		fields = append(fields,
-			huh.NewSelect[string]().Title("Destination type").
-				Options(huh.NewOptions("mailbox", "webhook", "remote", "group")...).
-				Value(&typ),
 			huh.NewInput().Title("Target").DescriptionFunc(destDescription(&typ), &typ).Value(&target),
 		)
 		if existing == nil || editingGroup {
@@ -551,6 +561,24 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 		return "route " + r.Address + " updated", nil, nil
 	}
 	return newFormPane(ctx, ui, formSpec{title: title, build: build, submit: submit})
+}
+
+// routeEditPane opens the edit form for a route. Group edits PREFETCH the
+// single-route answer first (the listing omits the group-only posting field,
+// and a form defaulted blind would silently reset it) — same load-then-build
+// shape as keyCreatePane/vacationFormPane; other kinds open directly.
+func routeEditPane(ctx context.Context, ui *Options, r coreapi.Route) pane {
+	if r.DestinationType != "group" {
+		return routeFormPane(ctx, ui, &r, "")
+	}
+	addr := r.Address
+	return newLoaderPane(ctx, ui, "Edit route "+addr, func(lctx context.Context, c *coreapi.Client) (pane, error) {
+		full, err := c.GetRoute(lctx, addr)
+		if err != nil {
+			return nil, err
+		}
+		return routeFormPane(ctx, ui, full, ""), nil
+	})
 }
 
 func routeDeleteConfirm(ctx context.Context, ui *Options, r coreapi.Route) pane {

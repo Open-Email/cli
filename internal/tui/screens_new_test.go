@@ -318,3 +318,44 @@ func TestDkimSummaryWarnings(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 func int64Ptr(v int64) *int64 { return &v }
+
+// The Groups screen rides the enriched type=group listing: the filter must be
+// on the wire (it is what triggers the enrichment) and the group-only fields
+// must land straight in the row cells and base detail — no per-row GetRoute.
+func TestGroupsDescFetchMapsEnrichedColumns(t *testing.T) {
+	var gotType string
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		gotType = r.URL.Query().Get("type")
+		_, _ = w.Write([]byte(`{"routes":[{"address":"team@b.test","domain":"b.test",` +
+			`"destinationType":"group","mailboxId":null,"webhookUrl":null,"remoteAddress":null,` +
+			`"paced":false,"createdAt":1754300000,"posting":"members","memberCount":41}],"nextCursor":""}`))
+	}))
+	defer srv.Close()
+
+	rows, next, err := groupsDesc().fetch(context.Background(), newTestClient(t, srv.URL), "")
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if gotType != "group" {
+		t.Fatalf("the listing must be narrowed server-side, type = %q", gotType)
+	}
+	if calls != 1 {
+		t.Fatalf("the enriched listing needs exactly one call, made %d", calls)
+	}
+	if next != "" || len(rows) != 1 {
+		t.Fatalf("rows = %d next = %q", len(rows), next)
+	}
+	cells := rows[0].cells
+	if cells[0] != "team@b.test" || cells[1] != "members" || cells[2] != "41" {
+		t.Fatalf("cells = %v", cells)
+	}
+	joined := ""
+	for _, e := range groupsDesc().detail(rows[0].item) {
+		joined += e.k + "=" + e.v + ";"
+	}
+	if !strings.Contains(joined, "posting=members") || !strings.Contains(joined, "members=41") {
+		t.Fatalf("detail = %s", joined)
+	}
+}

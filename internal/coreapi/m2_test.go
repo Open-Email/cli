@@ -82,13 +82,35 @@ func TestRouteDecodesPacedAsBool(t *testing.T) {
 		w.Write([]byte(`{"routes":[{"address":"u@x.example","domain":"x.example","destinationType":"mailbox","mailboxId":"m1","webhookUrl":null,"remoteAddress":null,"paced":true,"createdAt":5}],"nextCursor":""}`))
 	}))
 	defer srv.Close()
-	pg, err := testClient(t, srv.URL).ListRoutes(context.Background(), "", "", 0, "")
+	pg, err := testClient(t, srv.URL).ListRoutes(context.Background(), "", "", "", 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := pg.Items[0]
 	if !r.Paced || r.MailboxID == nil || *r.MailboxID != "m1" {
 		t.Fatalf("bad route: %+v", r)
+	}
+}
+
+// The type filter must ride the query string (it is what makes core enrich the
+// listing), and the group-only enrichment (posting, memberCount) must decode.
+func TestListRoutesTypeFilterEnrichment(t *testing.T) {
+	var gotType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotType = r.URL.Query().Get("type")
+		w.Write([]byte(`{"routes":[{"address":"team@x.example","domain":"x.example","destinationType":"group","mailboxId":null,"webhookUrl":null,"remoteAddress":null,"paced":false,"createdAt":5,"posting":"open","memberCount":3}],"nextCursor":""}`))
+	}))
+	defer srv.Close()
+	pg, err := testClient(t, srv.URL).ListRoutes(context.Background(), "", "", "group", 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotType != "group" {
+		t.Fatalf("type param = %q, want group", gotType)
+	}
+	r := pg.Items[0]
+	if r.Posting != "open" || r.MemberCount == nil || *r.MemberCount != 3 {
+		t.Fatalf("enrichment lost in decode: %+v", r)
 	}
 }
 
