@@ -448,10 +448,12 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 	var (
 		address, target, secret string
 		typ                     = "mailbox"
+		posting                 = "open"
 		paced                   bool
 	)
 	title := "New route"
 	secretDesc := "webhook only — signing secret for delivery POSTs (optional)"
+	editingGroup := false
 	if existing != nil {
 		address = existing.Address
 		typ = existing.DestinationType
@@ -459,6 +461,13 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 		paced = existing.Paced
 		title = "Edit route " + existing.Address
 		secretDesc = "webhook only — empty PRESERVES the existing secret; core never returns it"
+		// Group edits arrive PREFETCHED (the edit action loads the single-route
+		// answer, which carries posting; the listing omits it), so the select
+		// opens on the current policy instead of a blind default.
+		editingGroup = existing.DestinationType == "group"
+		if existing.Posting != "" {
+			posting = existing.Posting
+		}
 	}
 	build := func() *huh.Form {
 		var fields []huh.Field
@@ -476,6 +485,17 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 				Options(huh.NewOptions("mailbox", "webhook", "remote", "group")...).
 				Value(&typ),
 			huh.NewInput().Title("Target").DescriptionFunc(destDescription(&typ), &typ).Value(&target),
+		)
+		if existing == nil || editingGroup {
+			// On create, sent only when the destination type is group; on a
+			// group edit, sent only when actually changed (see submit).
+			fields = append(fields,
+				huh.NewSelect[string]().Title("Posting").
+					Description("group only — who may mail the group: open (anyone) or members").
+					Options(huh.NewOptions("open", "members")...).
+					Value(&posting))
+		}
+		fields = append(fields,
 			huh.NewInput().Title("Webhook secret").Description(secretDesc).EchoMode(huh.EchoModePassword).Value(&secret),
 			boolField("Paced", "stage + queue-drain instead of synchronous delivery (funnel protection for hot shared inboxes)", &paced),
 		)
@@ -490,6 +510,9 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 			in := coreapi.RouteCreateInput{
 				Address: strings.TrimSpace(address), DestinationType: typ, Paced: paced,
 				WebhookSecret: strings.TrimSpace(secret),
+			}
+			if typ == "group" {
+				in.Posting = posting
 			}
 			switch field {
 			case "mailboxId":
@@ -513,6 +536,13 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route) pa
 		}
 		if typ == "webhook" && strings.TrimSpace(secret) != "" {
 			patch["webhookSecret"] = strings.TrimSpace(secret)
+		}
+		// posting rides the patch only when it actually CHANGED from the
+		// prefetched value (a no-op edit sends no posting field at all) and
+		// only while the route stays a group. The existing.Posting != ""
+		// guard keeps an unprefetched caller from ever resetting the policy.
+		if editingGroup && typ == "group" && existing.Posting != "" && posting != existing.Posting {
+			patch["posting"] = posting
 		}
 		r, err := c.UpdateRoute(sctx, existing.Address, patch)
 		if err != nil {

@@ -27,6 +27,7 @@ func newMailboxesCmd(a *app) *cobra.Command {
 		newMailboxRestoreCmd(a),
 		newMailboxPurgeCmd(a),
 		newMailboxUseCmd(a),
+		newMailboxSendUsageCmd(a),
 	)
 	return cmd
 }
@@ -142,8 +143,19 @@ func newMailboxListCmd(a *app) *cobra.Command {
 			a.out.Emit(map[string]any{"mailboxes": items, "nextCursor": next}, func(w io.Writer) {
 				rows := make([][]string, 0, len(items))
 				for _, m := range items {
+					address := strOr(m.PrimaryAddress, "—")
+					// A frozen mailbox is marked in the LIST, not just in `get`.
+					// The question an operator brings to this table during an
+					// incident is "which of these did I stop?", and answering it
+					// only in a per-mailbox read means opening them one at a time.
+					// Inline rather than a column: freezing is rare, and a column
+					// that reads "enabled" on every row costs width on every
+					// listing to serve the exception.
+					if m.SendDisabled {
+						address += "  [FROZEN]"
+					}
 					rows = append(rows, []string{
-						m.ID, strOr(m.PrimaryAddress, "—"), fmtQuota(m.QuotaBytes),
+						m.ID, address, fmtQuota(m.QuotaBytes),
 						strOr(m.AccountID, "—"), fmtEpoch(m.CreatedAt),
 					})
 				}
@@ -198,6 +210,59 @@ func (a *app) listDeletedMailboxes(ctx context.Context, client *coreapi.Client, 
 	return nil
 }
 
+// newMailboxSendUsageCmd exposes the outbound send allowance.
+//
+// Its reason for existing is that the alternative is discovery by refusal: a
+// caller learns its bound one 429 at a time, and an operator investigating a
+// spike cannot see consumption at all (the domain traffic aggregate has no
+// per-mailbox axis). Safe to poll — core answers this without provisioning a
+// store that has never sent.
+func newMailboxSendUsageCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:     "send-usage [mailboxId]",
+		Aliases: []string{"usage"},
+		Short:   "Show outbound send-allowance usage for the current window",
+		Args:    cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			ref := ""
+			if len(args) == 1 {
+				ref = args[0]
+			}
+			// Defaults to the selected mailbox, like every other per-mailbox
+			// read: this is a command an owner runs about themselves at least as
+			// often as an operator runs it about someone else.
+			mailboxID, err := a.resolveMailbox(cmd.Context(), client, ref)
+			if err != nil {
+				return err
+			}
+			u, err := client.GetSendUsage(cmd.Context(), mailboxID)
+			if err != nil {
+				return err
+			}
+			a.out.Emit(u, func(w io.Writer) {
+				window := fmt.Sprintf("%dh", u.WindowSeconds/3600)
+				rows := [][]string{
+					{"Sending", fmtSendState(u.Disabled)},
+					{"Window", "rolling " + window},
+					{"Messages", fmt.Sprintf("%d of %s", u.Messages, fmtSendLimit(u.MsgsPerDay))},
+					{"Recipients", fmt.Sprintf("%d of %s", u.Recipients, fmtSendLimit(u.RcptsPerDay))},
+				}
+				printTable(w, a.out, []string{"FIELD", "VALUE"}, rows)
+				// Messages counting distinct CONTENT is the one thing about
+				// these numbers that surprises people: a fan-out submitted once
+				// per recipient (what the SMTP path does) shows as one message
+				// and N recipients, so the two rows will not look proportional.
+				a.out.Msgf("messages count distinct content — the same message sent to N people is 1 message, N recipients")
+			})
+			return nil
+		},
+	}
+}
+
 func newMailboxGetCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <mailboxId>",
@@ -219,10 +284,11 @@ func newMailboxGetCmd(a *app) *cobra.Command {
 }
 
 func newMailboxUpdateCmd(a *app) *cobra.Command {
-	var address, quota string
+	var address, quota, sendMsgs, sendRcpts string
+	var freeze, unfreeze bool
 	cmd := &cobra.Command{
 		Use:   "update <mailboxId>",
-		Short: "Update a mailbox's quota or primary address",
+		Short: "Update a mailbox's quota, primary address, or send policy",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -244,8 +310,44 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 					patch["quotaBytes"] = *v
 				}
 			}
+			// Send policy — SYSTEM-only at core (a tenant that can lift its own
+			// freeze or raise its own caps has a suggestion, not a limit), so an
+			// account key gets 403 system_credentials_required here.
+			//
+			// Freeze and unfreeze are separate boolean flags rather than one
+			// --send-disabled=true|false because this is the destructive-ish
+			// direction of an abuse control: `--freeze` and `--unfreeze` cannot
+			// be confused for each other at 2am, and a mistyped value cannot
+			// silently mean the opposite of what was meant.
+			if cmd.Flags().Changed("freeze") && cmd.Flags().Changed("unfreeze") {
+				return usageError(errors.New("--freeze and --unfreeze are mutually exclusive"))
+			}
+			if cmd.Flags().Changed("freeze") {
+				patch["sendDisabled"] = true
+			}
+			if cmd.Flags().Changed("unfreeze") {
+				patch["sendDisabled"] = false
+			}
+			for _, f := range []struct {
+				flag  string
+				field string
+				val   *string
+			}{
+				{"send-msgs-per-day", "sendMsgsPerDay", &sendMsgs},
+				{"send-rcpts-per-day", "sendRcptsPerDay", &sendRcpts},
+			} {
+				if !cmd.Flags().Changed(f.flag) {
+					continue
+				}
+				v, perr := parseSendCapFlag(*f.val)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch[f.field] = v // nil marshals as JSON null = clear the override
+			}
+
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --address and/or --quota"))
+				return usageError(errors.New("nothing to update — pass --address, --quota, --freeze/--unfreeze, or a --send-*-per-day cap"))
 			}
 			mb, err := client.UpdateMailbox(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -260,7 +362,35 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&address, "address", "", "new primary address (must already route to this mailbox — bind via 'routes create' first; empty is not a clear)")
 	cmd.Flags().StringVar(&quota, "quota", "", "new quota in bytes, or 'unlimited'")
+	cmd.Flags().BoolVar(&freeze, "freeze", false, "stop this mailbox sending: submissions are refused and queued mail is dropped at the relay (system key required)")
+	cmd.Flags().BoolVar(&unfreeze, "unfreeze", false, "allow this mailbox to send again (system key required)")
+	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages per rolling 24h: a number, 'unlimited', or 'default' to drop the override (system key required)")
+	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h: a number, 'unlimited', or 'default' to drop the override (system key required)")
 	return cmd
+}
+
+// parseSendCapFlag parses a --send-*-per-day value into the three states core
+// distinguishes: "default" → nil (drop the override, inherit the platform
+// number), "unlimited" → 0, a non-negative integer → itself.
+//
+// "default" and "unlimited" are deliberately different words. On quota they
+// would mean the same thing, which is exactly why the cap flags cannot reuse
+// parseQuotaFlag: there, null IS unlimited; here, null is "whatever the
+// platform says" and could be the tightest bound in play.
+func parseSendCapFlag(s string) (*int64, error) {
+	t := strings.ToLower(strings.TrimSpace(s))
+	switch t {
+	case "", "default":
+		return nil, nil
+	case "unlimited", "none":
+		var zero int64
+		return &zero, nil
+	}
+	n, err := strconv.ParseInt(t, 10, 64)
+	if err != nil || n < 0 {
+		return nil, fmt.Errorf("invalid cap %q: expected a non-negative number, 'unlimited', or 'default'", s)
+	}
+	return &n, nil
 }
 
 func newMailboxDeleteCmd(a *app) *cobra.Command {
@@ -393,6 +523,16 @@ func printMailbox(w io.Writer, p *Printer, m *coreapi.Mailbox) {
 		{"Quota", fmtQuota(m.QuotaBytes)},
 		{"Account", strOr(m.AccountID, "—")},
 		{"Created", fmtEpoch(m.CreatedAt)},
+		{"Sending", fmtSendState(m.SendDisabled)},
+	}
+	// The caps are shown only when this mailbox overrides them. On the common
+	// mailbox both read "platform default", which is two rows of noise saying
+	// nothing — and would bury the Sending row that does say something.
+	if m.SendMsgsPerDay != nil || m.SendRcptsPerDay != nil {
+		rows = append(rows,
+			[]string{"  msgs/day", fmtSendCap(m.SendMsgsPerDay)},
+			[]string{"  rcpts/day", fmtSendCap(m.SendRcptsPerDay)},
+		)
 	}
 	if m.MessageCount != nil {
 		rows = append(rows, []string{"Messages", int64Or(m.MessageCount, "0")})

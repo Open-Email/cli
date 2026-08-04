@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
@@ -81,6 +83,7 @@ func newRouteListCmd(a *app) *cobra.Command {
 func newRouteCreateCmd(a *app) *cobra.Command {
 	var (
 		typ, mailbox, webhookURL, webhookSecret, remote string
+		posting                                         string
 		paced                                           bool
 	)
 	cmd := &cobra.Command{
@@ -98,6 +101,9 @@ func newRouteCreateCmd(a *app) *cobra.Command {
 			if req := requiredDestFlag(typ); req != "" && !cmd.Flags().Changed(req) {
 				return usageError(fmt.Errorf("--type %s requires --%s", typ, req))
 			}
+			if err := validPosting(posting); err != nil {
+				return usageError(err)
+			}
 			in := coreapi.RouteCreateInput{
 				Address:         args[0],
 				DestinationType: typ,
@@ -106,6 +112,7 @@ func newRouteCreateCmd(a *app) *cobra.Command {
 				WebhookSecret:   webhookSecret,
 				RemoteAddress:   remote,
 				Paced:           paced,
+				Posting:         posting,
 			}
 			r, err := client.CreateRoute(cmd.Context(), in)
 			if err != nil {
@@ -119,6 +126,7 @@ func newRouteCreateCmd(a *app) *cobra.Command {
 		},
 	}
 	routeDestFlags(cmd, &typ, &mailbox, &webhookURL, &webhookSecret, &remote)
+	cmd.Flags().StringVar(&posting, "posting", "", "group posting policy: open|members (type=group)")
 	cmd.Flags().BoolVar(&paced, "paced", false, "pace deliveries through the paced queue")
 	return cmd
 }
@@ -146,12 +154,13 @@ func newRouteGetCmd(a *app) *cobra.Command {
 func newRouteUpdateCmd(a *app) *cobra.Command {
 	var (
 		typ, mailbox, webhookURL, webhookSecret, remote string
+		posting                                         string
 		paced                                           bool
 		clearWebhookSecret                              bool
 	)
 	cmd := &cobra.Command{
 		Use:   "update <address>",
-		Short: "Update a route (--paced alone, or --type with its destination fields)",
+		Short: "Update a route (--paced/--posting alone, or --type with its destination fields)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -194,8 +203,16 @@ func newRouteUpdateCmd(a *app) *cobra.Command {
 			if cmd.Flags().Changed("paced") {
 				patch["paced"] = paced
 			}
+			// posting is patchable alone (like paced); core answers 400
+			// posting_requires_group on non-group routes.
+			if cmd.Flags().Changed("posting") {
+				if err := validPosting(posting); err != nil {
+					return usageError(err)
+				}
+				patch["posting"] = posting
+			}
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --paced and/or --type with fields"))
+				return usageError(errors.New("nothing to update — pass --paced, --posting, and/or --type with fields"))
 			}
 			r, err := client.UpdateRoute(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -210,6 +227,7 @@ func newRouteUpdateCmd(a *app) *cobra.Command {
 	}
 	routeDestFlags(cmd, &typ, &mailbox, &webhookURL, &webhookSecret, &remote)
 	cmd.Flags().BoolVar(&clearWebhookSecret, "clear-webhook-secret", false, "remove the webhook signing secret (type=webhook)")
+	cmd.Flags().StringVar(&posting, "posting", "", "group posting policy: open|members (type=group)")
 	cmd.Flags().BoolVar(&paced, "paced", false, "pace deliveries through the paced queue")
 	return cmd
 }
@@ -340,25 +358,107 @@ func newMemberReplaceCmd(a *app) *cobra.Command {
 	return cmd
 }
 
+// memberBatchMax mirrors core's per-call cap on POST …/members/batch.
+const memberBatchMax = 1000
+
 func newMemberAddCmd(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:   "add <address> <memberAddress>",
-		Short: "Add a member to a group route",
-		Args:  cobra.ExactArgs(2),
+	var file string
+	cmd := &cobra.Command{
+		Use:   "add <address> [member...]",
+		Short: "Add members to a group route (one = strict single add; several or --file = idempotent batch)",
+		Long: "Add one or more members to a group route.\n\n" +
+			"A single positional member uses the strict one-member call (409\n" +
+			"member_exists if already present). Several members — or any --file\n" +
+			"import — go through the batch endpoint instead: already-present members\n" +
+			"count as duplicates, never errors, so re-running the same import\n" +
+			"converges on the full list.",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
-			if err := client.AddMember(cmd.Context(), args[0], args[1]); err != nil {
-				return err
+			address := args[0]
+			members := append([]string{}, args[1:]...)
+			if file != "" {
+				data, rerr := os.ReadFile(file)
+				if rerr != nil {
+					return rerr
+				}
+				members = append(members, parseMemberList(string(data))...)
 			}
-			a.out.Emit(map[string]any{"address": args[0], "memberAddress": args[1]}, func(w io.Writer) {
-				a.out.Successf("Added %s to %s", args[1], args[0])
+			members = dedupeMembers(members)
+			if len(members) == 0 {
+				return usageError(errors.New("no members given — pass member addresses and/or --file"))
+			}
+			ctx := cmd.Context()
+			// One positional member keeps the pre-batch behavior exactly.
+			if len(members) == 1 && !cmd.Flags().Changed("file") {
+				if err := client.AddMember(ctx, address, members[0]); err != nil {
+					return err
+				}
+				a.out.Emit(map[string]any{"address": address, "memberAddress": members[0]}, func(w io.Writer) {
+					a.out.Successf("Added %s to %s", members[0], address)
+				})
+				return nil
+			}
+			var added, duplicates int64
+			for done := 0; done < len(members); {
+				end := min(done+memberBatchMax, len(members))
+				res, err := client.BatchAddMembers(ctx, address, members[done:end])
+				if err != nil {
+					if done > 0 {
+						a.out.Warnf("stopped after %d of %d members (added %d, duplicates %d) — the import is idempotent, re-run the same command to converge on the rest",
+							done, len(members), added, duplicates)
+					}
+					return err
+				}
+				added += res.Added
+				duplicates += res.Duplicates
+				done = end
+			}
+			a.out.Emit(map[string]any{"address": address, "added": added, "duplicates": duplicates}, func(w io.Writer) {
+				a.out.Successf("added %d, duplicates %d", added, duplicates)
 			})
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&file, "file", "", "newline-separated member addresses (blank lines and # comments skipped), merged with positional members")
+	return cmd
+}
+
+// parseMemberList extracts addresses from newline-separated text: blank lines
+// and #-comment lines are skipped, surrounding whitespace trimmed.
+func parseMemberList(data string) []string {
+	var out []string
+	for _, line := range strings.Split(data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// dedupeMembers drops repeats case-insensitively, keeping first-seen order
+// (core lowercases addresses, so A@x and a@x land as one member anyway).
+func dedupeMembers(members []string) []string {
+	seen := make(map[string]struct{}, len(members))
+	out := make([]string, 0, len(members))
+	for _, m := range members {
+		m = strings.TrimSpace(m)
+		key := strings.ToLower(m)
+		if key == "" {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, m)
+	}
+	return out
 }
 
 func newMemberRemoveCmd(a *app) *cobra.Command {
@@ -406,12 +506,30 @@ func routeTarget(r *coreapi.Route) string {
 }
 
 func printRoute(w io.Writer, p *Printer, r *coreapi.Route) {
-	printTable(w, p, []string{"FIELD", "VALUE"}, [][]string{
+	rows := [][]string{
 		{"Address", r.Address},
 		{"Domain", r.Domain},
 		{"Type", r.DestinationType},
 		{"Target", routeTarget(r)},
-		{"Paced", boolYN(r.Paced)},
-		{"Created", fmtEpoch(r.CreatedAt)},
-	})
+	}
+	// Group-only fields, carried by single-route answers only.
+	if r.Posting != "" {
+		rows = append(rows, []string{"Posting", r.Posting})
+	}
+	if r.MemberCount != nil {
+		rows = append(rows, []string{"Members", fmt.Sprintf("%d", *r.MemberCount)})
+	}
+	rows = append(rows,
+		[]string{"Paced", boolYN(r.Paced)},
+		[]string{"Created", fmtEpoch(r.CreatedAt)},
+	)
+	printTable(w, p, []string{"FIELD", "VALUE"}, rows)
+}
+
+// validPosting accepts an unset value (core's default) or the two policies.
+func validPosting(s string) error {
+	if s != "" && s != "open" && s != "members" {
+		return fmt.Errorf("--posting must be open or members, got %q", s)
+	}
+	return nil
 }

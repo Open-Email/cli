@@ -55,6 +55,13 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 					{"Account", strOr(id.AccountID, "—")},
 					{"Quota", fmtQuota(id.QuotaBytes)},
 					{"Created", fmtEpoch(id.CreatedAt)},
+					{"Sending", fmtSendState(id.SendDisabled)},
+				}
+				if id.SendMsgsPerDay != nil || id.SendRcptsPerDay != nil {
+					rows = append(rows,
+						[]string{"  msgs/day", fmtSendCap(id.SendMsgsPerDay)},
+						[]string{"  rcpts/day", fmtSendCap(id.SendRcptsPerDay)},
+					)
 				}
 				if m := id.Facets.Mail; m != nil {
 					rows = append(rows,

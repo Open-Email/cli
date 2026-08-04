@@ -46,11 +46,37 @@ type Mailbox struct {
 	QuotaBytes     *int64  `json:"quotaBytes"`
 	AccountID      *string `json:"accountId"`
 	CreatedAt      int64   `json:"createdAt"`
+	// Per-mailbox send policy. The caps are POINTERS because core distinguishes
+	// three states and a plain int64 can only carry two: null = no override, so
+	// the platform default applies; 0 = explicitly unlimited; n = that cap.
+	// Decoding null into 0 would read "inherit the default" as "unlimited",
+	// which is the one misreading that removes a bound instead of adding one.
+	SendDisabled    bool   `json:"sendDisabled"`
+	SendMsgsPerDay  *int64 `json:"sendMsgsPerDay"`
+	SendRcptsPerDay *int64 `json:"sendRcptsPerDay"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`
 	ExpungedCount *int64 `json:"expungedCount,omitempty"`
 	ExpungedBytes *int64 `json:"expungedBytes,omitempty"`
+}
+
+// SendUsage is a mailbox's outbound send allowance for the current rolling
+// window (GET /mailboxes/{id}/send-usage).
+//
+// Messages counts DISTINCT CONTENT rather than submissions, so a fan-out that
+// posts the same bytes once per recipient — which is what the SMTP submission
+// path does — spends one message here, not one per recipient.
+type SendUsage struct {
+	Messages   int64 `json:"messages"`
+	Recipients int64 `json:"recipients"`
+	// The limits in force: the mailbox override if it has one, else the
+	// platform default. Null means that axis is not enforced at all.
+	MsgsPerDay  *int64 `json:"msgsPerDay"`
+	RcptsPerDay *int64 `json:"rcptsPerDay"`
+	// Sending frozen: every submission is refused regardless of usage.
+	Disabled      bool  `json:"disabled"`
+	WindowSeconds int64 `json:"windowSeconds"`
 }
 
 // DeletedMailbox is a restorable tombstone (GET /mailboxes?state=deleted).

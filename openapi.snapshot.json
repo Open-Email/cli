@@ -2283,6 +2283,17 @@
           "quotaBytes": {
             "format": "int64",
             "type": "integer"
+          },
+          "sendDisabled": {
+            "type": "boolean"
+          },
+          "sendMsgsPerDay": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sendRcptsPerDay": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -2290,7 +2301,10 @@
           "primaryAddress",
           "quotaBytes",
           "accountId",
-          "createdAt"
+          "createdAt",
+          "sendDisabled",
+          "sendMsgsPerDay",
+          "sendRcptsPerDay"
         ],
         "type": "object"
       },
@@ -4072,8 +4086,16 @@
               "null"
             ]
           },
+          "memberCount": {
+            "description": "Group member count — same single-route answers as posting",
+            "type": "integer"
+          },
           "paced": {
             "type": "boolean"
+          },
+          "posting": {
+            "description": "open | members — group posting policy. Group routes on single-route answers (create/get/update) only; absent on the list and for other kinds",
+            "type": "string"
           },
           "remoteAddress": {
             "type": [
@@ -4117,6 +4139,21 @@
           "address",
           "memberAddress",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "RouteMemberBatchResult": {
+        "properties": {
+          "added": {
+            "type": "integer"
+          },
+          "duplicates": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "duplicates"
         ],
         "type": "object"
       },
@@ -7144,6 +7181,26 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "sendDisabled": {
+                    "description": "System callers only. Freeze outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Does not affect receiving or reading",
+                    "type": "boolean"
+                  },
+                  "sendMsgsPerDay": {
+                    "description": "System callers only. Distinct messages this mailbox may send per rolling 24h. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sendRcptsPerDay": {
+                    "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
                   }
                 },
                 "type": "object"
@@ -7287,6 +7344,26 @@
                   },
                   "quotaBytes": {
                     "exclusiveMinimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sendDisabled": {
+                    "description": "System callers only. Freeze outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Does not affect receiving or reading",
+                    "type": "boolean"
+                  },
+                  "sendMsgsPerDay": {
+                    "description": "System callers only. Distinct messages this mailbox may send per rolling 24h. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sendRcptsPerDay": {
+                    "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
                     "type": [
                       "integer",
                       "null"
@@ -15834,6 +15911,13 @@
                     "default": false,
                     "type": "boolean"
                   },
+                  "posting": {
+                    "enum": [
+                      "open",
+                      "members"
+                    ],
+                    "type": "string"
+                  },
                   "remoteAddress": {
                     "format": "email",
                     "type": "string"
@@ -15977,6 +16061,14 @@
                     "description": "Pace deliveries through the paced queue — omitted means unchanged",
                     "type": "boolean"
                   },
+                  "posting": {
+                    "description": "Group posting policy — omitted means unchanged; group routes only",
+                    "enum": [
+                      "open",
+                      "members"
+                    ],
+                    "type": "string"
+                  },
                   "remoteAddress": {
                     "format": "email",
                     "type": "string"
@@ -16010,7 +16102,7 @@
             "description": "Updated route"
           },
           "400": {
-            "description": "validation_failed, empty_patch, destination_requires_type (destination fields without destinationType), or unknown_mailbox"
+            "description": "validation_failed, empty_patch, destination_requires_type (destination fields without destinationType), posting_requires_group, or unknown_mailbox"
           },
           "404": {
             "description": "Route not found or not accessible to this principal"
@@ -16215,6 +16307,65 @@
           }
         },
         "summary": "Replace a group route's member list wholesale",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/routes/{address}/members/batch": {
+      "post": {
+        "operationId": "post_MemberBatchAdd",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "members": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 1000,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "members"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteMemberBatchResult"
+                }
+              }
+            },
+            "description": "Insertion counts for this call"
+          },
+          "400": {
+            "description": "validation_failed, member_limit, invalid_member_address, or self_membership"
+          },
+          "404": {
+            "description": "Group route not found or not accessible to this principal"
+          }
+        },
+        "summary": "Add many members to a group route in one call. Idempotent: members already present count as duplicates, never errors, so a retried or re-run import converges — this is the building block for large lists (chunk an import into repeated calls; each call is one atomic write). The member cap charges only genuinely NEW members, so re-importing an existing list never trips it",
         "tags": [
           "Directory"
         ]

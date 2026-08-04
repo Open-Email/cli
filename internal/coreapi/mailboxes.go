@@ -76,6 +76,25 @@ func (c *Client) GetMailbox(ctx context.Context, mailboxID string) (*Mailbox, er
 	return &out, nil
 }
 
+// GetSendUsage returns what this mailbox has spent of its outbound send
+// allowance in the current rolling window, plus the limits in force.
+//
+// Non-adopting on core's side: asking about a mailbox that has never sent
+// reports an empty window rather than provisioning its store, so this is safe
+// to poll.
+func (c *Client) GetSendUsage(ctx context.Context, mailboxID string) (*SendUsage, error) {
+	var out SendUsage
+	err := c.doJSON(ctx, request{
+		method:     http.MethodGet,
+		path:       "/mailboxes/" + escapeSegment(mailboxID) + "/send-usage",
+		idempotent: true,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // UpdateMailbox applies a partial patch (quotaBytes and/or primaryAddress). The
 // patch is passed as a map so an explicit null quotaBytes (set unlimited) is
 // distinguishable from an omitted one (leave unchanged), matching core's

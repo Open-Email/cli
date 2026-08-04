@@ -190,8 +190,16 @@ func mailboxesDesc() resourceDesc {
 				if m.QuotaBytes != nil {
 					quota = fmtBytes(*m.QuotaBytes)
 				}
+				// A frozen mailbox is marked here because this list is the only
+				// place the TUI shows a live mailbox at all — opening one goes
+				// straight to its messages, so an unmarked row is a mailbox
+				// whose sending is stopped with nothing anywhere saying so.
+				address := strOr(m.PrimaryAddress, "—")
+				if m.SendDisabled {
+					address += " [FROZEN]"
+				}
 				rows[i] = rowData{
-					cells: []string{m.ID, strOr(m.PrimaryAddress, "—"), quota, fmtEpoch(m.CreatedAt)},
+					cells: []string{m.ID, address, quota, fmtEpoch(m.CreatedAt)},
 					item:  m,
 				}
 			}
@@ -283,7 +291,22 @@ func routesDesc() resourceDesc {
 			}},
 			{key: "e", label: "e edit", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				r := item.(coreapi.Route)
-				return routeFormPane(ctx, ui, &r)
+				if r.DestinationType != "group" {
+					return routeFormPane(ctx, ui, &r)
+				}
+				// The list answer omits the group-only posting field, and a
+				// form defaulted blind would silently reset it — prefetch the
+				// single-route answer (which carries it) so the form opens on
+				// the CURRENT policy. Same load-then-build shape as
+				// keyCreatePane/vacationFormPane.
+				addr := r.Address
+				return newLoaderPane(ctx, ui, "Edit route "+addr, func(lctx context.Context, c *coreapi.Client) (pane, error) {
+					full, err := c.GetRoute(lctx, addr)
+					if err != nil {
+						return nil, err
+					}
+					return routeFormPane(ctx, ui, full), nil
+				})
 			}},
 			{key: "d", label: "d delete", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				return routeDeleteConfirm(ctx, ui, item.(coreapi.Route))
@@ -301,11 +324,25 @@ func routesDesc() resourceDesc {
 			if r.DestinationType != "group" {
 				return nil, nil
 			}
+			// The list answer omits the group-only fields (posting, memberCount);
+			// the single-route answer carries them.
+			full, err := c.GetRoute(ctx, r.Address)
+			if err != nil {
+				return nil, err
+			}
 			pg, err := c.ListMembers(ctx, r.Address, 100, "")
 			if err != nil {
 				return nil, err
 			}
-			kvs := []kv{{}, {v: fmt.Sprintf("Members (%d)", len(pg.Items))}}
+			var kvs []kv
+			if full.Posting != "" {
+				kvs = append(kvs, kv{k: "posting", v: full.Posting})
+			}
+			count := len(pg.Items)
+			if full.MemberCount != nil {
+				count = int(*full.MemberCount)
+			}
+			kvs = append(kvs, kv{}, kv{v: fmt.Sprintf("Members (%d)", count)})
 			for i, m := range pg.Items {
 				kvs = append(kvs, kv{k: fmt.Sprintf("%d", i+1), v: m.MemberAddress})
 			}

@@ -2,7 +2,11 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -390,6 +394,90 @@ func TestMembersDescGatedToGroups(t *testing.T) {
 	p := membersAction.run(t.Context(), &Options{}, group)
 	if p == nil || !contains(p.title(), "team@b.test") {
 		t.Fatalf("M on a group should open its members screen, got %v", p)
+	}
+}
+
+// Editing a group route must PREFETCH the single-route answer (the listing
+// omits the group-only posting field), so the action returns a loader pane;
+// other kinds still open the form directly.
+func TestRouteEditPrefetchesGroups(t *testing.T) {
+	routes := routesDesc()
+	var edit *action
+	for i := range routes.actions {
+		if routes.actions[i].key == "e" {
+			edit = &routes.actions[i]
+		}
+	}
+	if edit == nil {
+		t.Fatalf("routes should have an e edit action")
+	}
+	mbxID := "01X"
+	direct := edit.run(t.Context(), &Options{}, coreapi.Route{Address: "a@b.test", DestinationType: "mailbox", MailboxID: &mbxID})
+	if _, ok := direct.(*formPane); !ok {
+		t.Fatalf("editing a non-group route should open the form directly, got %T", direct)
+	}
+	loaded := edit.run(t.Context(), &Options{}, coreapi.Route{Address: "team@b.test", DestinationType: "group"})
+	if _, ok := loaded.(*loaderPane); !ok {
+		t.Fatalf("editing a group must prefetch via a loader pane, got %T", loaded)
+	}
+}
+
+// A group edit's form opens on the PREFETCHED posting value, and a no-op
+// submit sends no posting field at all. The one assertion covers both halves
+// of the reset hazard: were the default blind ("open" against this "members"
+// group), the differs-only rule would put posting on the wire and fail here.
+func TestRouteGroupEditOmitsUnchangedPosting(t *testing.T) {
+	var patched map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route := `{"address":"team@b.test","domain":"b.test","destinationType":"group",` +
+			`"mailboxId":null,"webhookUrl":null,"remoteAddress":null,"paced":false,` +
+			`"createdAt":1,"posting":"members","memberCount":2}`
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(route))
+		case http.MethodPatch:
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &patched)
+			_, _ = w.Write([]byte(route))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+	client := newTestClient(t, srv.URL)
+
+	routes := routesDesc()
+	var edit *action
+	for i := range routes.actions {
+		if routes.actions[i].key == "e" {
+			edit = &routes.actions[i]
+		}
+	}
+	lp, ok := edit.run(t.Context(), &Options{Client: client}, coreapi.Route{Address: "team@b.test", DestinationType: "group"}).(*loaderPane)
+	if !ok {
+		t.Fatal("group edit should go through the loader")
+	}
+	built, err := lp.build(t.Context(), client)
+	if err != nil {
+		t.Fatalf("prefetch: %v", err)
+	}
+	fp, ok := built.(*formPane)
+	if !ok {
+		t.Fatalf("loader should build the edit form, got %T", built)
+	}
+	// Submit with every field untouched — the definition of a no-op edit.
+	if _, _, err := fp.spec.submit(t.Context(), client); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if patched == nil {
+		t.Fatal("no PATCH reached core")
+	}
+	if v, present := patched["posting"]; present {
+		t.Errorf("a no-op edit must omit posting, sent %v", v)
+	}
+	if patched["destinationType"] != "group" {
+		t.Errorf("patch = %v", patched)
 	}
 }
 

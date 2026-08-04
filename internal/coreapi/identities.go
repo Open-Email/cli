@@ -11,12 +11,19 @@ import (
 // calendar-only identity has no "mail" facet and cannot speak the mail
 // protocols, yet logs in, holds credentials, and owns a PIM store.
 type Identity struct {
-	ID             string         `json:"id"`
-	PrimaryAddress *string        `json:"primaryAddress"`
-	QuotaBytes     *int64         `json:"quotaBytes"`
-	AccountID      *string        `json:"accountId"`
-	CreatedAt      int64          `json:"createdAt"`
-	Facets         IdentityFacets `json:"facets"`
+	ID             string  `json:"id"`
+	PrimaryAddress *string `json:"primaryAddress"`
+	QuotaBytes     *int64  `json:"quotaBytes"`
+	AccountID      *string `json:"accountId"`
+	CreatedAt      int64   `json:"createdAt"`
+	// Per-mailbox send policy (always present; the Identity component composes
+	// the Mailbox schema).
+	// Pointers for the reason Mailbox's copies are: null = the platform default
+	// applies, 0 = explicitly unlimited.
+	SendDisabled    bool           `json:"sendDisabled"`
+	SendMsgsPerDay  *int64         `json:"sendMsgsPerDay"`
+	SendRcptsPerDay *int64         `json:"sendRcptsPerDay"`
+	Facets          IdentityFacets `json:"facets"`
 }
 
 // IdentityFacets maps each bound store to its usage. A key is present iff a

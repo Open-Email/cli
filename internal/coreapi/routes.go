@@ -17,6 +17,11 @@ type Route struct {
 	RemoteAddress   *string `json:"remoteAddress"`
 	Paced           bool    `json:"paced"`
 	CreatedAt       int64   `json:"createdAt"`
+	// Posting ("open" | "members") and MemberCount are group-only and present
+	// only on single-route answers (create/get/update) — absent on the list and
+	// for other destination kinds.
+	Posting     string `json:"posting,omitempty"`
+	MemberCount *int64 `json:"memberCount,omitempty"`
 }
 
 // RouteMember is one group member.
@@ -36,6 +41,9 @@ type RouteCreateInput struct {
 	WebhookSecret   string `json:"webhookSecret,omitempty"`
 	RemoteAddress   string `json:"remoteAddress,omitempty"`
 	Paced           bool   `json:"paced"`
+	// Posting is the group posting policy ("open" | "members"); group routes
+	// only (core answers 400 otherwise). Empty = core's default.
+	Posting string `json:"posting,omitempty"`
 }
 
 func (c *Client) ListRoutes(ctx context.Context, domain, mailboxID string, limit int, cursor string) (Page[Route], error) {
@@ -139,6 +147,29 @@ func (c *Client) ReplaceMembers(ctx context.Context, address string, members []s
 		return nil, err
 	}
 	return out.Members, nil
+}
+
+// RouteMemberBatchResult reports one batch add's insertion counts:
+// already-present members count as duplicates, never errors.
+type RouteMemberBatchResult struct {
+	Added      int64 `json:"added"`
+	Duplicates int64 `json:"duplicates"`
+}
+
+// BatchAddMembers adds up to 1000 members in one atomic call. Idempotent by
+// core's contract (a re-run reports the overlap as duplicates and converges),
+// so the request retries on transport errors like a GET.
+func (c *Client) BatchAddMembers(ctx context.Context, address string, members []string) (*RouteMemberBatchResult, error) {
+	var out RouteMemberBatchResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost, path: c.routeMembersPath(address) + "/batch",
+		body: mustJSON(map[string]any{"members": members}), contentType: "application/json",
+		idempotent: true,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // AddMember adds one member. 409 member_exists on collision.

@@ -139,6 +139,46 @@ func fmtQuota(b *int64) string {
 	return fmtBytes(*b)
 }
 
+// fmtSendCap renders a send-allowance cap, which has THREE states where a
+// quota has two — and conflating any pair of them misreports the bound:
+//
+//	nil → no override on this mailbox, so the platform default applies. NOT
+//	      the same as unlimited, and reading it that way is the dangerous
+//	      direction (it reports a bounded mailbox as unbounded).
+//	0   → explicitly unlimited, deliberately asked for.
+//	n   → that many per rolling 24h.
+//
+// The platform default is not visible from a mailbox row — `send-usage`
+// reports the number actually in force.
+func fmtSendCap(n *int64) string {
+	if n == nil {
+		return "platform default"
+	}
+	if *n == 0 {
+		return "unlimited"
+	}
+	return strconv.FormatInt(*n, 10)
+}
+
+// fmtSendState renders the send freeze. Spelled as a state rather than a
+// yes/no because "Sending: no" reads like a capability the mailbox never had,
+// while a freeze is something an operator DID and can undo.
+func fmtSendState(disabled bool) string {
+	if disabled {
+		return "FROZEN (submissions refused; queued mail dropped at the relay)"
+	}
+	return "enabled"
+}
+
+// fmtSendLimit renders a limit already resolved to what is IN FORCE (the
+// send-usage read), where null means the axis is not enforced at all.
+func fmtSendLimit(n *int64) string {
+	if n == nil {
+		return "not enforced"
+	}
+	return strconv.FormatInt(*n, 10)
+}
+
 // boolYN renders a bool as yes/no.
 func boolYN(b bool) string {
 	if b {

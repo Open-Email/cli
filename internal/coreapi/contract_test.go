@@ -45,6 +45,7 @@ func contractPairings() []pairing {
 		{val: DNSStatus{}, comp: "DnsStatus"},
 		{val: Route{}, comp: "Route"},
 		{val: RouteMember{}, comp: "RouteMember"},
+		{val: RouteMemberBatchResult{}, comp: "RouteMemberBatchResult"},
 		{val: Pattern{}, comp: "Pattern"},
 		{val: Account{}, comp: "Account"},
 		{val: APIKey{}, comp: "ApiKey"},
