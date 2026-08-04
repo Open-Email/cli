@@ -557,8 +557,16 @@ func accountsDesc() resourceDesc {
 			}
 			rows := make([]rowData, len(pg.Items))
 			for i, a := range pg.Items {
+				// Marked for the same reason a frozen mailbox is, one scope up:
+				// this list is where an operator looks for the tenant they
+				// stopped, and an unmarked row is an account whose sending is
+				// frozen with nothing anywhere saying so.
+				name := a.Name
+				if a.SendDisabled {
+					name += " [FROZEN]"
+				}
 				rows[i] = rowData{
-					cells: []string{a.ID, a.Name, int64Or(a.MaxMailboxes, "∞"), fmtEpoch(a.CreatedAt)},
+					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "∞"), fmtEpoch(a.CreatedAt)},
 					item:  a,
 				}
 			}
@@ -566,9 +574,18 @@ func accountsDesc() resourceDesc {
 		},
 		detail: func(item any) []kv {
 			a := item.(coreapi.Account)
+			sending := "enabled"
+			if a.SendDisabled {
+				sending = "FROZEN — every mailbox on every domain; queued mail dropped at the relay"
+			}
 			return []kv{
 				{k: "id", v: a.ID},
 				{k: "name", v: a.Name},
+				{k: "sending", v: sending},
+				// Three states, not two: "platform default" is not "unlimited",
+				// and it may well be the tightest bound in play.
+				{k: "messages/day", v: sendCapOr(a.SendMsgsPerDay)},
+				{k: "recipients/day", v: sendCapOr(a.SendRcptsPerDay)},
 				{k: "max mailboxes", v: int64Or(a.MaxMailboxes, "∞")},
 				{k: "created", v: fmtEpoch(a.CreatedAt)},
 			}

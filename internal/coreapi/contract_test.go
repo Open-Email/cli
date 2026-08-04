@@ -62,6 +62,8 @@ func contractPairings() []pairing {
 		{val: VerifyResult{}, comp: "VerifyResult"},
 		{val: PickupSource{}, comp: "PickupSource"},
 		{val: DomainTraffic{}, comp: "DomainTraffic"},
+		{val: AccountTraffic{}, comp: "AccountTraffic"},
+		{val: AccountSendUsage{}, comp: "AccountSendUsage"},
 		{val: TrafficRow{}, comp: "TrafficRow"},
 		{val: TrafficEvent{}, comp: "TrafficEvent"},
 		{val: DomainEvents{}, comp: "DomainEvents"},

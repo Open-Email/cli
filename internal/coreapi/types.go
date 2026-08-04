@@ -35,7 +35,37 @@ type Account struct {
 	// is knowable before the first domain exists. Public by construction (it
 	// lives in DNS) — a claim capability, never an authentication credential.
 	VerificationToken *string `json:"verificationToken"`
-	CreatedAt         int64   `json:"createdAt"`
+	// SendDisabled is the TENANT-SCALE send freeze: true stops every mailbox on
+	// every domain this account owns, at submission and in the already-queued
+	// relay backlog. Egress only — a frozen account still receives its mail.
+	// System-writable only.
+	SendDisabled bool `json:"sendDisabled"`
+	// Account-tier daily caps. NIL = the platform default is in force; 0 =
+	// explicitly unlimited. Pointers because those are DIFFERENT states and
+	// collapsing them inverts the meaning in the direction that removes a bound.
+	SendMsgsPerDay  *int64 `json:"sendMsgsPerDay"`
+	SendRcptsPerDay *int64 `json:"sendRcptsPerDay"`
+	CreatedAt       int64  `json:"createdAt"`
+}
+
+// AccountSendUsage is GET /accounts/:accountId/send-usage — the tenant-scale
+// allowance window: what the account has SENT, how many mailboxes it has
+// MINTED, and whether it is frozen. The cross-mailbox reading a per-mailbox
+// send-usage call cannot give.
+type AccountSendUsage struct {
+	AccountID string `json:"accountId"`
+	Frozen    bool   `json:"frozen"`
+	Send      struct {
+		Messages    int64  `json:"messages"`
+		Recipients  int64  `json:"recipients"`
+		MsgsPerDay  *int64 `json:"msgsPerDay"`
+		RcptsPerDay *int64 `json:"rcptsPerDay"`
+	} `json:"send"`
+	Creates struct {
+		Mailboxes int64  `json:"mailboxes"`
+		PerDay    *int64 `json:"perDay"`
+	} `json:"creates"`
+	WindowSeconds int64 `json:"windowSeconds"`
 }
 
 // Mailbox is a live mailbox row; the stats fields are populated only by

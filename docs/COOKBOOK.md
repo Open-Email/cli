@@ -516,6 +516,60 @@ the next attempt, and a lifted complaint means mailing someone who asked you to
 stop — the exact thing that damages a sending reputation. The prompt shows the
 recorded reason and diagnostic first; `--yes` skips it.
 
+## Stop a tenant that is spamming (operator)
+
+```sh
+openemail accounts send-usage ACC_01J…                 # how much have they spent today?
+openemail accounts traffic ACC_01J…                    # is the volume real, and where?
+openemail domains events example.com --outcome relayed # which mailbox is sending it
+openemail accounts update ACC_01J… --freeze            # stop everything, now
+openemail accounts update ACC_01J… --unfreeze          # once it is sorted out
+```
+
+Start at the ACCOUNT scope, because it is the only view that can see this shape.
+Per-mailbox and per-domain surfaces are keyed one at a time, so a tenant
+spreading volume across fifty mailboxes looks healthy fifty times over while the
+account total is fifty times what anyone intended. `send-usage` is the cheaper
+of the two and answers "how much of their allowance is gone"; `traffic` shows
+where it went.
+
+If the answer is "they are legitimately busy", the fix is a bigger number rather
+than a freeze:
+
+```sh
+openemail accounts update ACC_01J… --send-msgs-per-day 20000
+openemail accounts update ACC_01J… --send-rcpts-per-day unlimited
+```
+
+Note `unlimited` and `default` are different words on purpose: `default` drops
+the override and inherits the platform number, which may well be tighter than
+what you just removed.
+
+There are three freezes and the choice between them is **scope, not strength** —
+all three refuse new submissions AND drop mail already sitting in the relay
+queue:
+
+| | |
+|---|---|
+| `openemail mailboxes update <id> --freeze` | one mailbox |
+| `openemail accounts update <id> --freeze` | every mailbox on every domain the account owns |
+| `openemail domains update <domain> --can-send=false` | every sender on one domain |
+
+Reach for the account freeze when you do not yet know how many mailboxes are
+involved: it covers mailboxes the tenant creates *after* you freeze, which a
+loop over the mailboxes they hold right now does not. It is one call, so nothing
+races the tenant's own creates.
+
+Freezing is **send-only**. A frozen account keeps receiving mail and every
+mailbox stays readable — which is what makes it safe to use before you have
+finished the investigation. Nothing expires on its own; unfreeze when you are
+done, and the very next submission goes through (there is no cache to wait out).
+
+Revoking credentials is the *narrower* tool, not the faster one: it stops the
+credential, so nothing new can be submitted with it, but it cannot reach mail
+that is already queued. Use it when one app password leaked; freeze when the
+tenant is the problem.
+
 ## Check what is signing outbound mail (operator)
 
 ```sh

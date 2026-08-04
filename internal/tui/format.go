@@ -59,6 +59,20 @@ func int64Or(p *int64, dash string) string {
 	return strconv.FormatInt(*p, 10)
 }
 
+// sendCapOr renders an allowance cap's THREE states. A nil pointer is
+// "platform default", never "∞": on a quota those would mean the same thing,
+// but here the platform number may be the tightest bound in play, so showing it
+// as unlimited would tell an operator the opposite of the truth.
+func sendCapOr(p *int64) string {
+	if p == nil {
+		return "platform default"
+	}
+	if *p == 0 {
+		return "unlimited"
+	}
+	return strconv.FormatInt(*p, 10)
+}
+
 func yn(b bool) string {
 	if b {
 		return "yes"

@@ -3,6 +3,7 @@ package coreapi
 import (
 	"context"
 	"net/http"
+	"net/url"
 )
 
 // ListAccounts returns one page of accounts. SYSTEM-ONLY: an account principal
@@ -53,6 +54,87 @@ func (c *Client) CreateAccount(ctx context.Context, name string, maxMailboxes *i
 		path:        "/accounts",
 		body:        mustJSON(createAccountReq{Name: name, MaxMailboxes: maxMailboxes}),
 		contentType: "application/json",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateAccount applies a partial patch (name, maxMailboxes, sendDisabled).
+//
+// SYSTEM-ONLY in full — every field on it is an operator control over a tenant,
+// so unlike the mailbox patch there is no per-field guard: an account able to
+// clear its own freeze does not have one.
+//
+// The patch is a map for the same reason UpdateMailbox's is: an explicit null
+// maxMailboxes (clear the cap) must stay distinguishable from an omitted one
+// (leave unchanged), and a struct with `omitempty` collapses both to "absent".
+func (c *Client) UpdateAccount(ctx context.Context, accountID string, patch map[string]any) (*Account, error) {
+	var out Account
+	err := c.doJSON(ctx, request{
+		method:      http.MethodPatch,
+		path:        "/accounts/" + escapeSegment(accountID),
+		body:        mustJSON(patch),
+		contentType: "application/json",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// AccountTraffic is GET /accounts/:accountId/traffic — the same sampled
+// aggregates as DomainTraffic, summed across every domain the account owns.
+//
+// The view that makes cross-mailbox abuse visible: per-domain and per-mailbox
+// surfaces cannot see a tenant spreading volume, where fifty mailboxes each
+// under their cap look healthy fifty times over. DomainsTruncated reports that
+// the account holds more domains than one query covers — a silently partial
+// total reads as reassurance.
+type AccountTraffic struct {
+	AccountID        string   `json:"accountId"`
+	Range            string   `json:"range"`
+	Domains          []string `json:"domains"`
+	DomainsTruncated bool     `json:"domainsTruncated"`
+	Totals           struct {
+		Events int64 `json:"events"`
+		Bytes  int64 `json:"bytes"`
+	} `json:"totals"`
+	ByOutcome     map[string]int64 `json:"byOutcome"`
+	Rows          []TrafficRow     `json:"rows"`
+	Estimated     bool             `json:"estimated"`
+	RetentionDays int              `json:"retentionDays"`
+}
+
+// GetAccountTraffic returns the account-wide rollup. rng is one of
+// 1h|6h|24h|7d|30d (empty → core default 24h).
+func (c *Client) GetAccountTraffic(ctx context.Context, accountID, rng string) (*AccountTraffic, error) {
+	q := url.Values{}
+	if rng != "" {
+		q.Set("range", rng)
+	}
+	var out AccountTraffic
+	err := c.doJSON(ctx, request{
+		method:     http.MethodGet,
+		path:       "/accounts/" + escapeSegment(accountID) + "/traffic",
+		query:      q,
+		idempotent: true,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetAccountSendUsage returns the account-tier allowance window: both ledgers
+// (sends and mailbox creates) plus the freeze, in one call.
+func (c *Client) GetAccountSendUsage(ctx context.Context, accountID string) (*AccountSendUsage, error) {
+	var out AccountSendUsage
+	err := c.doJSON(ctx, request{
+		method:     http.MethodGet,
+		path:       "/accounts/" + escapeSegment(accountID) + "/send-usage",
+		idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
