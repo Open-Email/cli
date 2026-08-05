@@ -58,17 +58,56 @@ func TestParseMaxMailboxesFlag(t *testing.T) {
 // the SCOPE, since the reason to reach for it over the per-mailbox freeze is
 // that it also covers mailboxes the tenant has not created yet.
 func TestFmtAccountSendState(t *testing.T) {
-	if got := fmtAccountSendState(false); got != "enabled" {
-		t.Errorf("fmtAccountSendState(false) = %q; want %q", got, "enabled")
+	if got := fmtAccountSendState(false, false); got != "enabled" {
+		t.Errorf("fmtAccountSendState(live) = %q; want %q", got, "enabled")
 	}
-	frozen := fmtAccountSendState(true)
+	frozen := fmtAccountSendState(true, false)
 	if !strings.Contains(frozen, "FROZEN") {
-		t.Errorf("fmtAccountSendState(true) = %q; want it to shout FROZEN", frozen)
+		t.Errorf("fmtAccountSendState(frozen) = %q; want it to shout FROZEN", frozen)
 	}
 	for _, want := range []string{"every mailbox", "every domain", "relay"} {
 		if !strings.Contains(frozen, want) {
-			t.Errorf("fmtAccountSendState(true) = %q; want it to mention %q", frozen, want)
+			t.Errorf("fmtAccountSendState(frozen) = %q; want it to mention %q", frozen, want)
 		}
+	}
+
+	// The HOLD must read as a DIFFERENT state, and must say what happens to the
+	// queued mail: an operator choosing between the two is choosing between
+	// bouncing a tenant's mail and holding it, which is the whole distinction.
+	paused := fmtAccountSendState(false, true)
+	if !strings.Contains(paused, "PAUSED") {
+		t.Errorf("fmtAccountSendState(paused) = %q; want it to shout PAUSED", paused)
+	}
+	if strings.Contains(paused, "FROZEN") {
+		t.Errorf("fmtAccountSendState(paused) = %q; must not read as a freeze", paused)
+	}
+	if !strings.Contains(paused, "held") {
+		t.Errorf("fmtAccountSendState(paused) = %q; want it to say the mail is held", paused)
+	}
+
+	// Both set resolves toward the FREEZE, matching what core actually does — so
+	// the CLI can never describe behavior the tenant is not getting.
+	if got := fmtAccountSendState(true, true); !strings.Contains(got, "FROZEN") {
+		t.Errorf("fmtAccountSendState(both) = %q; want the permanent answer to win", got)
+	}
+}
+
+// --pause and --resume are separate booleans for the same reason --freeze and
+// --unfreeze are, and passing both must be a usage error rather than
+// last-one-wins. Validated BEFORE authentication: contradictory flags are a
+// usage error whatever credentials the caller holds.
+func TestAccountUpdateRejectsBothPauseFlags(t *testing.T) {
+	a := &app{out: newPrinter(false, true)}
+	cmd := newAccountUpdateCmd(a)
+	cmd.SetArgs([]string{"ACC1", "--pause", "--resume"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected --pause --resume to be refused")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("error = %v; want it to say the flags are mutually exclusive", err)
 	}
 }
 

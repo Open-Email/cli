@@ -40,6 +40,13 @@ type Account struct {
 	// relay backlog. Egress only — a frozen account still receives its mail.
 	// System-writable only.
 	SendDisabled bool `json:"sendDisabled"`
+	// SendPaused is the REVERSIBLE form of SendDisabled — a hold you intend to
+	// lift (non-payment, an investigation). Submissions answer 429
+	// sending_paused rather than 403, so SMTP submission gets a 451 and the
+	// sending MTA queues the mail, and the already-queued relay backlog is
+	// DEFERRED rather than bounced. SendDisabled wins if both are set. Egress
+	// only; system-writable only.
+	SendPaused bool `json:"sendPaused"`
 	// Account-tier daily caps. NIL = the platform default is in force; 0 =
 	// explicitly unlimited. Pointers because those are DIFFERENT states and
 	// collapsing them inverts the meaning in the direction that removes a bound.
@@ -55,6 +62,10 @@ type Account struct {
 type AccountSendUsage struct {
 	AccountID string `json:"accountId"`
 	Frozen    bool   `json:"frozen"`
+	// Paused is the reversible half: refused temporarily (429) rather than
+	// permanently. Reported apart from Frozen because the two are different
+	// answers for a support agent — "we stopped them" vs "we are holding them".
+	Paused bool `json:"paused"`
 	Send      struct {
 		Messages    int64  `json:"messages"`
 		Recipients  int64  `json:"recipients"`
@@ -81,7 +92,10 @@ type Mailbox struct {
 	// the platform default applies; 0 = explicitly unlimited; n = that cap.
 	// Decoding null into 0 would read "inherit the default" as "unlimited",
 	// which is the one misreading that removes a bound instead of adding one.
-	SendDisabled    bool   `json:"sendDisabled"`
+	SendDisabled bool `json:"sendDisabled"`
+	// SendPaused is the mailbox-scope reversible hold: 429 sending_paused at
+	// submission, DEFER in the relay. Independent of SendDisabled, which wins.
+	SendPaused      bool   `json:"sendPaused"`
 	SendMsgsPerDay  *int64 `json:"sendMsgsPerDay"`
 	SendRcptsPerDay *int64 `json:"sendRcptsPerDay"`
 
@@ -105,7 +119,9 @@ type SendUsage struct {
 	MsgsPerDay  *int64 `json:"msgsPerDay"`
 	RcptsPerDay *int64 `json:"rcptsPerDay"`
 	// Sending frozen: every submission is refused regardless of usage.
-	Disabled      bool  `json:"disabled"`
+	Disabled bool `json:"disabled"`
+	// Sending HELD: refused temporarily (429) rather than permanently.
+	Paused        bool  `json:"paused"`
 	WindowSeconds int64 `json:"windowSeconds"`
 }
 

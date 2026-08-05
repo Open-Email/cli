@@ -67,6 +67,10 @@ func domainsDesc() resourceDesc {
 				{k: "sending", v: yn(d.Sending)},
 				{k: "enabled", v: yn(d.Enabled)},
 				{k: "can send", v: yn(d.CanSend)},
+				// Shown beside `can send` rather than folded into it: the raw pair
+				// is what answers "which switch is set?", and a domain held for
+				// suspension looks nothing like one that was never set up to send.
+				{k: "send paused", v: yn(d.SendPaused)},
 				{k: "can receive", v: yn(d.CanReceive)},
 				{k: "alias of", v: strOr(d.AliasOf, "—")},
 				{k: "fbl", v: yn(d.FBL)},
@@ -191,13 +195,17 @@ func mailboxesDesc() resourceDesc {
 				if m.QuotaBytes != nil {
 					quota = fmtBytes(*m.QuotaBytes)
 				}
-				// A frozen mailbox is marked here because this list is the only
-				// place the TUI shows a live mailbox at all — opening one goes
-				// straight to its messages, so an unmarked row is a mailbox
-				// whose sending is stopped with nothing anywhere saying so.
+				// A stopped or held mailbox is marked here because this list is the
+				// only place the TUI shows a live mailbox at all — opening one goes
+				// straight to its messages, so an unmarked row is a mailbox whose
+				// sending is stopped with nothing anywhere saying so. The two modes
+				// are named apart: FROZEN bounces queued mail, PAUSED holds it.
 				address := strOr(m.PrimaryAddress, "—")
-				if m.SendDisabled {
+				switch {
+				case m.SendDisabled:
 					address += " [FROZEN]"
+				case m.SendPaused:
+					address += " [PAUSED]"
 				}
 				rows[i] = rowData{
 					cells: []string{m.ID, address, quota, fmtEpoch(m.CreatedAt)},
@@ -562,8 +570,11 @@ func accountsDesc() resourceDesc {
 				// stopped, and an unmarked row is an account whose sending is
 				// frozen with nothing anywhere saying so.
 				name := a.Name
-				if a.SendDisabled {
+				switch {
+				case a.SendDisabled:
 					name += " [FROZEN]"
+				case a.SendPaused:
+					name += " [PAUSED]"
 				}
 				rows[i] = rowData{
 					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "∞"), fmtEpoch(a.CreatedAt)},
@@ -575,8 +586,11 @@ func accountsDesc() resourceDesc {
 		detail: func(item any) []kv {
 			a := item.(coreapi.Account)
 			sending := "enabled"
-			if a.SendDisabled {
-				sending = "FROZEN — every mailbox on every domain; queued mail dropped at the relay"
+			switch {
+			case a.SendDisabled:
+				sending = "FROZEN — every mailbox on every domain; queued mail bounced at the relay"
+			case a.SendPaused:
+				sending = "PAUSED — every mailbox on every domain; queued mail held, not bounced"
 			}
 			return []kv{
 				{k: "id", v: a.ID},

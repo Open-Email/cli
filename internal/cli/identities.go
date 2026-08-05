@@ -55,7 +55,7 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 					{"Account", strOr(id.AccountID, "—")},
 					{"Quota", fmtQuota(id.QuotaBytes)},
 					{"Created", fmtEpoch(id.CreatedAt)},
-					{"Sending", fmtSendState(id.SendDisabled)},
+					{"Sending", fmtSendState(id.SendDisabled, id.SendPaused)},
 				}
 				if id.SendMsgsPerDay != nil || id.SendRcptsPerDay != nil {
 					rows = append(rows,

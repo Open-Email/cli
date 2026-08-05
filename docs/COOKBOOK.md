@@ -522,9 +522,16 @@ recorded reason and diagnostic first; `--yes` skips it.
 openemail accounts send-usage ACC_01J…                 # how much have they spent today?
 openemail accounts traffic ACC_01J…                    # is the volume real, and where?
 openemail domains events example.com --outcome relayed # which mailbox is sending it
-openemail accounts update ACC_01J… --freeze            # stop everything, now
-openemail accounts update ACC_01J… --unfreeze          # once it is sorted out
+openemail accounts update ACC_01J… --pause             # hold everything while you look
+openemail accounts update ACC_01J… --freeze            # or stop it outright
+openemail accounts update ACC_01J… --resume            # once it is sorted out
 ```
+
+**Reach for `--pause` first.** It refuses submissions temporarily (429 → a 451
+over SMTP, so the sender's own MTA holds the mail) and DEFERS the queued backlog
+instead of bouncing it, so nothing is destroyed while you investigate. `--freeze`
+is the abuse stop: permanent (403 → 550) and the backlog is bounced. A hold can
+be upgraded to a freeze; bounced mail cannot be recalled.
 
 Start at the ACCOUNT scope, because it is the only view that can see this shape.
 Per-mailbox and per-domain surfaces are keyed one at a time, so a tenant
@@ -545,30 +552,43 @@ Note `unlimited` and `default` are different words on purpose: `default` drops
 the override and inherits the platform number, which may well be tighter than
 what you just removed.
 
-There are three freezes and the choice between them is **scope, not strength** —
-all three refuse new submissions AND drop mail already sitting in the relay
-queue:
+Two independent choices: **scope** (how much) and **mode** (how permanent).
 
-| | |
-|---|---|
-| `openemail mailboxes update <id> --freeze` | one mailbox |
-| `openemail accounts update <id> --freeze` | every mailbox on every domain the account owns |
-| `openemail domains update <domain> --can-send=false` | every sender on one domain |
+Scope is scope, not strength — all three cover the same ground at different
+widths, and all three reach the queued backlog:
 
-Reach for the account freeze when you do not yet know how many mailboxes are
-involved: it covers mailboxes the tenant creates *after* you freeze, which a
-loop over the mailboxes they hold right now does not. It is one call, so nothing
-races the tenant's own creates.
+| scope | stop | hold |
+|---|---|---|
+| one mailbox | `mailboxes update <id> --freeze` | `mailboxes update <id> --pause` |
+| the whole tenant | `accounts update <id> --freeze` | `accounts update <id> --pause` |
+| one domain | `domains update <d> --can-send=false` | `domains update <d> --send-paused` |
 
-Freezing is **send-only**. A frozen account keeps receiving mail and every
-mailbox stays readable — which is what makes it safe to use before you have
-finished the investigation. Nothing expires on its own; unfreeze when you are
-done, and the very next submission goes through (there is no cache to wait out).
+Reach for the ACCOUNT scope when you do not yet know how many mailboxes are
+involved: it covers mailboxes the tenant creates *after* you act, which a loop
+over the mailboxes they hold right now does not. It is one call, so nothing races
+the tenant's own creates.
+
+Mode is the question "should this mail survive?":
+
+- **`--pause`** — non-payment, or a suspicion you expect to clear. Submissions
+  answer 429 and the sending MTA queues; the relay defers its backlog. Nothing
+  is destroyed. One caveat: a hold outliving the relay's ~3.2-day retry window
+  dead-letters that backlog — it is preserved and redrivable, but no longer
+  automatic, so resolve long holds before then.
+- **`--freeze`** — abuse. Submissions answer 403 and the client gives up; the
+  backlog is bounced. This is what you want for a spammer, whose client should
+  stop retrying against you.
+
+Both are **send-only**. A stopped or held account keeps receiving mail and every
+mailbox stays readable — which is what makes either safe to use before you have
+finished the investigation. Neither expires on its own; `--resume`/`--unfreeze`
+when you are done, and the very next submission goes through (there is no cache
+to wait out).
 
 Revoking credentials is the *narrower* tool, not the faster one: it stops the
 credential, so nothing new can be submitted with it, but it cannot reach mail
-that is already queued. Use it when one app password leaked; freeze when the
-tenant is the problem.
+that is already queued. Use it when one app password leaked; freeze or pause
+when the tenant is the problem.
 
 ## Check what is signing outbound mail (operator)
 

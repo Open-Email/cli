@@ -17,7 +17,14 @@ type VerifyResult struct {
 	AccountID     *string  `json:"accountId"`
 	CredentialID  string   `json:"credentialId"`
 	Kind          string   `json:"kind"`
-	CanSend       bool     `json:"canSend"`
+	CanSend bool `json:"canSend"`
+	// SendHold says WHICH kind of no, and is present only when CanSend is false:
+	// "stopped" is permanent as far as the user is concerned (a domain that
+	// cannot send, or a freeze), "paused" is a hold that will be lifted. A UI
+	// needs the difference — "sending is not available" and "sending is paused"
+	// are different messages. Advisory, like CanSend; the submission gate is the
+	// authority.
+	SendHold      string   `json:"sendHold,omitempty"`
 	PermittedFrom []string `json:"permittedFrom"`
 	// Facets lists the identity's bound stores ("mail", "pim").
 	Facets []string `json:"facets"`

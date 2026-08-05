@@ -234,6 +234,7 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 	var (
 		enabled, canSend, canReceive, fbl, dmarc bool
 		jmap, dav, itip                          bool
+		sendPaused                               bool
 		aliasOf                                  string
 		clearAlias                               bool
 	)
@@ -255,6 +256,12 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 			}
 			if cmd.Flags().Changed("can-send") {
 				patch["canSend"] = canSend
+			}
+			// The REVERSIBLE stop, a separate column from can-send because that
+			// one is also a configuration state ("never set up to send") and a
+			// suspended domain has to be distinguishable from one that never sent.
+			if cmd.Flags().Changed("send-paused") {
+				patch["sendPaused"] = sendPaused
 			}
 			if cmd.Flags().Changed("can-receive") {
 				patch["canReceive"] = canReceive
@@ -298,6 +305,7 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "set enabled")
 	cmd.Flags().BoolVar(&canSend, "can-send", false, "set send capability")
+	cmd.Flags().BoolVar(&sendPaused, "send-paused", false, "HOLD outbound sending for this domain (system key required, in BOTH directions). Reversible: submissions are deferred (429 → 451) and queued mail is held, not bounced — unlike --can-send=false, which is permanent. Egress only")
 	cmd.Flags().BoolVar(&canReceive, "can-receive", false, "set receive capability")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "set the FBL ingestion flag")
 	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "set the DMARC report-ingestion flag (aggregate/RUA parsing — NOT the _dmarc DNS record)")
@@ -442,6 +450,11 @@ func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 		{"Sending", boolYN(d.Sending)},
 		{"Enabled", boolYN(d.Enabled)},
 		{"Can send", boolYN(d.CanSend)},
+		// Reported beside the raw flag rather than folded into it: the pair is
+		// what answers "which switch is set?", and a domain HELD for suspension
+		// looks nothing like one that was never set up to send. `Sending` above
+		// is the lifecycle answer and already folds this in.
+		{"Send paused", boolYN(d.SendPaused)},
 		{"Can receive", boolYN(d.CanReceive)},
 		{"FBL", boolYN(d.FBL)},
 		{"DMARC ingestion", boolYN(d.DMARC)},

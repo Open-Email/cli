@@ -26,7 +26,16 @@ type DNSStatus struct {
 type Domain struct {
 	Domain     string  `json:"domain"`
 	Enabled    bool    `json:"enabled"`
-	CanSend    bool    `json:"canSend"`
+	// CanSend is the RAW column an operator wrote, not effective sendability —
+	// Sending below is the lifecycle answer and folds SendPaused in.
+	CanSend bool `json:"canSend"`
+	// SendPaused is this domain's reversible send HOLD (core migration 0024):
+	// the companion to CanSend=false for one suspended or compromised domain of
+	// a tenant that has several. Submissions answer 429 sending_paused (451 at
+	// smtp-in, so the sending MTA queues) and the queued relay backlog is
+	// DEFERRED rather than bounced. System-writable in BOTH directions, unlike
+	// CanSend, whose false stays open to the owner. Egress only.
+	SendPaused bool    `json:"sendPaused"`
 	CanReceive bool    `json:"canReceive"`
 	AliasOf    *string `json:"aliasOf"`
 	FBL        bool    `json:"fbl"`
@@ -50,7 +59,8 @@ type Domain struct {
 	// domain is the precondition for core creating the row at all.
 	Verified  bool `json:"verified"`
 	Receiving bool `json:"receiving"`
-	Sending   bool `json:"sending"`
+	// Sending is enabled && canSend && !sendPaused.
+	Sending bool `json:"sending"`
 }
 
 // DNSRecord is one record a domain needs, with the copy-pasteable value. Kind

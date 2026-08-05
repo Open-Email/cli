@@ -25,6 +25,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "sendPaused": {
+            "type": "boolean"
+          },
           "sendRcptsPerDay": {
             "format": "int64",
             "type": "integer"
@@ -42,6 +45,7 @@
           "maxMailboxes",
           "verificationToken",
           "sendDisabled",
+          "sendPaused",
           "sendMsgsPerDay",
           "sendRcptsPerDay",
           "createdAt"
@@ -71,6 +75,9 @@
             "type": "object"
           },
           "frozen": {
+            "type": "boolean"
+          },
+          "paused": {
             "type": "boolean"
           },
           "send": {
@@ -108,6 +115,7 @@
         "required": [
           "accountId",
           "frozen",
+          "paused",
           "send",
           "creates",
           "windowSeconds"
@@ -1592,8 +1600,11 @@
             "description": "enabled && canReceive",
             "type": "boolean"
           },
+          "sendPaused": {
+            "type": "boolean"
+          },
           "sending": {
-            "description": "enabled && canSend",
+            "description": "enabled && canSend && !sendPaused",
             "type": "boolean"
           },
           "verified": {
@@ -1605,6 +1616,7 @@
           "domain",
           "enabled",
           "canSend",
+          "sendPaused",
           "canReceive",
           "aliasOf",
           "fbl",
@@ -2438,6 +2450,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "sendPaused": {
+            "type": "boolean"
+          },
           "sendRcptsPerDay": {
             "format": "int64",
             "type": "integer"
@@ -2450,6 +2465,7 @@
           "accountId",
           "createdAt",
           "sendDisabled",
+          "sendPaused",
           "sendMsgsPerDay",
           "sendRcptsPerDay"
         ],
@@ -4674,6 +4690,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "paused": {
+            "type": "boolean"
+          },
           "rcptsPerDay": {
             "format": "int64",
             "type": "integer"
@@ -4693,6 +4712,7 @@
           "msgsPerDay",
           "rcptsPerDay",
           "disabled",
+          "paused",
           "windowSeconds"
         ],
         "type": "object"
@@ -5312,6 +5332,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "sendHold": {
+            "description": "Present only when canSend is false, and says WHICH kind of no: 'stopped' is permanent as far as the user is concerned (a domain that cannot send, or a freeze), 'paused' is a hold that will be lifted. A UI needs the difference — 'sending is not available' and 'sending is paused' are different messages. Advisory like canSend; the submission gate remains the authority.",
+            "enum": [
+              "stopped",
+              "paused"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -5572,7 +5600,7 @@
                     "type": "string"
                   },
                   "sendDisabled": {
-                    "description": "Freeze (true) or release (false) all outbound mail for this account. Refusals answer 403 sending_disabled — permanent, so SMTP submission gets a 550 rather than a queue-and-retry",
+                    "description": "STOP (true) or release (false) all outbound mail for this account. Refusals answer 403 sending_disabled — permanent, so SMTP submission gets a 550 rather than a queue-and-retry, and the queued relay backlog is bounced. The abuse response",
                     "type": "boolean"
                   },
                   "sendMsgsPerDay": {
@@ -5582,6 +5610,10 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "sendPaused": {
+                    "description": "HOLD (true) or resume (false) all outbound mail for this account — the reversible form, for non-payment or an investigation you intend to conclude. Refusals answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sending MTA queues the mail; the queued relay backlog is DEFERRED rather than bounced. `sendDisabled` wins if both are set. Egress only: a paused account still receives",
+                    "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "Envelope recipients this ACCOUNT may send to per rolling 24h. null = the platform default; 0 = unlimited",
@@ -5618,7 +5650,7 @@
             "description": "Account not found"
           }
         },
-        "summary": "Update an account (system callers only). `sendDisabled: true` is the tenant-scale send freeze — every mailbox on every domain this account owns is refused at submission AND in the queued relay backlog, while inbound mail keeps arriving. `sendMsgsPerDay`/`sendRcptsPerDay` are the tenant-scale VOLUME caps, the number a plan tier is written in: the per-mailbox caps bound one mailbox, so without these a tenant's real allowance is the product of two separately-set numbers",
+        "summary": "Update an account (system callers only). `sendDisabled: true` is the tenant-scale send STOP and `sendPaused: true` its reversible HOLD (429 + defer rather than 403 + bounce) — every mailbox on every domain this account owns is refused at submission AND in the queued relay backlog, while inbound mail keeps arriving. `sendMsgsPerDay`/`sendRcptsPerDay` are the tenant-scale VOLUME caps, the number a plan tier is written in: the per-mailbox caps bound one mailbox, so without these a tenant's real allowance is the product of two separately-set numbers",
         "tags": [
           "Accounts"
         ]
@@ -5626,7 +5658,7 @@
     },
     "/api/v1/accounts/{accountId}/send-usage": {
       "get": {
-        "description": "Account-tier consumption over the rolling 24h window plus the caps in force — the cross-mailbox view a per-mailbox reading cannot give. `send.messages` counts DISTINCT content, `send.recipients` counts envelope recipients, and `creates.mailboxes` is the mailbox-creation rate (the churn bound: a fresh mailbox is a fresh, empty send ledger, so without it the per-mailbox caps are recycled by purge + recreate). A null limit means that axis is not enforced. `frozen: true` means every submission is refused regardless of usage.",
+        "description": "Account-tier consumption over the rolling 24h window plus the caps in force — the cross-mailbox view a per-mailbox reading cannot give. `send.messages` counts DISTINCT content, `send.recipients` counts envelope recipients, and `creates.mailboxes` is the mailbox-creation rate (the churn bound: a fresh mailbox is a fresh, empty send ledger, so without it the per-mailbox caps are recycled by purge + recreate). A null limit means that axis is not enforced. `frozen: true` means every submission is refused permanently (403) regardless of usage; `paused: true` means they are refused temporarily (429) — the reversible hold. Both are reported so \"why can't this tenant send?\" is one call.",
         "operationId": "get_AccountSendUsageGet",
         "parameters": [
           {
@@ -6784,6 +6816,10 @@
                   },
                   "jmap": {
                     "type": "boolean"
+                  },
+                  "sendPaused": {
+                    "description": "HOLD outbound sending for this domain (system callers only) — the reversible form of canSend:false, for one suspended or compromised domain of a tenant that has several. Submissions answer 429 sending_paused (451 at smtp-in, so the sending MTA queues) and the queued relay backlog is DEFERRED rather than bounced. Egress only: a paused domain still receives",
+                    "type": "boolean"
                   }
                 },
                 "type": "object"
@@ -7568,7 +7604,7 @@
                     ]
                   },
                   "sendDisabled": {
-                    "description": "System callers only. Freeze outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Does not affect receiving or reading",
+                    "description": "System callers only. STOP outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Permanent by contract — SMTP submission gets a 550 and the mail bounces. Does not affect receiving or reading",
                     "type": "boolean"
                   },
                   "sendMsgsPerDay": {
@@ -7578,6 +7614,10 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "sendPaused": {
+                    "description": "System callers only. HOLD outbound sending for this mailbox — the reversible form of sendDisabled, for a suspension you intend to lift (non-payment, an investigation). Submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. `sendDisabled` wins if both are set. Does not affect receiving or reading",
+                    "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
@@ -7738,7 +7778,7 @@
                     ]
                   },
                   "sendDisabled": {
-                    "description": "System callers only. Freeze outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Does not affect receiving or reading",
+                    "description": "System callers only. STOP outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Permanent by contract — SMTP submission gets a 550 and the mail bounces. Does not affect receiving or reading",
                     "type": "boolean"
                   },
                   "sendMsgsPerDay": {
@@ -7748,6 +7788,10 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "sendPaused": {
+                    "description": "System callers only. HOLD outbound sending for this mailbox — the reversible form of sendDisabled, for a suspension you intend to lift (non-payment, an investigation). Submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. `sendDisabled` wins if both are set. Does not affect receiving or reading",
+                    "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",

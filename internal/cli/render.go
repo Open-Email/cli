@@ -160,12 +160,19 @@ func fmtSendCap(n *int64) string {
 	return strconv.FormatInt(*n, 10)
 }
 
-// fmtSendState renders the send freeze. Spelled as a state rather than a
-// yes/no because "Sending: no" reads like a capability the mailbox never had,
-// while a freeze is something an operator DID and can undo.
-func fmtSendState(disabled bool) string {
-	if disabled {
-		return "FROZEN (submissions refused; queued mail dropped at the relay)"
+// fmtSendState renders the send freeze or hold. Spelled as a state rather than
+// a yes/no because "Sending: no" reads like a capability the mailbox never had,
+// while both of these are things an operator DID and can undo.
+//
+// The two modes are named apart because their effect on QUEUED mail differs: a
+// freeze bounces it, a hold keeps it. FROZEN is reported first, since core
+// resolves a row carrying both toward the permanent answer.
+func fmtSendState(disabled, paused bool) string {
+	switch {
+	case disabled:
+		return "FROZEN (submissions refused permanently; queued mail bounced at the relay)"
+	case paused:
+		return "PAUSED (submissions deferred; queued mail held, not bounced)"
 	}
 	return "enabled"
 }
