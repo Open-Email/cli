@@ -188,7 +188,7 @@ func newComposeCmd(a *app) *cobra.Command {
 	cmd.Flags().StringArrayVar(&references, "references", nil, "References message-id, repeatable")
 	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID; pass the same one to retry a partial send)")
 	cmd.Flags().BoolVar(&save, "save", true, "write a Sent copy in the sender's mailbox")
-	cmd.Flags().BoolVar(&bounce, "bounce", false, "deliver a DSN on terminal relay failure")
+	cmd.Flags().BoolVar(&bounce, "bounce", true, "deliver a DSN on terminal relay failure (--bounce=false to opt out)")
 	return cmd
 }
 

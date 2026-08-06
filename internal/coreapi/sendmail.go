@@ -136,7 +136,8 @@ type ThreadReplyRequest struct {
 // SendOptions are the submission-time knobs shared by /send and the thread
 // reply: whether to keep a Sent copy, whether a terminal relay failure should
 // bounce a DSN back into this mailbox, and the idempotency key. Save/Bounce are
-// nil to omit (core defaults save=true, bounce=false).
+// nil to omit (core defaults save=true, and bounce=true — RFC 5321 §6.1 owes the
+// failure notice to whoever accepted the message, so Bounce is an opt-OUT).
 type SendOptions struct {
 	Save       *bool
 	Bounce     *bool
