@@ -24,8 +24,8 @@ type DNSStatus struct {
 // Domain mirrors the endpoint's present() output: booleans are real bools (core
 // converts the stored 0/1), dnsStatus is an object or null.
 type Domain struct {
-	Domain     string  `json:"domain"`
-	Enabled    bool    `json:"enabled"`
+	Domain  string `json:"domain"`
+	Enabled bool   `json:"enabled"`
 	// CanSend is the RAW column an operator wrote, not effective sendability —
 	// Sending below is the lifecycle answer and folds SendPaused in.
 	CanSend bool `json:"canSend"`

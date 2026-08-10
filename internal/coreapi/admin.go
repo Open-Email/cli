@@ -12,12 +12,12 @@ import (
 // calendar-only identity (binding model, core's identity-design §IX) has no
 // MAIL store, while identityId is always present and is the durable key.
 type VerifyResult struct {
-	IdentityID    string   `json:"identityId"`
-	MailboxID     *string  `json:"mailboxId"`
-	AccountID     *string  `json:"accountId"`
-	CredentialID  string   `json:"credentialId"`
-	Kind          string   `json:"kind"`
-	CanSend bool `json:"canSend"`
+	IdentityID   string  `json:"identityId"`
+	MailboxID    *string `json:"mailboxId"`
+	AccountID    *string `json:"accountId"`
+	CredentialID string  `json:"credentialId"`
+	Kind         string  `json:"kind"`
+	CanSend      bool    `json:"canSend"`
 	// SendHold says WHICH kind of no, and is present only when CanSend is false:
 	// "stopped" is permanent as far as the user is concerned (a domain that
 	// cannot send, or a freeze), "paused" is a hold that will be lifted. A UI

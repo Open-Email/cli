@@ -66,7 +66,7 @@ type AccountSendUsage struct {
 	// permanently. Reported apart from Frozen because the two are different
 	// answers for a support agent — "we stopped them" vs "we are holding them".
 	Paused bool `json:"paused"`
-	Send      struct {
+	Send   struct {
 		Messages    int64  `json:"messages"`
 		Recipients  int64  `json:"recipients"`
 		MsgsPerDay  *int64 `json:"msgsPerDay"`
