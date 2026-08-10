@@ -99,6 +99,12 @@ func (p *previewPane) update(msg tea.Msg) (pane, tea.Cmd) {
 			}
 			return p, nil
 		}
+		// `S` shows the raw RFC 5322 bytes. Offered whether or not the content
+		// view rendered — the source is exactly what you want when the decoded
+		// view is empty, wrong, or failed to load.
+		if msg.String() == "S" {
+			return p, pushPane(newSourcePane(p.ctx, p.ui, p.mailboxID, p.meta))
+		}
 		var cmd tea.Cmd
 		p.vp, cmd = p.vp.Update(msg)
 		return p, cmd
@@ -195,9 +201,9 @@ func (p *previewPane) title() string {
 
 func (p *previewPane) hints() string {
 	if calendarPart(p.content) != nil {
-		return "i calendar · ↑/↓ scroll · esc back"
+		return "i calendar · S source · ↑/↓ scroll · esc back"
 	}
-	return "↑/↓ scroll · esc back"
+	return "S source · ↑/↓ scroll · esc back"
 }
 func (p *previewPane) capturesInput() bool { return false }
 func (p *previewPane) close()              {}
