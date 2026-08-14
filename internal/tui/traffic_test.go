@@ -136,7 +136,7 @@ func TestTrafficPickerOpensDomain(t *testing.T) {
 }
 
 func TestTrafficWiredIntoSidebarAndDescriptors(t *testing.T) {
-	if _, ok := allDescriptors()["traffic"]; !ok {
+	if _, ok := allDescriptors("")["traffic"]; !ok {
 		t.Fatal("allDescriptors missing the traffic screen")
 	}
 	// Traffic is not system-gated: an account principal must see it too.

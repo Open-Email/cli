@@ -95,3 +95,22 @@ func TestConcurrentSaveNoCorruption(t *testing.T) {
 		t.Fatalf("expected a default profile, got %+v", g.Profiles)
 	}
 }
+
+func TestValidateProfileName(t *testing.T) {
+	if err := ValidateProfileName("valid-123_test.profile"); err != nil {
+		t.Fatalf("expected valid name to pass: %v", err)
+	}
+	for _, bad := range []string{"", ".", "..", "../traversal", "with space", "semi;colon", "slash/name"} {
+		if err := ValidateProfileName(bad); err == nil {
+			t.Errorf("expected %q to fail validation", bad)
+		}
+	}
+
+	f := &File{}
+	if err := f.SetProfile("../bad", Profile{}); err == nil {
+		t.Error("SetProfile with bad name should fail")
+	}
+	if f.ResolveProfileName("../bad") != DefaultProfileName {
+		t.Errorf("ResolveProfileName with bad name should fallback to %s", DefaultProfileName)
+	}
+}

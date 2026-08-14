@@ -292,3 +292,24 @@ func TestResolveClassifiesPrincipals(t *testing.T) {
 		})
 	}
 }
+
+func TestEscapedPathSegmentPreservation(t *testing.T) {
+	var requestedURI string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedURI = r.RequestURI
+		w.WriteHeader(200)
+		w.Write([]byte(`{"items":[]}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	// Query with special characters in path segment: user+tag@domain.com and slash/part
+	segment := escapeSegment("user+tag@domain.com")
+	_, err := c.GetRoute(context.Background(), "user+tag@domain.com")
+	if err != nil {
+		t.Fatalf("GetRoute failed: %v", err)
+	}
+	if !strings.Contains(requestedURI, segment) {
+		t.Errorf("expected RequestURI %q to contain escaped segment %q", requestedURI, segment)
+	}
+}

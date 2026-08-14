@@ -21,3 +21,20 @@ func TestNormalizeFlagsLowercasesAndValidates(t *testing.T) {
 		t.Fatal("want an error for an unknown flag")
 	}
 }
+
+func TestSanitizeBodyAndCells(t *testing.T) {
+	// Escape sequence with screen clear and title spoof
+	malicious := "\x1b[2J\x1b]0;Spoofed Title\x07Hello \x1b[31mRed\x1b[0m\r\nWorld\tTest\x00\x08"
+
+	// sanitizeCell strips ALL control codes including newlines/tabs
+	cell := sanitizeCell(malicious)
+	if cell != "Hello RedWorldTest" {
+		t.Errorf("sanitizeCell unexpected output: %q", cell)
+	}
+
+	// sanitizeBody preserves \n and \t while stripping ANSI escapes and unsafe control characters
+	body := sanitizeBody(malicious)
+	if body != "Hello Red\nWorld\tTest" {
+		t.Errorf("sanitizeBody unexpected output: %q", body)
+	}
+}

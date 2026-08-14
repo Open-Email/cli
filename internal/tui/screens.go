@@ -12,8 +12,10 @@ import (
 )
 
 // allDescriptors declares every listing screen. Sidebar gating (Accounts is
-// system-only) happens in newRoot; the map itself is principal-agnostic.
-func allDescriptors() map[string]resourceDesc {
+// system-only, Do-Not-Send account-only) happens in newRoot; the map itself is
+// principal-agnostic. accountID parameterizes the account-scoped Do-Not-Send
+// screen and is empty for system keys, whose sidebar never offers it.
+func allDescriptors(accountID string) map[string]resourceDesc {
 	return map[string]resourceDesc{
 		"domains":      domainsDesc(),
 		"traffic":      trafficPickerDesc(),
@@ -24,6 +26,7 @@ func allDescriptors() map[string]resourceDesc {
 		"keys":         keysDesc(),
 		"accounts":     accountsDesc(),
 		"suppressions": suppressionsDesc(),
+		"do-not-send":  doNotSendDesc(accountID),
 		"dkim":         dkimDesc(),
 	}
 }

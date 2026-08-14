@@ -121,3 +121,23 @@ func TestSplitAddressList(t *testing.T) {
 		t.Fatalf("quoted comma split the list: %q", got)
 	}
 }
+
+func TestCRLFRejectionInCompose(t *testing.T) {
+	badAddrs := []string{
+		"a@b.com\r\nBcc: evil@x.com",
+		"a@b.com\n",
+		"Name <a@b.com\r\n>",
+	}
+	for _, a := range badAddrs {
+		if _, err := parseSendAddress(a); err == nil {
+			t.Errorf("expected parseSendAddress(%q) to fail with CRLF error", a)
+		}
+	}
+
+	bf := bodyFlags{
+		header: []string{"X-Safe: 123", "X-Bad: test\r\nInjected: yes"},
+	}
+	if _, err := bf.headers(); err == nil {
+		t.Error("expected bf.headers() with CRLF to fail")
+	}
+}

@@ -211,7 +211,11 @@ func newSuppressionLiftCmd(a *app) *cobra.Command {
 		Long: "Removes the suppression so mail to this address is attempted again.\n\n" +
 			"Lift only when the underlying problem is actually fixed. A hard bounce that\n" +
 			"is still a hard bounce will simply re-suppress on the next attempt, and a\n" +
-			"lifted complaint means mailing someone who asked you to stop.",
+			"lifted complaint means mailing someone who asked you to stop.\n\n" +
+			"An ACCOUNT key may call this too, for hard_bounce rows only — the tenant\n" +
+			"self-service lift (`openemail suppressions remove` folds it in). A complaint\n" +
+			"row answers an account key 404, indistinguishable from an absent row; only\n" +
+			"a system key lifts those.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()

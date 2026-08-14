@@ -27,3 +27,28 @@ func TestNewDeliveryIDShape(t *testing.T) {
 		seen[id] = true
 	}
 }
+
+func TestTextMessageHeaderSanitization(t *testing.T) {
+	from := "alice@example.com\r\nBcc: evil@attacker.com"
+	to := "bob@example.com\nCC: hacker@attacker.com"
+	subj := "Subject Line\r\nInjected-Header: yes"
+	body := "Hello World"
+
+	msg := string(TextMessage(from, to, subj, body))
+
+	// Ensure injected lines were stripped/neutralized from header block
+	parts := strings.Split(msg, "\r\n\r\n")
+	if len(parts) < 2 {
+		t.Fatalf("malformed message format: %q", msg)
+	}
+	headers := parts[0]
+	if strings.Contains(headers, "evil@attacker.com") {
+		t.Errorf("expected header injection to be stripped, got: %s", headers)
+	}
+	if strings.Contains(headers, "hacker@attacker.com") {
+		t.Errorf("expected CC injection to be stripped, got: %s", headers)
+	}
+	if strings.Contains(headers, "Injected-Header: yes") {
+		t.Errorf("expected Subject injection to be stripped, got: %s", headers)
+	}
+}

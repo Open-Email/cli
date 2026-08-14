@@ -28,7 +28,7 @@ type rootModel struct {
 }
 
 func newRoot(ctx context.Context, opts Options) *rootModel {
-	descs := allDescriptors()
+	descs := allDescriptors(opts.AccountID)
 	items := []sideItem{
 		{key: "mailboxes", label: "Mailboxes"},
 		{key: "domains", label: "Domains"},
@@ -37,6 +37,12 @@ func newRoot(ctx context.Context, opts Options) *rootModel {
 		{key: "groups", label: "Groups"},
 		{key: "patterns", label: "Patterns"},
 		{key: "keys", label: "API Keys"},
+	}
+	// The account's own do-not-send list needs an account to be scoped to, so
+	// it is offered exactly when the key HAS one — a system key browses the
+	// deployment-global Suppressions screen instead.
+	if opts.Role == coreapi.PrincipalAccount && opts.AccountID != "" {
+		items = append(items, sideItem{key: "do-not-send", label: "Do-Not-Send"})
 	}
 	// System-only screens. Suppressions and DKIM are refused with
 	// system_credentials_required for anyone else, so offering them would be a

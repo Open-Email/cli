@@ -32,6 +32,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "storageLimitBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
           "verificationToken": {
             "type": [
               "string",
@@ -48,6 +52,7 @@
           "sendPaused",
           "sendMsgsPerDay",
           "sendRcptsPerDay",
+          "storageLimitBytes",
           "createdAt"
         ],
         "type": "object"
@@ -119,6 +124,96 @@
           "send",
           "creates",
           "windowSeconds"
+        ],
+        "type": "object"
+      },
+      "AccountStorageUsage": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "computedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "limitBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mailboxCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "storageLimitBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "usedBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "usedBytes",
+          "mailboxCount",
+          "limitBytes",
+          "storageLimitBytes",
+          "computedAt"
+        ],
+        "type": "object"
+      },
+      "AccountSuppression": {
+        "properties": {
+          "address": {
+            "description": "Normalized (lowercased) recipient address",
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "When the address first went on this account's list",
+            "format": "int64",
+            "type": "integer"
+          },
+          "note": {
+            "description": "Tenant-entered note, display only",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "Why the address is listed. `manual` is the tenant-entered default; the other two exist so an imported suppression export keeps what its rows meant",
+            "enum": [
+              "manual",
+              "complaint",
+              "hard_bounce"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "reason",
+          "note",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "AccountSuppressionList": {
+        "properties": {
+          "nextCursor": {
+            "description": "Opaque cursor for the next page; absent on the last page",
+            "type": "string"
+          },
+          "suppressions": {
+            "items": {
+              "$ref": "#/components/schemas/AccountSuppression"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "suppressions"
         ],
         "type": "object"
       },
@@ -215,6 +310,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "managed": {
+            "description": "Infrastructure-held key (e.g. the console's session key) — excluded from account-scoped list/revoke, so account callers only ever see false",
+            "type": "boolean"
+          },
           "name": {
             "type": "string"
           },
@@ -233,6 +332,7 @@
           "role",
           "accountId",
           "accountName",
+          "managed",
           "createdAt",
           "lastUsedAt",
           "revokedAt"
@@ -249,6 +349,9 @@
           },
           "id": {
             "type": "string"
+          },
+          "managed": {
+            "type": "boolean"
           },
           "name": {
             "type": "string"
@@ -267,6 +370,7 @@
           "name",
           "role",
           "accountId",
+          "managed",
           "token"
         ],
         "type": "object"
@@ -374,6 +478,100 @@
         ],
         "type": "object"
       },
+      "AuditEvent": {
+        "properties": {
+          "accountId": {
+            "description": "Account owning the touched resource; null on platform-scope actions",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "description": "`<resourceType>.<verb>`, e.g. `mailbox.delete`, `domain.update`",
+            "type": "string"
+          },
+          "actorId": {
+            "description": "API key id, or mailbox credential id for mailbox actors",
+            "type": "string"
+          },
+          "actorName": {
+            "description": "Resolved at read time: the API key's name, or the acting mailbox's primary address; null when the credential row is gone",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actorType": {
+            "enum": [
+              "system",
+              "account",
+              "mailbox"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "detail": {
+            "additionalProperties": {},
+            "description": "Small sanitized object naming what changed; never secrets",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "forwardedIp": {
+            "description": "End-client IP the frontend forwarded as X-Client-Ip; a claim, not an observation",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "ULID; time-ordered, newest first, also the keyset cursor",
+            "type": "string"
+          },
+          "ip": {
+            "description": "Network-observed caller IP (absent over a service binding)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mailboxId": {
+            "description": "Acting mailbox, for mailbox actors",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceId": {
+            "description": "Natural key (domain, address) or surrogate ULID",
+            "type": "string"
+          },
+          "resourceType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "action",
+          "resourceType",
+          "resourceId",
+          "actorType",
+          "actorId",
+          "actorName",
+          "mailboxId",
+          "ip",
+          "forwardedIp",
+          "detail",
+          "createdAt"
+        ],
+        "type": "object"
+      },
       "BatchDeleteEntry": {
         "properties": {
           "blobOrphaned": {
@@ -414,6 +612,39 @@
           "results": {
             "items": {
               "$ref": "#/components/schemas/BatchDeleteEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
+      "BatchLearnEntry": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "not_found"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchLearnResult": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchLearnEntry"
             },
             "type": "array"
           }
@@ -834,6 +1065,173 @@
           }
         ]
       },
+      "DeadLetter": {
+        "properties": {
+          "expiresInDays": {
+            "type": "integer"
+          },
+          "key": {
+            "description": "R2 key of the preserved content (dlq/<ulid>)",
+            "type": "string"
+          },
+          "preservedAt": {
+            "description": "R2 upload time, epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "siblings": {
+            "description": "Per-message envelope sidecars for this content",
+            "type": "integer"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "sizeBytes",
+          "preservedAt",
+          "expiresInDays",
+          "siblings"
+        ],
+        "type": "object"
+      },
+      "DeadLetterDetail": {
+        "properties": {
+          "contentPresent": {
+            "type": "boolean"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/DeadLetterJob"
+            },
+            "type": "array"
+          },
+          "jobsTruncated": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "preservedAt": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "contentPresent",
+          "sizeBytes",
+          "preservedAt",
+          "jobs",
+          "jobsTruncated"
+        ],
+        "type": "object"
+      },
+      "DeadLetterJob": {
+        "properties": {
+          "deliveryId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "envelopeFrom": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "envelopeTo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job": {
+            "additionalProperties": {},
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "jobType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "queue": {
+            "description": "Originating queue name",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sidecarKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sidecarKey",
+          "queue",
+          "jobType",
+          "deliveryId",
+          "envelopeFrom",
+          "envelopeTo",
+          "job"
+        ],
+        "type": "object"
+      },
+      "DeadLetterList": {
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deadLetters": {
+            "items": {
+              "$ref": "#/components/schemas/DeadLetter"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deadLetters",
+          "cursor"
+        ],
+        "type": "object"
+      },
       "DeletedMailbox": {
         "properties": {
           "accountId": {
@@ -865,6 +1263,13 @@
           "restorableUntil": {
             "format": "int64",
             "type": "integer"
+          },
+          "wipeDueAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "wipeOverdue": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -873,7 +1278,9 @@
           "primaryAddress",
           "quotaBytes",
           "deletedAt",
-          "restorable"
+          "restorable",
+          "wipeDueAt",
+          "wipeOverdue"
         ],
         "type": "object"
       },
@@ -1036,6 +1443,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "dnsVisible": {
+            "description": "Is this key's TXT resolver-visible right now? null = unprobed or resolver unreachable",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "publicTxt": {
             "description": "The published TXT value (\"v=DKIM1; k=rsa; p=…\")",
             "type": "string"
@@ -1065,7 +1479,8 @@
           "publicTxt",
           "createdAt",
           "publishedAt",
-          "activatedAt"
+          "activatedAt",
+          "dnsVisible"
         ],
         "type": "object"
       },
@@ -1129,6 +1544,10 @@
             "description": "Next rotation-alarm firing (ms epoch); null = not armed",
             "format": "int64",
             "type": "integer"
+          },
+          "resolverUnavailable": {
+            "description": "True when every DNS probe failed — read the keys' dnsVisible as unknown, not as missing records",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1136,6 +1555,7 @@
           "dnsRoot",
           "activeSelector",
           "nextRunAt",
+          "resolverUnavailable",
           "keys",
           "cnames"
         ],
@@ -1631,6 +2051,68 @@
           "verified",
           "receiving",
           "sending"
+        ],
+        "type": "object"
+      },
+      "DomainBranding": {
+        "properties": {
+          "brandName": {
+            "description": "Display name shown with the logo; null = default",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "hasLogo": {
+            "type": "boolean"
+          },
+          "logoType": {
+            "description": "Media type of the stored logo, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logoUpdatedAt": {
+            "description": "Epoch seconds of the last logo write; also its cache-bust version",
+            "format": "int64",
+            "type": "integer"
+          },
+          "webmailHost": {
+            "description": "The domain's own webmail hostname, when one has been claimed",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "domain",
+          "brandName",
+          "hasLogo",
+          "logoType",
+          "logoUpdatedAt",
+          "webmailHost"
+        ],
+        "type": "object"
+      },
+      "DomainBrandingPatch": {
+        "properties": {
+          "brandName": {
+            "description": "1–64 characters, or null to clear",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "brandName"
         ],
         "type": "object"
       },
@@ -2281,6 +2763,89 @@
         ],
         "type": "object"
       },
+      "FleetDomainState": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FleetSendState"
+          },
+          {
+            "properties": {
+              "dnsIncomplete": {
+                "type": "integer"
+              },
+              "dnsOk": {
+                "type": "integer"
+              },
+              "dnsUnchecked": {
+                "description": "Never checked at all — a different follow-up from incomplete",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dnsOk",
+              "dnsIncomplete",
+              "dnsUnchecked"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "FleetPushState": {
+        "properties": {
+          "expired": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "unverified": {
+            "type": "integer"
+          },
+          "verified": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "verified",
+          "unverified",
+          "expired"
+        ],
+        "type": "object"
+      },
+      "FleetSendState": {
+        "properties": {
+          "paused": {
+            "type": "integer"
+          },
+          "pausedIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "stopped": {
+            "type": "integer"
+          },
+          "stoppedIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "stopped",
+          "paused",
+          "stoppedIds",
+          "pausedIds"
+        ],
+        "type": "object"
+      },
       "Identity": {
         "allOf": [
           {
@@ -2553,6 +3118,14 @@
           },
           {
             "properties": {
+              "databaseLimitBytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "databaseSize": {
+                "format": "int64",
+                "type": "integer"
+              },
               "expungedBytes": {
                 "format": "int64",
                 "type": "integer"
@@ -2561,9 +3134,21 @@
                 "format": "int64",
                 "type": "integer"
               },
+              "liveSockets": {
+                "type": "integer"
+              },
               "messageCount": {
                 "format": "int64",
                 "type": "integer"
+              },
+              "socketCapacity": {
+                "type": "integer"
+              },
+              "socketsByClass": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
               },
               "usedBytes": {
                 "format": "int64",
@@ -3080,6 +3665,25 @@
         ],
         "type": "object"
       },
+      "PasswordChanged": {
+        "properties": {
+          "changed": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          },
+          "credentialId": {
+            "description": "The password credential whose secret was rotated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changed",
+          "credentialId"
+        ],
+        "type": "object"
+      },
       "Pattern": {
         "properties": {
           "aliasAddress": {
@@ -3145,6 +3749,25 @@
           "createdAt"
         ],
         "type": "object"
+      },
+      "PickupHealthSource": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PickupSource"
+          },
+          {
+            "properties": {
+              "health": {
+                "description": "ok | paused | failing | auto_disabled | stale — `paused` is the owner's own choice and not a fault; `stale` means no run has been reported for several intervals, which is the only way a stopped scheduler is visible",
+                "type": "string"
+              }
+            },
+            "required": [
+              "health"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "PickupRunResult": {
         "properties": {
@@ -4131,6 +4754,241 @@
           }
         ]
       },
+      "PlatformDnsRecord": {
+        "properties": {
+          "expected": {
+            "type": "string"
+          },
+          "found": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "description": "dmarc_report_authorization | verp_spf",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "type",
+          "expected",
+          "ok",
+          "found"
+        ],
+        "type": "object"
+      },
+      "PlatformPoint": {
+        "properties": {
+          "cpuTimeP50": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cpuTimeP99": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "d1ReadQueries": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "d1RowsRead": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "d1RowsWritten": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "d1WriteQueries": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doErrors": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doRequests": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durable Object invocations"
+          },
+          "doStoredBytes": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Durable Object stored bytes (max in bucket)"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Worker errors — the substrate's own count, independent of whether core logged anything"
+          },
+          "requests": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Worker requests"
+          },
+          "subrequests": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time": {
+            "description": "Bucket start, epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "requests",
+          "errors",
+          "subrequests",
+          "cpuTimeP50",
+          "cpuTimeP99",
+          "doRequests",
+          "doErrors",
+          "doStoredBytes",
+          "d1ReadQueries",
+          "d1WriteQueries",
+          "d1RowsRead",
+          "d1RowsWritten"
+        ],
+        "type": "object"
+      },
       "Prefs": {
         "properties": {
           "prefs": {
@@ -4145,6 +5003,246 @@
         "required": [
           "prefs",
           "version"
+        ],
+        "type": "object"
+      },
+      "PublicBranding": {
+        "properties": {
+          "brandName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logoType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logoUpdatedAt": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "brandName",
+          "logoType",
+          "logoUpdatedAt"
+        ],
+        "type": "object"
+      },
+      "PublicBrandingByHost": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PublicBranding"
+          },
+          {
+            "properties": {
+              "domain": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "domain"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "QueueHistoryPoint": {
+        "properties": {
+          "backlogBytes": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "backlogMessages": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Average backlog size in messages"
+          },
+          "concurrency": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Average concurrent consumers"
+          },
+          "lagTimeMs": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "messages": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Message operations in the bucket"
+          },
+          "retryCount": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time": {
+            "description": "Bucket start, epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "backlogMessages",
+          "backlogBytes",
+          "concurrency",
+          "lagTimeMs",
+          "retryCount",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "QueueMetrics": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "backlogBytes": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "backlogCount": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unacknowledged messages; null when unavailable"
+          },
+          "binding": {
+            "description": "Worker binding that produced this reading",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "delivery",
+              "dlq"
+            ],
+            "type": "string"
+          },
+          "oldestAgeSeconds": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "oldestMessageTime": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queue": {
+            "description": "Cloudflare queue name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue",
+          "binding",
+          "kind",
+          "available",
+          "backlogCount",
+          "backlogBytes",
+          "oldestMessageTime",
+          "oldestAgeSeconds"
         ],
         "type": "object"
       },
@@ -4267,6 +5365,7 @@
             ]
           },
           "webhookUrl": {
+            "description": "The webhook this address POSTs to: the destination URL when destinationType='webhook', otherwise the address's webhook TAP (a copy of everything the address admits, alongside its delivery). Null when neither exists",
             "type": [
               "string",
               "null"
@@ -4898,6 +5997,45 @@
         ],
         "type": "object"
       },
+      "StoragePrefix": {
+        "properties": {
+          "empty": {
+            "description": "No objects at all — healthy, and not the same as 'no data'",
+            "type": "boolean"
+          },
+          "lifecycleDays": {
+            "description": "What the bucket rule is configured to do, mirrored in code",
+            "type": "integer"
+          },
+          "oldestAgeSeconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "oldestKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overdue": {
+            "description": "The oldest object has outlived its rule (plus grace) — the rule is missing or not running",
+            "type": "boolean"
+          },
+          "prefix": {
+            "description": "staging/ or dlq/ — the prefixes whose only reaper is a bucket rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prefix",
+          "lifecycleDays",
+          "empty",
+          "oldestKey",
+          "oldestAgeSeconds",
+          "overdue"
+        ],
+        "type": "object"
+      },
       "Suppression": {
         "properties": {
           "address": {
@@ -4967,6 +6105,326 @@
           "suppressions"
         ],
         "type": "object"
+      },
+      "SystemDirectory": {
+        "properties": {
+          "accounts": {
+            "$ref": "#/components/schemas/FleetSendState"
+          },
+          "anyPaused": {
+            "type": "boolean"
+          },
+          "anyStopped": {
+            "description": "An account or identity is send-disabled — never domains, see above",
+            "type": "boolean"
+          },
+          "domains": {
+            "$ref": "#/components/schemas/FleetDomainState"
+          },
+          "identities": {
+            "$ref": "#/components/schemas/FleetSendState"
+          },
+          "push": {
+            "$ref": "#/components/schemas/FleetPushState"
+          }
+        },
+        "required": [
+          "accounts",
+          "domains",
+          "identities",
+          "push",
+          "anyStopped",
+          "anyPaused"
+        ],
+        "type": "object"
+      },
+      "SystemEvents": {
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "estimated": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SystemTrafficEvent"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "range",
+          "events",
+          "cursor",
+          "estimated"
+        ],
+        "type": "object"
+      },
+      "SystemPickups": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Fleet-wide count per health class, independent of this page",
+            "type": "object"
+          },
+          "disableThreshold": {
+            "description": "Consecutive failures before a source is auto-disabled",
+            "type": "integer"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/PickupHealthSource"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "counts",
+          "disableThreshold"
+        ],
+        "type": "object"
+      },
+      "SystemPlatform": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PlatformPoint"
+            },
+            "type": "array"
+          },
+          "range": {
+            "type": "string"
+          },
+          "scriptName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "range",
+          "scriptName",
+          "points"
+        ],
+        "type": "object"
+      },
+      "SystemPlatformDns": {
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/PlatformDnsRecord"
+            },
+            "type": "array"
+          },
+          "resolverUnavailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "records",
+          "resolverUnavailable"
+        ],
+        "type": "object"
+      },
+      "SystemQueueHistory": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/QueueHistoryPoint"
+            },
+            "type": "array"
+          },
+          "queue": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue",
+          "range",
+          "points"
+        ],
+        "type": "object"
+      },
+      "SystemQueues": {
+        "properties": {
+          "degraded": {
+            "type": "boolean"
+          },
+          "queues": {
+            "items": {
+              "$ref": "#/components/schemas/QueueMetrics"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "queues",
+          "degraded"
+        ],
+        "type": "object"
+      },
+      "SystemStatus": {
+        "properties": {
+          "enforcement": {
+            "properties": {
+              "sendLimits": {
+                "type": "boolean"
+              },
+              "storageLimits": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sendLimits",
+              "storageLimits"
+            ],
+            "type": "object"
+          },
+          "features": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Configured (non-blank) subsystems",
+            "type": "object"
+          },
+          "migrations": {
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "latest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "latest",
+              "count"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "features",
+          "enforcement",
+          "migrations"
+        ],
+        "type": "object"
+      },
+      "SystemStorage": {
+        "properties": {
+          "overdue": {
+            "description": "True if any prefix is overdue — the one field an alert keys on",
+            "type": "boolean"
+          },
+          "prefixes": {
+            "items": {
+              "$ref": "#/components/schemas/StoragePrefix"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "prefixes",
+          "overdue"
+        ],
+        "type": "object"
+      },
+      "SystemTraffic": {
+        "properties": {
+          "byOutcome": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "estimated": {
+            "type": "boolean"
+          },
+          "range": {
+            "type": "string"
+          },
+          "retentionDays": {
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TrafficRow"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "properties": {
+              "bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "events": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "events",
+              "bytes"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "range",
+          "totals",
+          "byOutcome",
+          "rows",
+          "estimated",
+          "retentionDays"
+        ],
+        "type": "object"
+      },
+      "SystemTrafficEvent": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TrafficEvent"
+          },
+          {
+            "properties": {
+              "meta": {
+                "additionalProperties": {},
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "meta"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "ThreadListItem": {
         "properties": {
@@ -5333,6 +6791,13 @@
             },
             "type": "array"
           },
+          "secondFactor": {
+            "description": "Present when the matched credential is a `password` and the identity has WebAuthn keys enrolled: the frontend this login came through should demand the second factor (POST /auth/webauthn/options + /verify) before opening a session. ADVISORY, like canSend — this endpoint never rejects a valid login (the relay trust model), and app-password logins never carry it: high-entropy per-client secrets are the protocol clients' 2FA bypass by design.",
+            "enum": [
+              "webauthn"
+            ],
+            "type": "string"
+          },
           "sendHold": {
             "description": "Present only when canSend is false, and says WHICH kind of no: 'stopped' is permanent as far as the user is concerned (a domain that cannot send, or a freeze), 'paused' is a hold that will be lifted. A UI needs the difference — 'sending is not available' and 'sending is paused' are different messages. Advisory like canSend; the submission gate remains the authority.",
             "enum": [
@@ -5351,6 +6816,253 @@
           "canSend",
           "permittedFrom",
           "facets"
+        ],
+        "type": "object"
+      },
+      "WebauthnCredential": {
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rpId": {
+            "description": "Relying-party id (frontend hostname) the key is bound to",
+            "type": "string"
+          },
+          "transports": {
+            "description": "Authenticator transports, as the browser reported them",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "createdAt",
+          "lastUsedAt",
+          "transports",
+          "rpId"
+        ],
+        "type": "object"
+      },
+      "WebauthnLoginOptions": {
+        "properties": {
+          "allowCredentials": {
+            "items": {
+              "properties": {
+                "id": {
+                  "description": "base64url credential id",
+                  "type": "string"
+                },
+                "transports": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "enum": [
+                    "public-key"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "challenge": {
+            "description": "base64url; one-time, consumed by /auth/webauthn/verify",
+            "type": "string"
+          },
+          "rpId": {
+            "type": "string"
+          },
+          "timeout": {
+            "type": "integer"
+          },
+          "userVerification": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "rpId",
+          "allowCredentials",
+          "timeout",
+          "userVerification"
+        ],
+        "type": "object"
+      },
+      "WebauthnRegistrationOptions": {
+        "properties": {
+          "attestation": {
+            "enum": [
+              "none"
+            ],
+            "type": "string"
+          },
+          "authenticatorSelection": {
+            "properties": {
+              "residentKey": {
+                "type": "string"
+              },
+              "userVerification": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "residentKey",
+              "userVerification"
+            ],
+            "type": "object"
+          },
+          "challenge": {
+            "description": "base64url; one-time, consumed by the finishing POST",
+            "type": "string"
+          },
+          "excludeCredentials": {
+            "items": {
+              "properties": {
+                "id": {
+                  "description": "base64url credential id",
+                  "type": "string"
+                },
+                "transports": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "enum": [
+                    "public-key"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "pubKeyCredParams": {
+            "items": {
+              "properties": {
+                "alg": {
+                  "type": "integer"
+                },
+                "type": {
+                  "enum": [
+                    "public-key"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "alg"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "rp": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
+          "timeout": {
+            "type": "integer"
+          },
+          "user": {
+            "properties": {
+              "displayName": {
+                "type": "string"
+              },
+              "id": {
+                "description": "base64url — the identity ULID, stable across ceremonies",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "displayName"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "challenge",
+          "rp",
+          "user",
+          "pubKeyCredParams",
+          "timeout",
+          "excludeCredentials",
+          "authenticatorSelection",
+          "attestation"
+        ],
+        "type": "object"
+      },
+      "WebauthnVerified": {
+        "properties": {
+          "credentialId": {
+            "description": "The stored key's platform ULID (webauthn_credentials.id)",
+            "type": "string"
+          },
+          "identityId": {
+            "type": "string"
+          },
+          "verified": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "verified",
+          "identityId",
+          "credentialId"
         ],
         "type": "object"
       },
@@ -5413,7 +7125,7 @@
     }
   },
   "info": {
-    "description": "Message store + routing core: mailbox Durable Objects, R2 blobs, D1 directory. Every route requires a bearer credential (401 unauthorized without one) except two: GET /api/v1/health, and GET /api/v1/pim/feeds/{token}, where the calendar-feed token in the path IS the credential. Mailbox-scoped app passwords are refused on directory routes with 403 insufficient_scope. Errors always answer { error: \"snake_case_code\", ... } — schema failures as { error: \"validation_failed\", issues }.\n\nA caller holding a mailbox app password may write `me` wherever a {mailboxId} PATH segment appears — /api/v1/mailboxes/me/messages and the rest of the subtree — and the request is served as though it had named that credential's own mailbox id. It is a path convenience only: a mailboxId inside a request BODY always names a resource explicitly. Any other principal gets 404, since `me` has no referent for an account or system key.",
+    "description": "Message store + routing core: mailbox Durable Objects, R2 blobs, D1 directory. Every route requires a bearer credential (401 unauthorized without one) except four: GET /api/v1/health; GET /api/v1/pim/feeds/{token} and GET /api/v1/deliveries/fetch/{token}, where the token in the path IS the credential (a calendar feed, and a webhook's fetch capability for an attachment or the raw message); and GET /api/v1/branding/*, the public white-label reads a login screen needs before any credential exists (which answer a uniform 404 for an unknown domain and an unbranded one alike). Mailbox-scoped app passwords are refused on directory routes with 403 insufficient_scope. Errors always answer { error: \"snake_case_code\", ... } — schema failures as { error: \"validation_failed\", issues }.\n\nA caller holding a mailbox app password may write `me` wherever a {mailboxId} PATH segment appears — /api/v1/mailboxes/me/messages and the rest of the subtree — and the request is served as though it had named that credential's own mailbox id. It is a path convenience only: a mailboxId inside a request BODY always names a resource explicitly. Any other principal gets 404, since `me` has no referent for an account or system key.",
     "title": "openemail-core",
     "version": "0.1.0"
   },
@@ -5622,6 +7334,14 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "storageLimitBytes": {
+                    "description": "Account-level storage POOL in bytes, across every mailbox the account owns — the number a plan tier is written in. null = the platform default (ACCOUNT_STORAGE_LIMIT_BYTES); 0 = explicitly unlimited (a metered account: overage is billed, never refused). Over it, storing NEW mail answers 507 account_over_quota (temporary at smtp-in, so senders queue); egress is untouched — a full account still sends",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
                   }
                 },
                 "type": "object"
@@ -5651,6 +7371,113 @@
           }
         },
         "summary": "Update an account (system callers only). `sendDisabled: true` is the tenant-scale send STOP and `sendPaused: true` its reversible HOLD (429 + defer rather than 403 + bounce) — every mailbox on every domain this account owns is refused at submission AND in the queued relay backlog, while inbound mail keeps arriving. `sendMsgsPerDay`/`sendRcptsPerDay` are the tenant-scale VOLUME caps, the number a plan tier is written in: the per-mailbox caps bound one mailbox, so without these a tenant's real allowance is the product of two separately-set numbers",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/audit": {
+      "get": {
+        "operationId": "get_AccountAuditList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact resource type, e.g. `mailbox`",
+            "in": "query",
+            "name": "resourceType",
+            "required": false,
+            "schema": {
+              "description": "Exact resource type, e.g. `mailbox`",
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact resource id — one object's history",
+            "in": "query",
+            "name": "resourceId",
+            "required": false,
+            "schema": {
+              "description": "Exact resource id — one object's history",
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact action, e.g. `domain.update`",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "description": "Exact action, e.g. `domain.update`",
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "events": {
+                      "items": {
+                        "$ref": "#/components/schemas/AuditEvent"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "events"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Audit events, newest first; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "List this account's directory audit trail (who changed what, when, from where)",
         "tags": [
           "Accounts"
         ]
@@ -5688,6 +7515,259 @@
         "summary": "Read an account's send-allowance usage for the current window",
         "tags": [
           "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/storage-usage": {
+      "get": {
+        "description": "Authoritative sum of every mailbox's stored bytes (including the restorable trash tier, which counts against quota until purge), the pool limit in force, and the raw configured column. `limitBytes` null = no pool enforced. Over the pool, storing NEW mail answers 507 `account_over_quota` while sending continues to work.",
+        "operationId": "get_AccountStorageUsageGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStorageUsage"
+                }
+              }
+            },
+            "description": "Current pool usage and the effective limit"
+          },
+          "404": {
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read an account's storage-pool usage",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/suppressions": {
+      "get": {
+        "operationId": "get_AccountSuppressionListEndpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSuppressionList"
+                }
+              }
+            },
+            "description": "Account suppressions page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "List an account's own do-not-send addresses",
+        "tags": [
+          "Suppressions"
+        ]
+      },
+      "post": {
+        "description": "Tenant policy, not platform evidence: mail from this account to the address is refused at the relay from now on (550, with a DSN when the submission asked for one). Repeat calls converge on one row — reason and note are refreshed, the original createdAt is kept.",
+        "operationId": "post_AccountSuppressionCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "Recipient to stop mailing; stored normalized (lowercased)",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "pattern": "^[^\\s@]+@[^\\s@]+$",
+                    "type": "string"
+                  },
+                  "note": {
+                    "description": "Display-only note",
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "Default `manual` (tenant-entered). `complaint`/`hard_bounce` exist so an imported suppression export keeps what its rows meant",
+                    "enum": [
+                      "manual",
+                      "complaint",
+                      "hard_bounce"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "address"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSuppression"
+                }
+              }
+            },
+            "description": "The address is on the list (created or refreshed)"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Add an address to an account's do-not-send list",
+        "tags": [
+          "Suppressions"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/suppressions/{address}": {
+      "delete": {
+        "description": "Lifts only this account's own policy row. An address the PLATFORM suppressed (a complaint or hard bounce on the global list) stays refused; a hard-bounce row there can be lifted via `DELETE /suppressions/{address}`.",
+        "operationId": "delete_AccountSuppressionDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Recipient address",
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "description": "Recipient address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Removed; mail from this account to the address flows again"
+          },
+          "404": {
+            "description": "not_found — the account is not accessible, or the address was not listed"
+          }
+        },
+        "summary": "Remove an address from an account's do-not-send list",
+        "tags": [
+          "Suppressions"
+        ]
+      },
+      "get": {
+        "operationId": "get_AccountSuppressionGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Recipient address",
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "description": "Recipient address",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSuppression"
+                }
+              }
+            },
+            "description": "The address is on this account's list"
+          },
+          "404": {
+            "description": "not_found — the account is not accessible, or the address is not listed"
+          }
+        },
+        "summary": "Look up one address on an account's do-not-send list",
+        "tags": [
+          "Suppressions"
         ]
       }
     },
@@ -5822,6 +7902,10 @@
                   "accountId": {
                     "type": "string"
                   },
+                  "managed": {
+                    "description": "System callers only: an infrastructure-held key, hidden from and unrevokable by the owning account",
+                    "type": "boolean"
+                  },
                   "name": {
                     "maxLength": 128,
                     "minLength": 1,
@@ -5929,6 +8013,12 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "rpId": {
+                    "description": "The calling frontend's WebAuthn relying-party id (its registrable hostname). When present, `secondFactor` reports enrollment under THIS rpId only — keys are browser-bound to the domain that enrolled them, so a frontend on a new hostname must not be told to demand a factor its users cannot produce (the domain-move story: 2FA degrades to off there, users re-enroll from settings). Omitted (protocol frontends that cannot do WebAuthn anyway), the flag reports enrollment anywhere, purely informationally.",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "username": {
                     "minLength": 1,
                     "type": "string"
@@ -5973,6 +8063,165 @@
         ]
       }
     },
+    "/api/v1/auth/webauthn/options": {
+      "post": {
+        "operationId": "post_WebauthnLoginBegin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "identityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rpId": {
+                    "description": "Relying-party id — the frontend's registrable hostname, e.g. mail.example.com",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "identityId",
+                  "rpId"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnLoginOptions"
+                }
+              }
+            },
+            "description": "PublicKeyCredentialRequestOptions in JSON encoding — feed to navigator.credentials.get()"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "description": "no_webauthn_credentials — the identity has no keys under this rpId (enrolled under another hostname?); the frontend should refuse the login rather than skip the factor"
+          },
+          "429": {
+            "description": "rate_limited"
+          }
+        },
+        "summary": "Begin the WebAuthn login ceremony for an identity /auth/verify flagged with secondFactor (system callers only)",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/auth/webauthn/verify": {
+      "post": {
+        "operationId": "post_WebauthnLoginVerify",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "credential": {
+                    "properties": {
+                      "id": {
+                        "description": "base64url credential id the authenticator answered with",
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      "response": {
+                        "properties": {
+                          "authenticatorData": {
+                            "description": "base64url",
+                            "maxLength": 65536,
+                            "type": "string"
+                          },
+                          "clientDataJSON": {
+                            "description": "base64url",
+                            "maxLength": 65536,
+                            "type": "string"
+                          },
+                          "signature": {
+                            "description": "base64url",
+                            "maxLength": 65536,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "clientDataJSON",
+                          "authenticatorData",
+                          "signature"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "response"
+                    ],
+                    "type": "object"
+                  },
+                  "identityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "origin": {
+                    "description": "The web origin the browser will stamp into clientDataJSON, e.g. https://mail.example.com",
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
+                  "rpId": {
+                    "description": "Relying-party id — the frontend's registrable hostname, e.g. mail.example.com",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "identityId",
+                  "rpId",
+                  "origin",
+                  "credential"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnVerified"
+                }
+              }
+            },
+            "description": "Assertion verified — the frontend may open its session"
+          },
+          "400": {
+            "description": "validation_failed or invalid_origin"
+          },
+          "401": {
+            "description": "invalid_credentials (no such key under this identity/rpId), challenge_expired (restart at /auth/webauthn/options), or webauthn_failed (`detail` names the refused check — signature, rpId hash, presence, or a sign-count regression suggesting a cloned key)"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "429": {
+            "description": "rate_limited"
+          }
+        },
+        "summary": "Verify a WebAuthn login assertion (system callers only)",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
     "/api/v1/auth/whoami": {
       "get": {
         "operationId": "get_AuthWhoami",
@@ -5991,6 +8240,128 @@
         "summary": "Describe the calling credential (scope, account, mailbox)",
         "tags": [
           "Credentials"
+        ]
+      }
+    },
+    "/api/v1/branding/by-host/{host}": {
+      "get": {
+        "description": "The reverse of `GET /branding/{domain}`: given a customer's own webmail hostname, report which domain it belongs to and what that domain publishes. This is what lets a request arriving at `mail.acme.com` brand its login screen before anyone signs in. Uniform 404 when no domain claims the hostname.",
+        "operationId": "get_PublicBrandingByHostGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBrandingByHost"
+                }
+              }
+            },
+            "description": "Published branding plus the domain the hostname resolves to"
+          },
+          "404": {
+            "description": "No domain claims this hostname"
+          }
+        },
+        "summary": "Public branding by webmail hostname (UNAUTHENTICATED)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/branding/{domain}": {
+      "get": {
+        "description": "The display name and logo metadata a domain publishes, readable without a bearer so a login screen can brand itself before any credential exists. Answers 404 for an unknown domain and for one that publishes nothing — deliberately indistinguishable, so this is never an oracle for which domains the platform hosts.",
+        "operationId": "get_PublicBrandingGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBranding"
+                }
+              }
+            },
+            "description": "Published branding"
+          },
+          "404": {
+            "description": "No published branding (or no such domain)"
+          }
+        },
+        "summary": "Public branding for a domain (UNAUTHENTICATED)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/branding/{domain}/logo": {
+      "get": {
+        "description": "Streams the published logo. Cacheable by shared caches (`public, max-age=3600`) because a brand mark is public by intent; use the `logoUpdatedAt` from the branding read as a cache-busting query parameter after a replacement. Supports `If-None-Match`.",
+        "operationId": "get_PublicBrandingLogoGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Revalidation tag from a previous read",
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "description": "Revalidation tag from a previous read",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "description": "Raw image bytes",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The logo image bytes"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched)"
+          },
+          "404": {
+            "description": "No published logo (or no such domain)"
+          }
+        },
+        "summary": "A domain's logo image (UNAUTHENTICATED)",
+        "tags": [
+          "Directory"
         ]
       }
     },
@@ -6234,12 +8605,12 @@
             }
           },
           {
-            "description": "On terminal relay failure (permanent MTA rejection or retry exhaustion), deliver a bounce (DSN) into the sender's mailbox. For submission-server callers with no synchronous outcome channel; leave off if you handle relay failures yourself.",
+            "description": "On terminal relay failure (permanent MTA rejection or retry exhaustion), deliver a bounce (DSN) into the sender's mailbox. **Default true** — RFC 5321 §6.1 owes the notice to whoever accepted the message, and a `200`/`202` here is that acceptance. Pass `false` only for machine-generated mail nobody is waiting on a verdict for; a submission server must never pass it, since its client's connection is gone by the time the relay fails. Auto-replies and other null-sender messages are excluded regardless, so a DSN can never bounce.",
             "in": "query",
             "name": "bounce",
             "required": false,
             "schema": {
-              "description": "On terminal relay failure (permanent MTA rejection or retry exhaustion), deliver a bounce (DSN) into the sender's mailbox. For submission-server callers with no synchronous outcome channel; leave off if you handle relay failures yourself.",
+              "description": "On terminal relay failure (permanent MTA rejection or retry exhaustion), deliver a bounce (DSN) into the sender's mailbox. **Default true** — RFC 5321 §6.1 owes the notice to whoever accepted the message, and a `200`/`202` here is that acceptance. Pass `false` only for machine-generated mail nobody is waiting on a verdict for; a submission server must never pass it, since its client's connection is gone by the time the relay fails. Auto-replies and other null-sender messages are excluded regardless, so a DSN can never bounce.",
               "enum": [
                 "true",
                 "false"
@@ -6422,9 +8793,72 @@
         ]
       }
     },
+    "/api/v1/deliveries/fetch/{token}": {
+      "get": {
+        "description": "Needs **no `Authorization` header** — the signed token in the path is the credential. URLs are minted into webhook payloads (`rawUrl`, and `attachments[].url` on anything not inlined) and expire; the staged message they read is retained for the platform's staging window, so treat a webhook as something to act on promptly rather than an archive.",
+        "operationId": "get_DeliveryFetch",
+        "parameters": [
+          {
+            "description": "The signed capability from a webhook payload's `url` / `rawUrl`",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "description": "The signed capability from a webhook payload's `url` / `rawUrl`",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "description": "Bytes, streamed from R2",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The decoded attachment, or the raw RFC 5322 message"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the part ETag)"
+          },
+          "403": {
+            "description": "invalid_token — malformed, forged, expired, or the fetch feature is not configured. Deliberately one answer for all of them."
+          },
+          "404": {
+            "description": "not_found — the staged message has been reaped or the section is unknown"
+          },
+          "422": {
+            "description": "unparseable_message | message_too_complex — the message could not be walked"
+          }
+        },
+        "summary": "Redeem a webhook fetch capability: one attachment, or the raw message",
+        "tags": [
+          "Routing"
+        ]
+      }
+    },
     "/api/v1/dkim": {
       "get": {
         "operationId": "get_DkimGet",
+        "parameters": [
+          {
+            "description": "Probe resolver visibility of each key's TXT (default true; 60s cached)",
+            "in": "query",
+            "name": "dns",
+            "required": false,
+            "schema": {
+              "description": "Probe resolver visibility of each key's TXT (default true; 60s cached)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6440,7 +8874,7 @@
             "description": "system_credentials_required"
           }
         },
-        "summary": "Platform DKIM status: key generations, active selector, customer CNAME targets (system callers only)",
+        "summary": "Platform DKIM status: key generations, active selector, whether each key's TXT is resolver-visible, customer CNAME targets (system callers only)",
         "tags": [
           "DKIM"
         ]
@@ -6517,6 +8951,53 @@
           }
         },
         "summary": "Start a key rotation now (system callers only): generates the next keypair on the inactive selector and publishes its TXT; signing flips automatically after the 7-day soak. On a fresh deployment this bootstraps the first key (active immediately)",
+        "tags": [
+          "DKIM"
+        ]
+      }
+    },
+    "/api/v1/dkim/{selector}/republish": {
+      "post": {
+        "operationId": "post_DkimRepublish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "selector",
+            "required": true,
+            "schema": {
+              "enum": [
+                "oe1",
+                "oe2"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DkimStatus"
+                }
+              }
+            },
+            "description": "Record re-asserted"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "description": "unknown_selector — no key row for this selector"
+          },
+          "502": {
+            "description": "dns_publish_failed — the Cloudflare DNS API refused"
+          },
+          "503": {
+            "description": "dkim_not_configured"
+          }
+        },
+        "summary": "Re-publish one selector's TXT from its stored row (system callers only) — the repair for a record that vanished from the zone. Idempotent; changes no key state",
         "tags": [
           "DKIM"
         ]
@@ -6857,6 +9338,83 @@
         ]
       }
     },
+    "/api/v1/domains/{domain}/branding": {
+      "get": {
+        "description": "The display name and logo metadata this domain publishes. A domain that publishes nothing answers the empty shape (not 404) — the domain exists, so a settings UI has a form to render. The logo bytes are served by `GET /branding/{domain}/logo`.",
+        "operationId": "get_DomainBrandingGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainBranding"
+                }
+              }
+            },
+            "description": "The domain's branding"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read a domain's white-label branding",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "put": {
+        "description": "Sets the display name shown with the logo. `null` clears it. The logo itself is written by `PUT /domains/{domain}/logo` — separate because one is JSON and the other is raw bytes.",
+        "operationId": "put_DomainBrandingUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainBrandingPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainBranding"
+                }
+              }
+            },
+            "description": "Updated branding"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Set or clear a domain's brand name",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
     "/api/v1/domains/{domain}/dmarc": {
       "get": {
         "operationId": "get_DomainDmarc",
@@ -7135,7 +9693,14 @@
                 "dmarc_unreadable",
                 "dmarc_unparseable",
                 "dmarc_rejected",
-                "dead_lettered"
+                "dead_lettered",
+                "internal_error",
+                "check_refused",
+                "check_accepted",
+                "blob_missing",
+                "rate_limited",
+                "limiter_unavailable",
+                "auth_failed"
               ],
               "type": "string"
             }
@@ -7155,7 +9720,12 @@
                 "webhook",
                 "pickup",
                 "fbl",
-                "dmarc"
+                "dmarc",
+                "bounce",
+                "api",
+                "check",
+                "read",
+                "auth"
               ],
               "type": "string"
             }
@@ -7241,6 +9811,157 @@
           }
         },
         "summary": "Per-event traffic log for a domain (authoritative Iceberg record, near-real-time)",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/forward-usage": {
+      "get": {
+        "description": "Consumption over the rolling 24h forwarding window plus the limit in force. This is the budget that bounds inbound-driven egress — Sieve redirects to remote addresses, `remote` routes, and external group members — and the only limit in the system that refuses INBOUND mail (429 at admission, so the MX defers rather than bouncing). A null limit means the feature is unconfigured and nothing is counted. The budget is per DOMAIN and shared by every route on it.",
+        "operationId": "get_DomainForwardUsageGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendUsage"
+                }
+              }
+            },
+            "description": "Current window usage and the effective limit"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read a domain's forwarding-budget usage for the current rolling window",
+        "tags": [
+          "Domains"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/logo": {
+      "delete": {
+        "description": "Deletes the stored image and clears the logo metadata. The brand name is untouched.",
+        "operationId": "delete_DomainLogoDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Removed (idempotent — removing an absent logo also reports deleted)"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Remove a domain's logo",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "put": {
+        "description": "Streams a raw image body to storage and records it as this domain's logo, replacing any previous one. `Content-Length` is required (411) and bounded (413); the media type must be one of image/png, image/jpeg, image/webp, image/svg+xml (415).\n\nThe response's `logoUpdatedAt` is also the logo's cache version: append it as a query parameter to the public logo URL so a replacement is visible immediately.",
+        "operationId": "put_DomainLogoUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Body size in bytes — required (411 without it)",
+            "in": "header",
+            "name": "content-length",
+            "required": false,
+            "schema": {
+              "description": "Body size in bytes — required (411 without it)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "The image's media type (allowlisted)",
+            "in": "header",
+            "name": "content-type",
+            "required": false,
+            "schema": {
+              "description": "The image's media type (allowlisted)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "description": "Raw image bytes (streamed; never buffered)",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainBranding"
+                }
+              }
+            },
+            "description": "Stored — branding including the new logo metadata"
+          },
+          "400": {
+            "description": "empty_body"
+          },
+          "404": {
+            "description": "Domain not found or not accessible to this principal"
+          },
+          "411": {
+            "description": "Content-Length required"
+          },
+          "413": {
+            "description": "Body exceeds the logo size ceiling"
+          },
+          "415": {
+            "description": "unsupported_media_type — not an allowlisted image type"
+          }
+        },
+        "summary": "Upload a domain's logo",
         "tags": [
           "Directory"
         ]
@@ -7498,6 +10219,49 @@
             }
           },
           {
+            "description": "Exact primary-address match (normalized) — the point lookup that saves a client walking the whole account to resolve one address. Live listing only",
+            "in": "query",
+            "name": "address",
+            "required": false,
+            "schema": {
+              "description": "Exact primary-address match (normalized) — the point lookup that saves a client walking the whole account to resolve one address. Live listing only",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only mailboxes whose primary address is on this domain. Live listing only",
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "description": "Only mailboxes whose primary address is on this domain. Live listing only",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring over the primary address. Live listing only",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "description": "Case-insensitive substring over the primary address. Live listing only",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Also return `total`: the full COUNT over the same filters, so 'N mailboxes on this domain' is one call instead of a walk. Opt-in because the default keyset page deliberately carries no totals",
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Also return `total`: the full COUNT over the same filters, so 'N mailboxes on this domain' is one call instead of a walk. Opt-in because the default keyset page deliberately carries no totals",
+              "enum": [
+                "true"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Page size (default 100)",
             "in": "query",
             "name": "limit",
@@ -7537,6 +10301,11 @@
                         "nextCursor": {
                           "description": "Opaque cursor for the next page; absent on the last page",
                           "type": "string"
+                        },
+                        "total": {
+                          "description": "Full filtered COUNT — present only when count=true was requested",
+                          "format": "int64",
+                          "type": "integer"
                         }
                       },
                       "required": [
@@ -7587,6 +10356,16 @@
                   "accountId": {
                     "description": "Owning account (system callers only; account callers always own their mailboxes)",
                     "type": "string"
+                  },
+                  "permittedRecipients": {
+                    "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
                   },
                   "primaryAddress": {
                     "description": "On create: CLAIMS the address — the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be on a non-alias directory domain owned by the mailbox's account. On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
@@ -7762,6 +10541,16 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "permittedRecipients": {
+                    "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
                   "primaryAddress": {
                     "description": "On create: CLAIMS the address — the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be on a non-alias directory domain owned by the mailbox's account. On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
                     "format": "email",
@@ -7956,6 +10745,50 @@
           }
         },
         "summary": "Create a addressbook",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/addressbooks/by-name/{name}": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_by-name_{name}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The collection's name slug — exact match",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The collection's name slug — exact match",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "The collection and its current sync token"
+          },
+          "404": {
+            "description": "No collection by that name, or mailbox not accessible"
+          }
+        },
+        "summary": "Fetch one addressbook by its name slug",
         "tags": [
           "PIM"
         ]
@@ -8395,6 +11228,20 @@
             "required": false,
             "schema": {
               "description": "The previous page's nextCursor; omit for the first page",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Direction over creation order; default asc. `desc` is newest-first, which is what a client mirroring the collection under a page ceiling wants: a bounded crawl then falls short on the OLDEST rows rather than the newest.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "description": "Direction over creation order; default asc. `desc` is newest-first, which is what a client mirroring the collection under a page ceiling wants: a bounded crawl then falls short on the OLDEST rows rather than the newest.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           },
@@ -9378,6 +12225,50 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/calendars/by-name/{name}": {
+      "get": {
+        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_by-name_{name}",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The collection's name slug — exact match",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The collection's name slug — exact match",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollection"
+                }
+              }
+            },
+            "description": "The collection and its current sync token"
+          },
+          "404": {
+            "description": "No collection by that name, or mailbox not accessible"
+          }
+        },
+        "summary": "Fetch one calendar by its name slug",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/calendars/invitations": {
       "get": {
         "description": "Answers whether an event with this UID is already filed anywhere in the mailbox, which calendar holds it, and what the caller has answered so far. A mail client shows an invitation's current state with this before offering the RSVP buttons.\n\nDeliberately cross-collection: an auto-filed or user-moved copy lives wherever it lives, and probing only the default calendar would report `found: false` for an event the mailbox already holds — after which filing it again would succeed, since UID uniqueness is per collection.",
@@ -9951,6 +12842,20 @@
             "required": false,
             "schema": {
               "description": "The previous page's nextCursor; omit for the first page",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Direction over creation order; default asc. `desc` is newest-first, which is what a client mirroring the collection under a page ceiling wants: a bounded crawl then falls short on the OLDEST rows rather than the newest.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "description": "Direction over creation order; default asc. `desc` is newest-first, which is what a client mirroring the collection under a page ceiling wants: a bounded crawl then falls short on the OLDEST rows rather than the newest.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           },
@@ -12525,6 +15430,78 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/messages/learn": {
+      "post": {
+        "description": "Identical per-message semantics to the single form, including its two surprises: repeated calls dedupe **filter-side within the current UTC hour and per class**, so a corrective not-junk after a junk adds an *opposing* sample rather than retracting the first. Present it as 'also train these', never as an undo.\n\n`accepted` means the id resolved and a sample was queued — not that the filter stored it. Submission runs after the response, exactly as the single form's `202` does, and the same per-sample skips apply (a blob past the training-size cap, a filter that is down). It is best-effort by design: the correction is a click away and the hourly dedupe makes repeating it cheap.\n\nBecause the whole fan-out now shares one background budget, a very large batch may train only a prefix of itself under a slow filter (the server logs the shortfall). Send the same ≤200-id chunks you send the batch PATCH.",
+        "operationId": "post_MessageBatchLearn",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "class": {
+                    "description": "\"spam\" = junk (mark as spam), \"ham\" = not junk (mark as legitimate)",
+                    "enum": [
+                      "spam",
+                      "ham"
+                    ],
+                    "type": "string"
+                  },
+                  "ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ids",
+                  "class"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchLearnResult"
+                }
+              }
+            },
+            "description": "Per-message outcomes, in request order; accepted samples submit in the background"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "503": {
+            "description": "learning_unavailable — no spam filter is configured (FILTER_API_URL unset)"
+          }
+        },
+        "summary": "Teach the spam filter from many messages in one call — the batch form of POST .../messages/{messageId}/learn, with one class for the whole batch. Exists so a multi-select 'mark as junk' is one request rather than one per message. Per-message outcomes ride in results, in request order; an id that resolves to nothing is not_found for itself and does not refuse the others",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/messages/mime": {
       "post": {
         "description": "**Gateway-facing, and a read despite the POST** — the method carries the id list, nothing is written. Do not confuse it with `POST /mailboxes/{mailboxId}/messages`, which appends a message; these two share a path prefix and nothing else.\n\nThe payload is IMAP's `ENVELOPE` and `BODYSTRUCTURE`, cached so the gateway can answer metadata-only `FETCH`es without reading raw blobs. Application code almost always wants `GET /mailboxes/{mailboxId}/messages/{messageId}/content` instead, which returns decoded bodies and an attachment list rather than IMAP structures.",
@@ -13226,6 +16203,77 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/password": {
+      "put": {
+        "operationId": "put_PasswordChange",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "currentPassword": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "newPassword": {
+                    "maxLength": 1024,
+                    "minLength": 8,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordChanged"
+                }
+              }
+            },
+            "description": "Password rotated in place; the credential row (id, username) is unchanged"
+          },
+          "400": {
+            "description": "validation_failed (new password shorter than 8 characters)"
+          },
+          "403": {
+            "description": "invalid_current_password"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "description": "no_password_credential — the mailbox has no active password-kind credential to rotate (an admin creates one via POST /credentials)"
+          },
+          "429": {
+            "description": "rate_limited — too many attempts against this mailbox; retry after the window"
+          }
+        },
+        "summary": "Change the mailbox's login password (proves the current password; callable by the mailbox's own bearer)",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/pickups": {
       "get": {
         "operationId": "get_PickupList",
@@ -13842,6 +16890,120 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/pop3-lock": {
+      "delete": {
+        "operationId": "delete_Pop3LockRelease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "holder",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ released: true } — idempotent; a no-op if the holder no longer owns the lease"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Release the cluster-wide POP3 maildrop lock (system only)",
+        "tags": [
+          "Maintenance"
+        ]
+      },
+      "get": {
+        "operationId": "get_Pop3LockGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ held, heldBy, expiresAt, acquired: false, gone? }. An EXPIRED lease reads as not held and is left in place — expiry is the acquire path's decision, not a monitor's."
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Read the cluster-wide POP3 maildrop lock WITHOUT acquiring it (system only)",
+        "tags": [
+          "Maintenance"
+        ]
+      },
+      "post": {
+        "operationId": "post_Pop3LockAcquire",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "holder": {
+                    "description": "Opaque id of the acquiring POP3 session",
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "ttlMs": {
+                    "description": "Lease lifetime in ms",
+                    "maximum": 3600000,
+                    "minimum": 1000,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "holder",
+                  "ttlMs"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lock state: { acquired, expiresAt, heldBy, gone? }. acquired=false means another live session holds it (heldBy) or the mailbox is being deleted (gone)."
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Acquire the cluster-wide POP3 maildrop lock (system only)",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/prefs": {
       "get": {
         "description": "Returns the server-stored preferences the client owns (theme, language, signature, …) as an arbitrary JSON object, plus a monotonic `version` (0 = never written) to feed the PUT's If-Match. Self-service: an app password reads its own. The same row is served at /mailboxes/{id}/prefs and /identities/{id}/prefs.",
@@ -14313,6 +17475,10 @@
                         "$ref": "#/components/schemas/EmailSearchSnippet"
                       },
                       "type": "array"
+                    },
+                    "truncated": {
+                      "description": "Present (true) only when the query matched more messages than the server's ranking window, in which case relevance was computed over the newest matches rather than all of them. Narrow the query (or filter by label) for full-corpus ranking.",
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -14325,7 +17491,7 @@
             "description": "Ranked matches; nextCursor present when a further page exists (never in grouped mode)"
           },
           "400": {
-            "description": "validation_failed, empty_query, invalid_cursor, or grouped_search_unpaginated"
+            "description": "validation_failed, empty_query, invalid_cursor (a malformed cursor), search_offset_too_deep (a well-formed cursor past the depth ceiling), or grouped_search_unpaginated"
           },
           "404": {
             "description": "Mailbox not found or not accessible to this principal"
@@ -14411,12 +17577,12 @@
             }
           },
           {
-            "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+            "description": "On terminal relay failure, deliver a DSN into this mailbox (default true — RFC 5321 §6.1 owes the notice to whoever accepted the message; pass `false` only if you track relay outcomes yourself)",
             "in": "query",
             "name": "bounce",
             "required": false,
             "schema": {
-              "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+              "description": "On terminal relay failure, deliver a DSN into this mailbox (default true — RFC 5321 §6.1 owes the notice to whoever accepted the message; pass `false` only if you track relay outcomes yourself)",
               "enum": [
                 "true",
                 "false"
@@ -15477,12 +18643,12 @@
             }
           },
           {
-            "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+            "description": "On terminal relay failure, deliver a DSN into this mailbox (default true — RFC 5321 §6.1 owes the notice to whoever accepted the message; pass `false` only if you track relay outcomes yourself)",
             "in": "query",
             "name": "bounce",
             "required": false,
             "schema": {
-              "description": "On terminal relay failure, deliver a DSN into this mailbox (default false)",
+              "description": "On terminal relay failure, deliver a DSN into this mailbox (default true — RFC 5321 §6.1 owes the notice to whoever accepted the message; pass `false` only if you track relay outcomes yourself)",
               "enum": [
                 "true",
                 "false"
@@ -15877,6 +19043,237 @@
         "summary": "Replace a mailbox's vacation (out-of-office) auto-reply setting",
         "tags": [
           "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/webauthn/credentials": {
+      "get": {
+        "operationId": "get_WebauthnCredentialList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "credentials": {
+                      "items": {
+                        "$ref": "#/components/schemas/WebauthnCredential"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "credentials"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Enrolled keys"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List the mailbox's enrolled WebAuthn keys (never returns key material)",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "post": {
+        "operationId": "post_WebauthnRegisterFinish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "description": "User-chosen label, e.g. 'YubiKey 5'",
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "origin": {
+                    "description": "The web origin the browser will stamp into clientDataJSON, e.g. https://mail.example.com",
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
+                  "response": {
+                    "properties": {
+                      "attestationObject": {
+                        "description": "base64url",
+                        "maxLength": 65536,
+                        "type": "string"
+                      },
+                      "clientDataJSON": {
+                        "description": "base64url",
+                        "maxLength": 65536,
+                        "type": "string"
+                      },
+                      "transports": {
+                        "items": {
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "maxItems": 8,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "clientDataJSON",
+                      "attestationObject"
+                    ],
+                    "type": "object"
+                  },
+                  "rpId": {
+                    "description": "Relying-party id — the frontend's registrable hostname, e.g. mail.example.com",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rpId",
+                  "origin",
+                  "response"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnCredential"
+                }
+              }
+            },
+            "description": "Enrolled key (never any key material)"
+          },
+          "400": {
+            "description": "validation_failed, invalid_origin, challenge_expired (restart the ceremony), webauthn_failed (verification refusal; `detail` names the check), or duplicate_credential (this authenticator is already enrolled)"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Finish WebAuthn key enrollment: verifies the attestation response and stores the key",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/webauthn/credentials/{webauthnId}": {
+      "delete": {
+        "operationId": "delete_WebauthnCredentialDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "webauthnId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed. Removing the last key turns the second factor off for future logins"
+          },
+          "404": {
+            "description": "Mailbox or key not found"
+          }
+        },
+        "summary": "Remove an enrolled WebAuthn key",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/webauthn/registrations": {
+      "post": {
+        "operationId": "post_WebauthnRegisterBegin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rpId": {
+                    "description": "Relying-party id — the frontend's registrable hostname, e.g. mail.example.com",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rpId"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnRegistrationOptions"
+                }
+              }
+            },
+            "description": "PublicKeyCredentialCreationOptions in JSON encoding (binary fields base64url) — feed to navigator.credentials.create()"
+          },
+          "404": {
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "429": {
+            "description": "rate_limited"
+          }
+        },
+        "summary": "Begin WebAuthn key enrollment: mints a one-time challenge and returns creation options",
+        "tags": [
+          "Credentials"
         ]
       }
     },
@@ -16360,7 +19757,7 @@
             "description": "validation_failed"
           }
         },
-        "summary": "List routes. `type=group` is the groups/lists console listing: each row additionally carries `posting` and `memberCount` (the other listings stay bare — those fields cost joins only the group view needs)",
+        "summary": "List routes. `type=group` is the groups/lists console listing: each row additionally carries `posting` and `memberCount` (the other listings stay bare — those fields cost joins only the group view needs). `type=webhook` lists every address that POSTs to a webhook — destination-webhooks AND routes carrying a webhook tap; the row's destinationType says which",
         "tags": [
           "Directory"
         ]
@@ -16438,7 +19835,7 @@
             "description": "route_exists — the address is bound to a DIFFERENT destination"
           }
         },
-        "summary": "Create a route (address → mailbox | webhook | remote | group). Idempotent for an identical binding: re-creating a route whose destination type and target already match answers 200 with the existing route (retries and provisioning re-runs converge); only a CONFLICTING binding answers 409. On such a replay the request's tuning fields (paced, webhookSecret) are IGNORED, never applied — PATCH owns changes to an existing route",
+        "summary": "Create a route (address → mailbox | webhook | remote | group). With a non-webhook destinationType, webhookUrl/webhookSecret additionally attach the address's webhook TAP — a webhook that receives a copy of everything the address admits, alongside the destination. Idempotent for an identical binding: re-creating a route whose destination type and target already match answers 200 with the existing route (retries and provisioning re-runs converge); only a CONFLICTING binding answers 409. On such a replay the request's tuning fields (paced, webhookSecret, the tap) are IGNORED, never applied — PATCH owns changes to an existing route",
         "tags": [
           "Directory"
         ]
@@ -16555,15 +19952,19 @@
                     "type": "string"
                   },
                   "webhookSecret": {
-                    "description": "Omit to preserve the existing secret (write-only); send null to clear it",
+                    "description": "Omit to preserve the existing secret (write-only); send null to clear it. ALONE (no destinationType, no webhookUrl) it rotates the signing secret of whichever webhook the address carries — destination or tap; 400 no_webhook when it carries none",
                     "type": [
                       "string",
                       "null"
                     ]
                   },
                   "webhookUrl": {
+                    "description": "With destinationType='webhook' this is the destination URL. On any non-webhook route it is a PARTIAL field, patchable alone: the address's webhook tap — a string sets/replaces it, null removes it, omitted leaves it unchanged",
                     "format": "uri",
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 },
                 "type": "object"
@@ -16583,7 +19984,7 @@
             "description": "Updated route"
           },
           "400": {
-            "description": "validation_failed, empty_patch, destination_requires_type (destination fields without destinationType), posting_requires_group, or unknown_mailbox"
+            "description": "validation_failed, empty_patch, destination_requires_type (destination fields without destinationType), posting_requires_group, no_webhook (webhookSecret alone on an address with no webhook to rotate), or unknown_mailbox"
           },
           "404": {
             "description": "Route not found or not accessible to this principal"
@@ -16592,7 +19993,7 @@
             "description": "group_has_members — empty the member list (or delete the route) first"
           }
         },
-        "summary": "Update a route: paced is a partial field (omitted = unchanged); destinationType with its fields atomically replaces the destination — except webhookSecret, which is preserved when omitted (write-only, can't be re-supplied) and cleared by an explicit null",
+        "summary": "Update a route: paced is a partial field (omitted = unchanged); destinationType with its fields atomically replaces the destination — except webhookSecret, which is preserved when omitted (write-only, can't be re-supplied) and cleared by an explicit null. On a NON-webhook route, webhookUrl is a partial field too: alone (no destinationType) it sets the address's webhook tap, null removes it — on a webhook destination it stays a destination field and requires destinationType",
         "tags": [
           "Directory"
         ]
@@ -17007,6 +20408,7 @@
     },
     "/api/v1/suppressions/{address}": {
       "delete": {
+        "description": "System callers may lift any row. Account callers may lift `hard_bounce` rows only — the low-risk case: a bounce-suppressed address that exists again starts working, and if the lift was wrong the next bounce re-suppresses it automatically. A `complaint` row (someone reported mail from this platform as spam) answers 404 to an account caller, indistinguishably from an address that was never suppressed, and only an operator can lift it. Lifting affects the whole platform's do-not-send list; an account's OWN list is managed at `/accounts/{accountId}/suppressions`.",
         "operationId": "delete_SuppressionDelete",
         "parameters": [
           {
@@ -17031,14 +20433,11 @@
             },
             "description": "Suppression lifted"
           },
-          "403": {
-            "description": "system_credentials_required"
-          },
           "404": {
-            "description": "not_found — the address was not suppressed"
+            "description": "not_found — the address was not suppressed (or, for an account caller, not liftable)"
           }
         },
-        "summary": "Lift a suppression, clearing the address to send again (system callers only)",
+        "summary": "Lift a suppression, clearing the address to send again",
         "tags": [
           "Suppressions"
         ]
@@ -17078,6 +20477,727 @@
         "summary": "Look up one address on the do-not-send list (system callers only)",
         "tags": [
           "Suppressions"
+        ]
+      }
+    },
+    "/api/v1/system/audit": {
+      "get": {
+        "operationId": "get_SystemAuditGet",
+        "parameters": [
+          {
+            "description": "Narrow to one tenant's trail",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "Narrow to one tenant's trail",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact resource type, e.g. `mailbox`",
+            "in": "query",
+            "name": "resourceType",
+            "required": false,
+            "schema": {
+              "description": "Exact resource type, e.g. `mailbox`",
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact resource id — one object's history",
+            "in": "query",
+            "name": "resourceId",
+            "required": false,
+            "schema": {
+              "description": "Exact resource id — one object's history",
+              "maxLength": 255,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact action, e.g. `domain.update`",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "description": "Exact action, e.g. `domain.update`",
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "events": {
+                      "items": {
+                        "$ref": "#/components/schemas/AuditEvent"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "events"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Audit events, newest first; nextCursor present when a further page exists"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "List the deployment-wide directory audit trail (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/dead-letters": {
+      "get": {
+        "operationId": "get_DeadLetterListEndpoint",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque R2 listing cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque R2 listing cursor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeadLetterList"
+                }
+              }
+            },
+            "description": "A page of preserved dead letters in key order — OLDEST first, i.e. closest to the 30-day replay expiry"
+          },
+          "400": {
+            "description": "validation_failed — bad limit; or invalid_cursor"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "502": {
+            "description": "storage_unavailable — the R2 listing failed"
+          }
+        },
+        "summary": "List preserved dead letters from the dlq/ prefix (system callers only) — the replayable backlog, which queue depth never shows",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/dead-letters/{key}": {
+      "get": {
+        "operationId": "get_DeadLetterGet",
+        "parameters": [
+          {
+            "description": "The dlq/ key's suffix, i.e. `<ulid>` from `dlq/<ulid>` as listed",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "The dlq/ key's suffix, i.e. `<ulid>` from `dlq/<ulid>` as listed",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeadLetterDetail"
+                }
+              }
+            },
+            "description": "The preserved envelopes; contentPresent is false when the lifecycle rule already reclaimed the body"
+          },
+          "400": {
+            "description": "validation_failed — malformed key"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "description": "not_found — neither content nor sidecars exist under this key"
+          }
+        },
+        "summary": "One dead letter's preserved job envelopes (system callers only) — the input to the manual replay procedure",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/directory": {
+      "get": {
+        "operationId": "get_SystemDirectoryGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemDirectory"
+                }
+              }
+            },
+            "description": "Counts per scope with a bounded id sample for the stopped/paused sets; no Durable Object fan-out"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Deployment-scale directory counts: tenancy size, what is send-stopped or send-paused at each scope, domain DNS health, push subscription health (system callers only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/events": {
+      "get": {
+        "operationId": "get_SystemEventsGet",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by outcome. `dead_lettered` is the failed-delivery view; a row whose meta lacks `dlqKey` had its content expire before preservation and cannot be replayed.",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "description": "Filter by outcome. `dead_lettered` is the failed-delivery view; a row whose meta lacks `dlqKey` had its content expire before preservation and cannot be replayed.",
+              "enum": [
+                "delivered",
+                "duplicate",
+                "queued",
+                "filtered",
+                "bounced",
+                "deferred",
+                "relayed",
+                "relay_rejected",
+                "relay_suppressed",
+                "relay_content_lost",
+                "webhook_delivered",
+                "webhook_route_gone",
+                "member_skipped",
+                "member_failed",
+                "fbl_recorded",
+                "fbl_content_lost",
+                "dmarc_recorded",
+                "dmarc_content_lost",
+                "dmarc_unreadable",
+                "dmarc_unparseable",
+                "dmarc_rejected",
+                "dead_lettered",
+                "internal_error",
+                "check_refused",
+                "check_accepted",
+                "blob_missing",
+                "rate_limited",
+                "limiter_unavailable",
+                "auth_failed"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "enum": [
+                "inbound",
+                "outbound",
+                "sent_copy",
+                "append",
+                "expansion",
+                "relay",
+                "webhook",
+                "pickup",
+                "fbl",
+                "dmarc",
+                "bounce",
+                "api",
+                "check",
+                "read",
+                "auth"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "deliveryId",
+            "required": false,
+            "schema": {
+              "maxLength": 640,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "envelopeFrom",
+            "required": false,
+            "schema": {
+              "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemEvents"
+                }
+              }
+            },
+            "description": "A page of traffic events, newest-first, keyset-paginated"
+          },
+          "400": {
+            "description": "validation_failed, or invalid_cursor"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "502": {
+            "description": "analytics_query_failed — upstream R2 SQL error"
+          },
+          "503": {
+            "description": "analytics_unavailable — no R2 SQL token configured"
+          }
+        },
+        "summary": "Per-event traffic log across the whole deployment (system callers only), including the operator-only `meta` column",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/pickups": {
+      "get": {
+        "operationId": "get_SystemPickupsGet",
+        "parameters": [
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include `ok` and `paused` sources (default false — only broken ones)",
+            "in": "query",
+            "name": "includeHealthy",
+            "required": false,
+            "schema": {
+              "description": "Include `ok` and `paused` sources (default false — only broken ones)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemPickups"
+                }
+              }
+            },
+            "description": "Sources with a computed health class, plus the whole-fleet tally per class (unaffected by paging)"
+          },
+          "400": {
+            "description": "validation_failed"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Fleet-wide POP3 pickup source health — failing, auto-disabled and stale sources across every tenant (system callers only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/platform": {
+      "get": {
+        "operationId": "get_SystemPlatformGet",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemPlatform"
+                }
+              }
+            },
+            "description": "Time-ordered points merged from four GraphQL datasets; a metric absent for a bucket is null, never 0"
+          },
+          "400": {
+            "description": "validation_failed — unknown range"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "502": {
+            "description": "analytics_query_failed — upstream GraphQL error"
+          },
+          "503": {
+            "description": "analytics_unavailable — no analytics token configured"
+          }
+        },
+        "summary": "Cloudflare platform telemetry — worker requests/errors/CPU, Durable Object invocations and stored bytes, D1 query volume (system callers only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/platform-dns": {
+      "get": {
+        "operationId": "get_SystemPlatformDnsGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemPlatformDns"
+                }
+              }
+            },
+            "description": "One reading per configured platform record. `ok` is null when the resolver could not be reached — unknown is not the same answer as missing"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Are the PLATFORM's own DNS prerequisites live? DMARC report authorization and VERP SPF (system callers only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/queues": {
+      "get": {
+        "operationId": "get_SystemQueuesGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemQueues"
+                }
+              }
+            },
+            "description": "One reading per queue; `available: false` marks a failed metrics call"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Realtime backlog for every queue and dead-letter queue (system callers only). A nonzero DLQ backlog is an alarm; a nonzero delivery backlog is ordinary retry traffic",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/queues/history": {
+      "get": {
+        "operationId": "get_SystemQueueHistoryGet",
+        "parameters": [
+          {
+            "description": "Queue name, as reported by GET /system/queues",
+            "in": "query",
+            "name": "queue",
+            "required": true,
+            "schema": {
+              "description": "Queue name, as reported by GET /system/queues",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemQueueHistory"
+                }
+              }
+            },
+            "description": "Time-ordered points; a metric absent for a bucket is null, never 0"
+          },
+          "400": {
+            "description": "validation_failed — unknown range"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "description": "unknown_queue — not in the registry, or absent from QUEUE_IDS"
+          },
+          "502": {
+            "description": "analytics_query_failed — upstream GraphQL error"
+          },
+          "503": {
+            "description": "analytics_unavailable — no analytics token or QUEUE_IDS configured"
+          }
+        },
+        "summary": "Backlog, consumer-concurrency and lag/retry history for one queue (system callers only). The overnight view the realtime endpoint cannot give",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/status": {
+      "get": {
+        "operationId": "get_SystemStatusGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            },
+            "description": "Configuration state — booleans only, never secret values"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Which optional subsystems are configured, and the last applied D1 migration (system callers only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/storage": {
+      "get": {
+        "operationId": "get_SystemStorageGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStorage"
+                }
+              }
+            },
+            "description": "One reading per managed prefix; `overdue` means objects are surviving past the rule that is supposed to delete them"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Are the R2 lifecycle rules still reaping? Oldest object age per managed prefix (system callers only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/traffic": {
+      "get": {
+        "operationId": "get_SystemTrafficGet",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemTraffic"
+                }
+              }
+            },
+            "description": "Counts and bytes by outcome and route kind, unscoped"
+          },
+          "400": {
+            "description": "validation_failed — unknown range"
+          },
+          "403": {
+            "description": "system_credentials_required"
+          },
+          "502": {
+            "description": "analytics_query_failed — upstream Analytics Engine error"
+          },
+          "503": {
+            "description": "analytics_unavailable — no analytics token configured"
+          }
+        },
+        "summary": "Traffic aggregates across the whole deployment (system callers only; sampled estimates, ~90-day retention)",
+        "tags": [
+          "System"
         ]
       }
     }

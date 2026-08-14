@@ -507,14 +507,27 @@ openemail admin suppressions lift bounced@example.com   # once the cause is fixe
 
 The suppression list is **deployment-global**: an address on it is refused for
 every account, because the evidence is a receiver's own hard bounce or spam
-complaint rather than a per-tenant setting. Rows are only ever written by the
-feedback-loop consumer, which is why there is no `add` verb. `get` on a clear
-address is a normal "not suppressed" answer, not a failure.
+complaint rather than a per-tenant setting. Rows are normally written by the
+feedback-loop consumer and the relay's own in-session bounce writer; `add` is
+the operator's stand-in for a complaint the consumer could not prove. `get` on
+a clear address is a normal "not suppressed" answer, not a failure.
 
 Lift with care. A hard bounce that is still a hard bounce simply re-suppresses on
 the next attempt, and a lifted complaint means mailing someone who asked you to
 stop — the exact thing that damages a sending reputation. The prompt shows the
 recorded reason and diagnostic first; `--yes` skips it.
+
+Tenants have their own, separate answer to the same question. An **account's
+own do-not-send list** (`openemail suppressions …`, no system key needed) holds
+addresses that account decided never to mail, and its `remove` also lifts a
+platform **hard-bounce** block on the address — the self-healing case an
+account key is allowed. A platform **complaint** row stays operator-only:
+
+```sh
+openemail suppressions add them@example.net --note "unsubscribed"
+openemail suppressions check them@example.net
+openemail suppressions remove them@example.net
+```
 
 ## Stop a tenant that is spamming (operator)
 

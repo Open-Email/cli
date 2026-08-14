@@ -39,6 +39,9 @@ func (a *app) maybeNotifyUpdate() {
 		return // don't nag from a local dev build
 	}
 	path := updateStatePath()
+	if path == "" {
+		return // cannot determine state path safely
+	}
 	st := loadUpdateState(path)
 	if time.Since(time.Unix(st.LastCheck, 0)) >= updateCheckInterval {
 		if latest, ok := fetchLatestTag(releasesURL, 1200*time.Millisecond); ok {
@@ -61,15 +64,21 @@ func (a *app) maybeNotifyUpdate() {
 func updateStatePath() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
-		if home, err := os.UserHomeDir(); err == nil {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
 			base = filepath.Join(home, ".local", "state")
 		}
+	}
+	if base == "" {
+		return ""
 	}
 	return filepath.Join(base, "openemail", "version-check.json")
 }
 
 func loadUpdateState(path string) updateState {
 	var st updateState
+	if path == "" {
+		return st
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return st
@@ -79,6 +88,9 @@ func loadUpdateState(path string) updateState {
 }
 
 func saveUpdateState(path string, st updateState) {
+	if path == "" {
+		return
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}

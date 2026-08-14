@@ -175,7 +175,7 @@ func printContent(w io.Writer, p *Printer, id string, c *coreapi.ContentResult) 
 
 	// Print the plain-text body in full when it is present and inlined.
 	if c.Text != nil && !c.Text.Truncated && c.Text.Content != nil {
-		fmt.Fprintf(w, "\n── Text (section %s) ──\n%s\n", c.Text.Section, strings.TrimRight(*c.Text.Content, "\r\n"))
+		fmt.Fprintf(w, "\n── Text (section %s) ──\n%s\n", c.Text.Section, strings.TrimRight(sanitizeBody(*c.Text.Content), "\r\n"))
 	}
 
 	if len(c.Attachments) > 0 {

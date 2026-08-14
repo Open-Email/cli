@@ -59,6 +59,9 @@ func (b *bodyFlags) headers() (map[string]string, error) {
 	}
 	out := make(map[string]string, len(b.header))
 	for _, h := range b.header {
+		if strings.ContainsAny(h, "\r\n") {
+			return nil, usageError(fmt.Errorf("invalid --header %q: header cannot contain newlines", h))
+		}
 		name, value, ok := strings.Cut(h, ":")
 		if !ok || strings.TrimSpace(name) == "" {
 			return nil, usageError(fmt.Errorf("invalid --header %q: expected Name: value", h))
@@ -309,6 +312,9 @@ func splitAddressList(s string) []string {
 
 // parseSendAddress accepts `addr` or `Name <addr>` (quoted display names too).
 func parseSendAddress(s string) (*coreapi.SendAddress, error) {
+	if strings.ContainsAny(s, "\r\n") {
+		return nil, errors.New("address cannot contain newlines")
+	}
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, errors.New("empty address")

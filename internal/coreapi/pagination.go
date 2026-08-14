@@ -25,12 +25,24 @@ func pageValues(limit int, cursor string) url.Values {
 	return q
 }
 
-// Depaginate drains every page by following NextCursor. Used by list commands'
-// --all flag; the rate cost is the user's explicit choice.
+// DefaultMaxPages is the safety cap on pages drained in a single --all call to prevent runaway OOM.
+const DefaultMaxPages = 10000
+
+// Depaginate drains every page by following NextCursor up to DefaultMaxPages.
 func Depaginate[T any](ctx context.Context, fetch func(ctx context.Context, cursor string) (Page[T], error)) ([]T, error) {
+	return DepaginateWithLimit(ctx, DefaultMaxPages, fetch)
+}
+
+// DepaginateWithLimit drains pages by following NextCursor up to maxPages.
+func DepaginateWithLimit[T any](ctx context.Context, maxPages int, fetch func(ctx context.Context, cursor string) (Page[T], error)) ([]T, error) {
 	var all []T
 	cursor := ""
+	pageCount := 0
 	for {
+		pageCount++
+		if maxPages > 0 && pageCount > maxPages {
+			return all, fmt.Errorf("coreapi: pagination exceeded maximum page limit (%d) — aborting", maxPages)
+		}
 		pg, err := fetch(ctx, cursor)
 		if err != nil {
 			return all, err

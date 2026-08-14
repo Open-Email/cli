@@ -83,6 +83,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `prefs` | the opaque client-preferences document: `get`/`put`/`set` with compare-and-swap on its version |
 | `pickups` | POP3 pickup sources: create/list/get/update/delete/`run` |
 | `send` | submit an outbound message (compose or raw MIME) |
+| `suppressions` (alias `do-not-send`) | the account's OWN do-not-send list: `list`/`check`/`add`/`remove` — addresses this account never mails; `remove` also lifts a platform hard-bounce block on the address (the deployment-global evidence list stays under `admin suppressions`) |
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
 | `deliver` | `check --to <addr>` (RCPT pre-flight), `inbound` (inject a test message) |
 | `api` | call any route directly (escape hatch), `--list-routes` |
@@ -202,6 +203,11 @@ openemail identities get <id>                     # facets: pim bound, no mail s
 
 # Rotate a webhook route's URL while KEEPING its signing secret (omit the secret).
 openemail routes update hook@example.com --type webhook --webhook-url https://new/hook
+
+# Tenant: never mail this address again (account-scoped; someone unsubscribed).
+openemail suppressions add them@example.net --note "asked to stop, 2026-08-14"
+openemail suppressions list --all
+openemail suppressions remove them@example.net   # also lifts a platform bounce block
 
 # Operator: is an address on the do-not-send list, and why? (system key)
 openemail admin suppressions get bounced@example.com

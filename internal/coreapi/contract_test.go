@@ -114,6 +114,7 @@ func contractPairings() []pairing {
 		{val: SendRecipientResult{}, comp: "SendRecipientResult"},
 		// Operator surfaces (system-only).
 		{val: Suppression{}, comp: "Suppression"},
+		{val: AccountSuppression{}, comp: "AccountSuppression"},
 		{val: DkimStatus{}, comp: "DkimStatus"},
 		{val: DkimKey{}, comp: "DkimKey"},
 		{val: DkimCname{}, comp: "DkimCname"},

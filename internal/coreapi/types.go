@@ -14,6 +14,10 @@ type APIKey struct {
 	CreatedAt   int64   `json:"createdAt"`
 	LastUsedAt  *int64  `json:"lastUsedAt"`
 	RevokedAt   *int64  `json:"revokedAt"`
+	// Managed marks an infrastructure-held key (e.g. the console's session
+	// key). Account-scoped listings exclude them, so account callers only ever
+	// see false.
+	Managed bool `json:"managed"`
 }
 
 // CreatedAPIKey is POST /api-keys — the only place the plaintext token appears.
@@ -23,6 +27,7 @@ type CreatedAPIKey struct {
 	Role      string  `json:"role"`
 	AccountID *string `json:"accountId"`
 	Token     string  `json:"token"`
+	Managed   bool    `json:"managed"`
 }
 
 // Account is an accounts row.
@@ -52,7 +57,10 @@ type Account struct {
 	// collapsing them inverts the meaning in the direction that removes a bound.
 	SendMsgsPerDay  *int64 `json:"sendMsgsPerDay"`
 	SendRcptsPerDay *int64 `json:"sendRcptsPerDay"`
-	CreatedAt       int64  `json:"createdAt"`
+	// StorageLimitBytes is the account storage pool: NIL = platform default,
+	// 0 = explicitly unlimited/metered.
+	StorageLimitBytes *int64 `json:"storageLimitBytes"`
+	CreatedAt         int64  `json:"createdAt"`
 }
 
 // AccountSendUsage is GET /accounts/:accountId/send-usage — the tenant-scale
@@ -103,6 +111,13 @@ type Mailbox struct {
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`
 	ExpungedCount *int64 `json:"expungedCount,omitempty"`
 	ExpungedBytes *int64 `json:"expungedBytes,omitempty"`
+	// Store-level stats (GET-only, like the four above): the DO's own SQLite
+	// footprint and the live-events socket occupancy.
+	DatabaseSize       *int64           `json:"databaseSize,omitempty"`
+	DatabaseLimitBytes *int64           `json:"databaseLimitBytes,omitempty"`
+	LiveSockets        *int64           `json:"liveSockets,omitempty"`
+	SocketCapacity     *int64           `json:"socketCapacity,omitempty"`
+	SocketsByClass     map[string]int64 `json:"socketsByClass,omitempty"`
 }
 
 // SendUsage is a mailbox's outbound send allowance for the current rolling
@@ -134,6 +149,10 @@ type DeletedMailbox struct {
 	DeletedAt       int64   `json:"deletedAt"`
 	Restorable      bool    `json:"restorable"`
 	RestorableUntil *int64  `json:"restorableUntil,omitempty"`
+	// When the deadman wipe is due (or was due — WipeOverdue flags a wipe the
+	// alarm has not executed yet).
+	WipeDueAt   *int64 `json:"wipeDueAt,omitempty"`
+	WipeOverdue *bool  `json:"wipeOverdue,omitempty"`
 }
 
 // MailboxCreateInput is the POST /mailboxes body (all fields optional; accountId

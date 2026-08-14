@@ -67,8 +67,20 @@ func encodeULID(id [16]byte) string {
 	return string(dst)
 }
 
+// CleanHeaderValue strips any newline and subsequent content to prevent header injection.
+func CleanHeaderValue(s string) string {
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(s)
+}
+
 // TextMessage builds a minimal RFC 5322 text/plain message.
 func TextMessage(from, to, subject, body string) []byte {
+	from = CleanHeaderValue(from)
+	to = CleanHeaderValue(to)
+	subject = CleanHeaderValue(subject)
+
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "To: %s\r\n", to)

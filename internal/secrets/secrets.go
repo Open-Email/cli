@@ -32,6 +32,9 @@ var ErrNotFound = errors.New("secrets: not found")
 // forceFile is not a downgrade, so warn is nil there. On success via the
 // keychain, warn is nil.
 func Save(configDir, profile, secret string, forceFile bool) (backend string, warn error, err error) {
+	if err := ValidateProfileName(profile); err != nil {
+		return "", nil, err
+	}
 	if !forceFile {
 		if kerr := keyring.Set(keyringService, profile, secret); kerr == nil {
 			return Keychain, nil, nil
@@ -79,6 +82,9 @@ func writeFileSecure(path string, data []byte) error {
 
 // Load reads the secret for profile from the named backend.
 func Load(configDir, profile, backend string) (string, error) {
+	if err := ValidateProfileName(profile); err != nil {
+		return "", err
+	}
 	switch backend {
 	case Keychain:
 		s, err := keyring.Get(keyringService, profile)
@@ -109,6 +115,9 @@ func Load(configDir, profile, backend string) (string, error) {
 
 // Delete removes the secret for profile from the named backend (idempotent).
 func Delete(configDir, profile, backend string) error {
+	if err := ValidateProfileName(profile); err != nil {
+		return err
+	}
 	switch backend {
 	case Keychain:
 		if err := keyring.Delete(keyringService, profile); err != nil && !errors.Is(err, keyring.ErrNotFound) {
@@ -131,9 +140,32 @@ func Delete(configDir, profile, backend string) error {
 	}
 }
 
+// ErrInvalidProfileName is returned when a profile name fails safety validation.
+var ErrInvalidProfileName = errors.New("secrets: invalid profile name")
+
+// ValidateProfileName validates that a profile name is safe to use in keychains and paths.
+// It allows alphanumeric characters, underscores, hyphens, and dots, rejecting directory traversal
+// and path separators.
+func ValidateProfileName(profile string) error {
+	if profile == "" || profile == "." || profile == ".." {
+		return ErrInvalidProfileName
+	}
+	for i := 0; i < len(profile); i++ {
+		c := profile[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' {
+			continue
+		}
+		return fmt.Errorf("%w: %q contains invalid characters", ErrInvalidProfileName, profile)
+	}
+	return nil
+}
+
 func filePath(configDir, profile string) (string, error) {
 	if configDir == "" {
 		return "", errors.New("secrets: empty config dir")
+	}
+	if err := ValidateProfileName(profile); err != nil {
+		return "", err
 	}
 	return filepath.Join(configDir, "credentials", profile), nil
 }

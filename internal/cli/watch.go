@@ -298,6 +298,22 @@ func (a *app) hydrateFrame(ctx context.Context, client *coreapi.Client, mbx stri
 	return merged, true
 }
 
+// cleanExecEnv strips sensitive credentials (such as active API tokens) before
+// passing the environment to the child subshell.
+func cleanExecEnv(eventType, mbx string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "OPENEMAIL_API_KEY=") || strings.HasPrefix(e, "OPENEMAIL_API_URL=") {
+			continue // do not leak active credentials/redirections to arbitrary subshells
+		}
+		env = append(env, e)
+	}
+	return append(env,
+		"OPENEMAIL_EVENT_TYPE="+eventType,
+		"OPENEMAIL_MAILBOX="+mbx,
+	)
+}
+
 // runExec runs the handler synchronously with the frame JSON on stdin. Its
 // stdout and stderr are both wired to the CLI's stderr so stdout stays pure
 // JSON-lines. A non-zero exit is logged and ignored — events are best-effort, so
@@ -313,10 +329,7 @@ func (a *app) runExec(ctx context.Context, command string, frame []byte, eventTy
 	cmd.Stdin = bytes.NewReader(append(frame, '\n'))
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(),
-		"OPENEMAIL_EVENT_TYPE="+eventType,
-		"OPENEMAIL_MAILBOX="+mbx,
-	)
+	cmd.Env = cleanExecEnv(eventType, mbx)
 	if err := cmd.Run(); err != nil && ctx.Err() == nil {
 		a.out.Warnf("--exec handler failed: %v", err)
 	}

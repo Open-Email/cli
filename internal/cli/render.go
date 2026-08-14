@@ -56,6 +56,26 @@ func sanitizeCell(s string) string {
 	}, s)
 }
 
+// sanitizeBody strips ANSI escape sequences and unsafe control codes from untrusted
+// multiline message bodies while preserving safe whitespace formatting (\n and \t).
+func sanitizeBody(s string) string {
+	if strings.IndexByte(s, 0x1b) < 0 && strings.IndexFunc(s, func(r rune) bool {
+		return r != '\n' && r != '\t' && isCtl(r)
+	}) < 0 {
+		return s
+	}
+	s = ansiEscape.ReplaceAllString(s, "")
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if isCtl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // sanitizeCells returns a copy of cells with sanitizeCell applied to each.
 func sanitizeCells(cells []string) []string {
 	out := make([]string, len(cells))

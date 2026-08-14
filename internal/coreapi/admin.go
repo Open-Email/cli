@@ -28,6 +28,11 @@ type VerifyResult struct {
 	PermittedFrom []string `json:"permittedFrom"`
 	// Facets lists the identity's bound stores ("mail", "pim").
 	Facets []string `json:"facets"`
+	// SecondFactor ("webauthn") is present when the matched credential is a
+	// password and the identity has WebAuthn keys enrolled: the frontend this
+	// login came through should demand the second factor. Advisory, like
+	// CanSend; app-password logins never carry it.
+	SecondFactor *string `json:"secondFactor,omitempty"`
 }
 
 // Reindex re-enqueues FTS index jobs for a mailbox (system-only). limit bounds the

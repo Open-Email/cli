@@ -128,31 +128,60 @@ func (f *File) Save() error {
 	return nil
 }
 
+// ErrInvalidProfileName indicates a profile name contains illegal characters or path traversal.
+var ErrInvalidProfileName = fmt.Errorf("config: invalid profile name")
+
+// ValidateProfileName ensures profile names contain only safe characters ([a-zA-Z0-9_.-]).
+func ValidateProfileName(name string) error {
+	if name == "" || name == "." || name == ".." {
+		return ErrInvalidProfileName
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' {
+			continue
+		}
+		return fmt.Errorf("%w: %q", ErrInvalidProfileName, name)
+	}
+	return nil
+}
+
 // ConfigDir returns the resolved directory the config was loaded from.
 func (f *File) ConfigDir() string { return f.dir }
 
 // Profile returns a profile and whether it exists.
 func (f *File) Profile(name string) (Profile, bool) {
+	if err := ValidateProfileName(name); err != nil {
+		return Profile{}, false
+	}
 	p, ok := f.Profiles[name]
 	return p, ok
 }
 
 // SetProfile upserts a profile.
-func (f *File) SetProfile(name string, p Profile) {
+func (f *File) SetProfile(name string, p Profile) error {
+	if err := ValidateProfileName(name); err != nil {
+		return err
+	}
 	if f.Profiles == nil {
 		f.Profiles = map[string]Profile{}
 	}
 	f.Profiles[name] = p
+	return nil
 }
 
 // ResolveProfileName returns the profile to use: the explicit name if non-empty,
 // else the configured default, else DefaultProfileName.
 func (f *File) ResolveProfileName(explicit string) string {
 	if explicit != "" {
-		return explicit
+		if err := ValidateProfileName(explicit); err == nil {
+			return explicit
+		}
 	}
 	if f.DefaultProfile != "" {
-		return f.DefaultProfile
+		if err := ValidateProfileName(f.DefaultProfile); err == nil {
+			return f.DefaultProfile
+		}
 	}
 	return DefaultProfileName
 }

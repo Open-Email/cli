@@ -2,10 +2,36 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// ansiEscape matches ANSI/VT escape sequences for stripping control sequences.
+var ansiEscape = regexp.MustCompile("\x1b(?:\\[[0-9;:<=>?]*[ -/]*[@-~]|\\][^\x07\x1b]*(?:\x07|\x1b\\\\)?|[@-_])")
+
+// isCtl reports whether r is a C0/DEL/C1 control code point.
+func isCtl(r rune) bool { return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) }
+
+// sanitizePlain strips ANSI/VT escape sequences and unsafe control characters while preserving \n and \t.
+func sanitizePlain(s string) string {
+	if strings.IndexByte(s, 0x1b) < 0 && strings.IndexFunc(s, func(r rune) bool {
+		return r != '\n' && r != '\t' && isCtl(r)
+	}) < 0 {
+		return s
+	}
+	s = ansiEscape.ReplaceAllString(s, "")
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if isCtl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
 
 // Formatting mirrors the flag commands' human output (internal/cli/render.go)
 // so the console and the CLI describe the platform in the same vocabulary.
@@ -150,8 +176,9 @@ func parseBytes(s string) (int64, error) {
 	return int64(f * float64(mult)), nil
 }
 
-// truncate shortens s to n display runes with an ellipsis.
+// truncate shortens s to n display runes with an ellipsis, sanitizing control sequences.
 func truncate(s string, n int) string {
+	s = sanitizePlain(s)
 	if n <= 0 {
 		return ""
 	}
@@ -165,10 +192,11 @@ func truncate(s string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
-// wrapPlain wraps plain text to width, preserving existing newlines. Long
+// wrapPlain wraps plain text to width, preserving existing newlines and sanitizing ANSI codes. Long
 // unbreakable words are hard-split. Used for message bodies only — table
 // cells and detail values rely on truncation instead.
 func wrapPlain(s string, width int) string {
+	s = sanitizePlain(s)
 	if width < 8 {
 		width = 8
 	}

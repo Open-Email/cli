@@ -21,6 +21,9 @@ type DkimKey struct {
 	CreatedAt   int64  `json:"createdAt"`
 	PublishedAt *int64 `json:"publishedAt"`
 	ActivatedAt *int64 `json:"activatedAt"`
+	// DnsVisible: is this key's TXT resolver-visible right now? null =
+	// unprobed or resolver unreachable.
+	DnsVisible *bool `json:"dnsVisible"`
 }
 
 // DkimCname is one record the customer publishes on their own domain. Host is
@@ -42,6 +45,9 @@ type DkimStatus struct {
 	NextRunAt *int64      `json:"nextRunAt"`
 	Keys      []DkimKey   `json:"keys"`
 	Cnames    []DkimCname `json:"cnames"`
+	// ResolverUnavailable: every DNS probe failed — read the keys' DnsVisible
+	// as unknown, not as missing records.
+	ResolverUnavailable bool `json:"resolverUnavailable"`
 }
 
 // DkimRotated is the answer to both rotate and activate. Bootstrapped is true

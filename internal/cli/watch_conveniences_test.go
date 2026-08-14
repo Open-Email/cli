@@ -291,3 +291,36 @@ func TestWatchReconnectsThenMatches(t *testing.T) {
 		t.Errorf("expected a reconnect (≥2 dials), got %d", dials.Load())
 	}
 }
+
+func TestCleanExecEnv(t *testing.T) {
+	t.Setenv("OPENEMAIL_API_KEY", "oek_secret123")
+	t.Setenv("OPENEMAIL_API_URL", "https://api.secret.internal")
+	t.Setenv("OTHER_VAR", "preserved")
+
+	env := cleanExecEnv("message.new", "mbx123")
+	for _, e := range env {
+		if strings.HasPrefix(e, "OPENEMAIL_API_KEY=") {
+			t.Errorf("OPENEMAIL_API_KEY should have been stripped from exec env, found %s", e)
+		}
+		if strings.HasPrefix(e, "OPENEMAIL_API_URL=") {
+			t.Errorf("OPENEMAIL_API_URL should have been stripped from exec env, found %s", e)
+		}
+	}
+	foundOther := false
+	foundType := false
+	foundMbx := false
+	for _, e := range env {
+		if e == "OTHER_VAR=preserved" {
+			foundOther = true
+		}
+		if e == "OPENEMAIL_EVENT_TYPE=message.new" {
+			foundType = true
+		}
+		if e == "OPENEMAIL_MAILBOX=mbx123" {
+			foundMbx = true
+		}
+	}
+	if !foundOther || !foundType || !foundMbx {
+		t.Errorf("expected environment variables missing: other=%v, type=%v, mbx=%v", foundOther, foundType, foundMbx)
+	}
+}

@@ -15,12 +15,15 @@ import (
 // sidebar (Accounts is system-only); APIURL and Token are needed alongside
 // Client because the live-events WebSocket dials outside the REST client.
 type Options struct {
-	Client  *coreapi.Client
-	Role    string // coreapi.PrincipalAccount | coreapi.PrincipalSystem
-	APIURL  string
-	Token   string
-	Profile string
-	Version string
+	Client *coreapi.Client
+	Role   string // coreapi.PrincipalAccount | coreapi.PrincipalSystem
+	// AccountID is the account the key acts as — empty for system keys. It
+	// scopes the account-tier screens (Do-Not-Send).
+	AccountID string
+	APIURL    string
+	Token     string
+	Profile   string
+	Version   string
 }
 
 // Run starts the console and blocks until the user quits. Canceling ctx also

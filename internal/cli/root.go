@@ -99,6 +99,7 @@ func newRootCmd(a *app) *cobra.Command {
 		newPickupsCmd(a),
 		newComposeCmd(a),
 		newSendCmd(a),
+		newSuppressionsCmd(a),
 		newWatchCmd(a),
 		newDeliverCmd(a),
 		newAPICmd(a),

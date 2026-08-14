@@ -49,3 +49,12 @@ func TestUpdateStateRoundTrip(t *testing.T) {
 		t.Fatalf("round trip: %+v", got)
 	}
 }
+
+func TestUpdateStateEmptyPathHandling(t *testing.T) {
+	// With empty path, save and load should be safe no-ops without panicking
+	saveUpdateState("", updateState{LastCheck: 100})
+	st := loadUpdateState("")
+	if st.LastCheck != 0 {
+		t.Errorf("expected zero state on empty path, got %+v", st)
+	}
+}

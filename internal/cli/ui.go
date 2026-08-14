@@ -37,28 +37,29 @@ func newUICmd(a *app) *cobra.Command {
 			// knows its role (login recorded it) — trust it and open instantly;
 			// only flag/env tokens pay the Resolve probe, which also validates
 			// the token up front (a bad key fails here, not as a blank screen).
-			role := ""
+			role, accountID := "", ""
 			if a.tokenSource == "profile" &&
 				(a.profile.Role == coreapi.PrincipalAccount || a.profile.Role == coreapi.PrincipalSystem) {
-				role = a.profile.Role
+				role, accountID = a.profile.Role, a.profile.AccountID
 			} else {
 				ident, rerr := client.Resolve(ctx)
 				if rerr != nil {
 					return rerr
 				}
-				role = ident.Type
+				role, accountID = ident.Type, ident.AccountID
 			}
 			if role == coreapi.PrincipalMailbox {
 				return errors.New("the console needs an account or system key — a mailbox app password cannot browse the directory (run `openemail login`)")
 			}
 
 			return tui.Run(ctx, tui.Options{
-				Client:  client,
-				Role:    role,
-				APIURL:  a.apiURL,
-				Token:   a.token,
-				Profile: a.profileName,
-				Version: Version,
+				Client:    client,
+				Role:      role,
+				AccountID: accountID,
+				APIURL:    a.apiURL,
+				Token:     a.token,
+				Profile:   a.profileName,
+				Version:   Version,
 			})
 		},
 	}
