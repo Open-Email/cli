@@ -42,7 +42,7 @@ func newRulesCmd(a *app) *cobra.Command {
 
 // rulesState fetches the current document, mapping a 404 (no rules yet) to an
 // empty in-memory document so the edit helpers can create the first rule.
-func rulesState(cmd *cobra.Command, a *app, client *coreapi.Client, mbx string) (*coreapi.FilterRulesState, error) {
+func rulesState(cmd *cobra.Command, client *coreapi.Client, mbx string) (*coreapi.FilterRulesState, error) {
 	st, err := client.GetRules(cmd.Context(), mbx)
 	if err == nil {
 		return st, nil
@@ -285,7 +285,7 @@ func newRulesAddCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := rulesState(cmd, a, client, mbx)
+			st, err := rulesState(cmd, client, mbx)
 			if err != nil {
 				return err
 			}

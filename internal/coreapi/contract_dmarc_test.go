@@ -22,17 +22,17 @@ func TestDmarcTotalsMatchesInlineSchema(t *testing.T) {
 	if !ok {
 		t.Fatal("component \"DomainDmarc\" not found in snapshot")
 	}
-	props, _ := resolveComponent(t, schemas, comp)
+	props := resolveComponent(t, schemas, comp)
 	totals, ok := props["totals"].(map[string]any)
 	if !ok {
 		t.Fatal("DomainDmarc.totals is not an inline object schema (did core extract it to a component? pair it in contractPairings instead)")
 	}
-	tprops, treq := resolveComponent(t, schemas, totals)
+	tprops := resolveComponent(t, schemas, totals)
 	if len(tprops) == 0 {
 		t.Fatal("DomainDmarc.totals has no properties — the walk found the wrong node")
 	}
 	goFields := flattenGoFields(reflect.TypeOf(DmarcTotals{}))
-	for _, issue := range compare(pairing{comp: "DomainDmarc.totals"}, schemas, tprops, treq, goFields) {
+	for _, issue := range compare(pairing{comp: "DomainDmarc.totals"}, schemas, tprops, goFields) {
 		t.Error(issue)
 	}
 }

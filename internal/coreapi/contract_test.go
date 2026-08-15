@@ -173,9 +173,9 @@ func TestWireStructsMatchOpenAPISnapshot(t *testing.T) {
 			if !ok {
 				t.Fatalf("component %q not found in snapshot", p.comp)
 			}
-			props, required := resolveComponent(t, schemas, comp)
+			props := resolveComponent(t, schemas, comp)
 			goFields := flattenGoFields(reflect.TypeOf(p.val))
-			for _, issue := range compare(p, schemas, props, required, goFields) {
+			for _, issue := range compare(p, schemas, props, goFields) {
 				t.Error(issue)
 			}
 		})
@@ -246,54 +246,46 @@ func goKind(t reflect.Type) (string, bool) {
 
 // ── Spec resolution ──────────────────────────────────────────────────────────
 
-// resolveComponent flattens a component to its property schemas + required set,
-// resolving allOf (merge), oneOf/anyOf (field superset; required = intersection),
-// and $ref.
-func resolveComponent(t *testing.T, schemas map[string]any, comp map[string]any) (map[string]any, map[string]bool) {
+// resolveComponent flattens a component to its property schemas, resolving
+// allOf (merge), oneOf/anyOf (field superset) and $ref.
+//
+// It deliberately does not track the spec's `required` set: every comparison
+// this harness makes (see the four checks in the file header) applies to
+// required and optional properties alike, so a required set would be built and
+// never read. Adding a required-vs-`omitempty` check for the request-side
+// structs would need `pairing` to model direction first.
+func resolveComponent(t *testing.T, schemas map[string]any, comp map[string]any) map[string]any {
 	if ref, ok := comp["$ref"].(string); ok {
 		return resolveComponent(t, schemas, derefSchema(t, schemas, ref))
 	}
 	if allOf, ok := comp["allOf"].([]any); ok {
 		props := map[string]any{}
-		required := map[string]bool{}
 		for _, sub := range allOf {
-			sp, sr := resolveComponent(t, schemas, sub.(map[string]any))
-			for k, v := range sp {
+			for k, v := range resolveComponent(t, schemas, sub.(map[string]any)) {
 				props[k] = v
 			}
-			for k := range sr {
-				required[k] = true
-			}
 		}
-		return props, required
+		return props
 	}
 	if variants := variantList(comp); variants != nil {
 		props := map[string]any{}
-		var requiredSets []map[string]bool
 		for _, sub := range variants {
 			sm, _ := sub.(map[string]any)
 			if isNullSchema(sm) {
 				continue // the `null` arm of a nullableRef — no props
 			}
-			sp, sr := resolveComponent(t, schemas, sm)
-			for k, v := range sp {
+			for k, v := range resolveComponent(t, schemas, sm) {
 				if _, seen := props[k]; !seen {
 					props[k] = v
 				}
 			}
-			requiredSets = append(requiredSets, sr)
 		}
-		return props, intersect(requiredSets)
+		return props
 	}
-	props := map[string]any{}
 	if raw, ok := comp["properties"].(map[string]any); ok {
-		props = raw
+		return raw
 	}
-	required := map[string]bool{}
-	for _, r := range toStringSlice(comp["required"]) {
-		required[r] = true
-	}
-	return props, required
+	return map[string]any{}
 }
 
 // specKind returns the normalized kind + nullability of a property schema,
@@ -344,7 +336,7 @@ func specKind(schemas map[string]any, schema map[string]any) (string, bool) {
 
 // ── Comparison ───────────────────────────────────────────────────────────────
 
-func compare(p pairing, schemas map[string]any, props map[string]any, required map[string]bool, goFields map[string]goField) []string {
+func compare(p pairing, schemas map[string]any, props map[string]any, goFields map[string]goField) []string {
 	var issues []string
 	ignoreSpec := toSet(p.ignoreSpec)
 	ignoreGo := toSet(p.ignoreGo)
@@ -433,40 +425,6 @@ func derefSchema(t *testing.T, schemas map[string]any, ref string) map[string]an
 		return map[string]any{}
 	}
 	return s
-}
-
-func intersect(sets []map[string]bool) map[string]bool {
-	out := map[string]bool{}
-	if len(sets) == 0 {
-		return out
-	}
-	for k := range sets[0] {
-		all := true
-		for _, s := range sets[1:] {
-			if !s[k] {
-				all = false
-				break
-			}
-		}
-		if all {
-			out[k] = true
-		}
-	}
-	return out
-}
-
-func toStringSlice(v any) []string {
-	raw, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(raw))
-	for _, e := range raw {
-		if s, ok := e.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 func toSet(names []string) map[string]bool {

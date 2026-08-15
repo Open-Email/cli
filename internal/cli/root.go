@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/Open-Email/cli/internal/config"
@@ -121,7 +122,9 @@ func newVersionCmd(a *app) *cobra.Command {
 		Short: "Print the CLI version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintf(os.Stdout, "openemail %s\n", Version)
+			a.out.Emit(map[string]string{"version": Version}, func(w io.Writer) {
+				fmt.Fprintf(w, "openemail %s\n", Version)
+			})
 			return nil
 		},
 	}

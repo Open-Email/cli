@@ -81,7 +81,7 @@ func newPimFamilyCmd(a *app, f pimFamily) *cobra.Command {
 		newPimTokensCmd(a, f, scope),
 	)
 	if f.kind == coreapi.PimCalendars {
-		cmd.AddCommand(newPimRespondCmd(a, f, scope), newInvitationsCmd(a), newPimTasksCmd(a, f, scope))
+		cmd.AddCommand(newPimRespondCmd(a, scope), newInvitationsCmd(a), newPimTasksCmd(a, f, scope))
 	}
 	return cmd
 }
@@ -821,7 +821,10 @@ func newPimObjMoveCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	return cmd
 }
 
-func newPimRespondCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
+// newPimRespondCmd takes no pimFamily because RSVP is calendars-only: it is
+// registered under that guard in newPimFamilyCmd, and RespondPimObject
+// addresses the calendars path family directly.
+func newPimRespondCmd(a *app, scope pimScopeFn) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "respond <calendar> <href> <accepted|declined|tentative|needs-action>",
 		Aliases: []string{"rsvp"},

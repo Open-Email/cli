@@ -28,8 +28,7 @@ func issuesFor(v any) []string {
 	schemas := selfCheckSchemas()
 	comp := schemas["Foo"].(map[string]any)
 	props := comp["properties"].(map[string]any)
-	required := map[string]bool{"a": true, "b": true}
-	return compare(pairing{comp: "Foo"}, schemas, props, required, flattenGoFields(reflect.TypeOf(v)))
+	return compare(pairing{comp: "Foo"}, schemas, props, flattenGoFields(reflect.TypeOf(v)))
 }
 
 func TestContractHarnessFlagsDrift(t *testing.T) {
