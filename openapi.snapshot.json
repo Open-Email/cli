@@ -280,6 +280,12 @@
             },
             "type": "array"
           },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/TrafficSeriesPoint"
+            },
+            "type": "array"
+          },
           "totals": {
             "properties": {
               "bytes": {
@@ -738,6 +744,11 @@
       },
       "BatchUpdateEntry": {
         "properties": {
+          "currentModseq": {
+            "description": "Present iff status=modified: the modseq the message actually carries, i.e. what the CAS compared against and found newer than unchangedSince. Equal to modseq on that status — both are emitted because they answer different questions (what you must send next vs what the row is now), and a client resolving a failed conditional STORE re-sends with this value.",
+            "format": "int64",
+            "type": "integer"
+          },
           "expungedAt": {
             "description": "Present iff status=expunged",
             "format": "int64",
@@ -2458,6 +2469,12 @@
             },
             "type": "array"
           },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/TrafficSeriesPoint"
+            },
+            "type": "array"
+          },
           "totals": {
             "properties": {
               "bytes": {
@@ -3020,6 +3037,16 @@
       },
       "LabelInfo": {
         "properties": {
+          "bytes": {
+            "description": "Sum of the raw sizes of the label's live members (RFC 9051 STATUS SIZE). A message in two labels is counted in both; expunged (trashed) messages are excluded, matching messageCount.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "deletedCount": {
+            "description": "Live members carrying the IMAP \\Deleted flag (RFC 9051 STATUS DELETED). Counted from the same aggregate as messageCount, so it is never staler than the other counts.",
+            "format": "int64",
+            "type": "integer"
+          },
           "highestModseq": {
             "description": "RFC 7162 HIGHESTMODSEQ for the label",
             "format": "int64",
@@ -3028,6 +3055,10 @@
           "id": {
             "format": "int64",
             "type": "integer"
+          },
+          "isSubscribed": {
+            "description": "Whether the folder is subscribed (JMAP Mailbox.isSubscribed, IMAP SUBSCRIBE/LSUB). One bit behind both protocols — set via PATCH — so a client cannot subscribe over IMAP and see it unsubscribed over JMAP. Defaults to true, which is what makes every folder visible to an LSUB that has never been told otherwise.",
+            "type": "boolean"
           },
           "messageCount": {
             "format": "int64",
@@ -3076,7 +3107,10 @@
           "uidNext",
           "messageCount",
           "unseenCount",
+          "deletedCount",
+          "bytes",
           "sortOrder",
+          "isSubscribed",
           "highestModseq"
         ],
         "type": "object"
@@ -6659,6 +6693,44 @@
           "routeKind",
           "events",
           "bytes"
+        ],
+        "type": "object"
+      },
+      "TrafficSeriesPoint": {
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "byOutcome": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "events": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "inbound": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "outbound": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket",
+          "events",
+          "bytes",
+          "inbound",
+          "outbound"
         ],
         "type": "object"
       },
@@ -16030,6 +16102,9 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "isSubscribed": {
+                    "type": "boolean"
+                  },
                   "name": {
                     "maxLength": 255,
                     "minLength": 1,
@@ -16098,7 +16173,7 @@
             "description": "Target name already exists"
           }
         },
-        "summary": "Rename a non-system label and/or set its sortOrder (IMAP RENAME preserves UIDs/uidValidity; sortOrder is the JMAP Mailbox order, allowed on system labels)",
+        "summary": "Rename a non-system label and/or set its sortOrder/isSubscribed (IMAP RENAME preserves UIDs/uidValidity; sortOrder and isSubscribed are the JMAP Mailbox properties, allowed on system labels)",
         "tags": [
           "Labels"
         ]

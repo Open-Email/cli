@@ -16,9 +16,20 @@ type LabelInfo struct {
 	UIDNext      int64   `json:"uidNext"`
 	MessageCount int64   `json:"messageCount"`
 	UnseenCount  int64   `json:"unseenCount"`
+	// DeletedCount and Bytes are RFC 9051 STATUS DELETED and SIZE: members
+	// carrying the IMAP \Deleted flag, and the summed raw size of the label's
+	// live members. Both come from the same aggregate as the two counts above,
+	// so they are never staler than MessageCount. A message in two labels is
+	// sized in both — SIZE is per-mailbox, which is what a client expects.
+	DeletedCount int64 `json:"deletedCount"`
+	Bytes        int64 `json:"bytes"`
 	// SortOrder is the resolved presentation order (JMAP Mailbox sortOrder): a
 	// stored value, else the role default (inbox=1…trash=6, user labels=100).
 	SortOrder int64 `json:"sortOrder"`
+	// IsSubscribed is the folder's IMAP SUBSCRIBE/LSUB bit — the SAME row JMAP
+	// serves as Mailbox.isSubscribed, so the two protocols cannot disagree.
+	// Core defaults it to true.
+	IsSubscribed bool `json:"isSubscribed"`
 	// HighestModseq is the label's RFC 7162 HIGHESTMODSEQ (CONDSTORE).
 	HighestModseq int64 `json:"highestModseq"`
 }

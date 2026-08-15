@@ -176,10 +176,25 @@ type DomainTraffic struct {
 		Events int64 `json:"events"`
 		Bytes  int64 `json:"bytes"`
 	} `json:"totals"`
-	ByOutcome     map[string]int64 `json:"byOutcome"`
-	Rows          []TrafficRow     `json:"rows"`
-	Estimated     bool             `json:"estimated"`
-	RetentionDays int              `json:"retentionDays"`
+	ByOutcome map[string]int64 `json:"byOutcome"`
+	Rows      []TrafficRow     `json:"rows"`
+	// Series is the same events bucketed over time (bucket width follows the
+	// range: 5m for 1h … 1d for 30d). Optional on the wire — a summary built
+	// before the field existed, or an empty result, carries none.
+	Series        []TrafficSeriesPoint `json:"series,omitempty"`
+	Estimated     bool                 `json:"estimated"`
+	RetentionDays int                  `json:"retentionDays"`
+}
+
+// TrafficSeriesPoint is one time bucket of the traffic summary: totals plus the
+// inbound/outbound split and the per-outcome breakdown inside that bucket.
+type TrafficSeriesPoint struct {
+	Bucket    string           `json:"bucket"`
+	Events    int64            `json:"events"`
+	Bytes     int64            `json:"bytes"`
+	Inbound   int64            `json:"inbound"`
+	Outbound  int64            `json:"outbound"`
+	ByOutcome map[string]int64 `json:"byOutcome,omitempty"`
 }
 
 // TrafficEvent is one row of the per-attempt traffic log (GET

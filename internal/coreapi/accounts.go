@@ -101,10 +101,13 @@ type AccountTraffic struct {
 		Events int64 `json:"events"`
 		Bytes  int64 `json:"bytes"`
 	} `json:"totals"`
-	ByOutcome     map[string]int64 `json:"byOutcome"`
-	Rows          []TrafficRow     `json:"rows"`
-	Estimated     bool             `json:"estimated"`
-	RetentionDays int              `json:"retentionDays"`
+	ByOutcome map[string]int64 `json:"byOutcome"`
+	Rows      []TrafficRow     `json:"rows"`
+	// Same time-bucketed series as DomainTraffic, over every domain the account
+	// owns (see TrafficSeriesPoint).
+	Series        []TrafficSeriesPoint `json:"series,omitempty"`
+	Estimated     bool                 `json:"estimated"`
+	RetentionDays int                  `json:"retentionDays"`
 }
 
 // GetAccountTraffic returns the account-wide rollup. rng is one of
