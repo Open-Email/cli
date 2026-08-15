@@ -65,14 +65,14 @@ type Account struct {
 
 // AccountSendUsage is GET /accounts/:accountId/send-usage — the tenant-scale
 // allowance window: what the account has SENT, how many mailboxes it has
-// MINTED, and whether it is frozen. The cross-mailbox reading a per-mailbox
-// send-usage call cannot give.
+// MINTED, and whether sending is disabled. The cross-mailbox reading a
+// per-mailbox send-usage call cannot give.
 type AccountSendUsage struct {
 	AccountID string `json:"accountId"`
-	Frozen    bool   `json:"frozen"`
+	Disabled  bool   `json:"disabled"`
 	// Paused is the reversible half: refused temporarily (429) rather than
-	// permanently. Reported apart from Frozen because the two are different
-	// answers for a support agent — "we stopped them" vs "we are holding them".
+	// permanently. Reported apart from Disabled because the two are different
+	// answers for a support agent — "we disabled them" vs "we are holding them".
 	Paused bool `json:"paused"`
 	Send   struct {
 		Messages    int64  `json:"messages"`
@@ -133,7 +133,7 @@ type SendUsage struct {
 	// platform default. Null means that axis is not enforced at all.
 	MsgsPerDay  *int64 `json:"msgsPerDay"`
 	RcptsPerDay *int64 `json:"rcptsPerDay"`
-	// Sending frozen: every submission is refused regardless of usage.
+	// Sending DISABLED: every submission is refused regardless of usage.
 	Disabled bool `json:"disabled"`
 	// Sending HELD: refused temporarily (429) rather than permanently.
 	Paused        bool  `json:"paused"`

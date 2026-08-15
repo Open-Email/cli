@@ -414,14 +414,14 @@ func newPimImportCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 				return err
 			}
 			a.out.Emit(res, func(w io.Writer) {
-				a.out.Successf("Imported: %d created, %d replaced, %d failed", res.Created, res.Replaced, res.Failed)
+				a.out.Successf("Imported: %d created, %d replaced, %d failed", res.CreatedCount, res.ReplacedCount, res.FailedCount)
 				for _, it := range res.Items {
 					if it.Status == "failed" {
 						a.out.Warnf("  %s: %s", it.UID, it.Error)
 					}
 				}
 			})
-			if res.Failed > 0 {
+			if res.FailedCount > 0 {
 				return silentExit(1)
 			}
 			return nil

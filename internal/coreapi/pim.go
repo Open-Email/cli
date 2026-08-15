@@ -274,10 +274,10 @@ type PimImportItem struct {
 // PimImportResult is the bulk import response (HTTP 200 all-ok, 207 partial —
 // both decode here).
 type PimImportResult struct {
-	Items    []PimImportItem `json:"items"`
-	Created  int64           `json:"created"`
-	Replaced int64           `json:"replaced"`
-	Failed   int64           `json:"failed"`
+	Items         []PimImportItem `json:"items"`
+	CreatedCount  int64           `json:"createdCount"`
+	ReplacedCount int64           `json:"replacedCount"`
+	FailedCount   int64           `json:"failedCount"`
 	// SyncToken is the collection's token after the last successful write;
 	// empty if nothing landed.
 	SyncToken string `json:"syncToken,omitempty"`

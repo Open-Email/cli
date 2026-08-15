@@ -153,7 +153,7 @@ func (s *rulesScreenState) summaryLines(w int) []string {
 		return []string{stDim.Render(truncate("no filter rules yet — author them with `openemail rules add`", w))}
 	}
 	switch {
-	case s.state.Status == "active":
+	case s.state.State == "active":
 		return []string{stLive.Render(truncate("ACTIVE — these rules filter delivered mail", w))}
 	case s.state.ActiveScript != nil:
 		return []string{stErr.Render(truncate(

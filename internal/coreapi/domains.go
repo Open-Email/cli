@@ -55,9 +55,9 @@ type Domain struct {
 
 	// Lifecycle view of the three booleans above, so a client rendering an
 	// onboarding checklist does not have to know which combination means what.
-	// Verified is true for every domain that exists: proving control of the
-	// domain is the precondition for core creating the row at all.
-	Verified  bool `json:"verified"`
+	// There is deliberately no "verified" here: proving control of the domain
+	// is the precondition for core creating the row at all, so every domain
+	// that exists is verified.
 	Receiving bool `json:"receiving"`
 	// Sending is enabled && canSend && !sendPaused.
 	Sending bool `json:"sending"`
@@ -203,7 +203,7 @@ type TrafficEvent struct {
 	MessageID       *string `json:"messageId"`
 	MessageIDHeader *string `json:"messageIdHeader"`
 	Subject         *string `json:"subject"`
-	SizeBytes       *int64  `json:"sizeBytes"`
+	Size            *int64  `json:"size"`
 	BlobHash        *string `json:"blobHash"`
 	Attempt         *int32  `json:"attempt"`
 	Response        *string `json:"response"`

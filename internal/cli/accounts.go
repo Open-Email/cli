@@ -124,12 +124,12 @@ func newAccountListCmd(a *app) *cobra.Command {
 				rows := make([][]string, 0, len(items))
 				for _, ac := range items {
 					// SENDING is its own column rather than a suffix on NAME: a
-					// list is where an operator scans for the frozen tenant, and
+					// list is where an operator scans for the disabled tenant, and
 					// a marker buried in a name column is one they miss.
 					sending := "enabled"
 					switch {
 					case ac.SendDisabled:
-						sending = "FROZEN"
+						sending = "DISABLED"
 					case ac.SendPaused:
 						sending = "PAUSED"
 					}
@@ -186,13 +186,14 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 //
 // The two modes are spelled out rather than collapsed into "not sending",
 // because what happens to the QUEUED mail differs and that is the thing an
-// operator most needs to know before choosing. FROZEN is checked first: core
-// resolves a row carrying both toward the freeze, so reporting the hold would
-// describe behavior the tenant is not getting.
+// operator most needs to know before choosing. DISABLED (core's word for the
+// freeze) is checked first: core resolves a row carrying both toward the
+// freeze, so reporting the hold would describe behavior the tenant is not
+// getting.
 func fmtAccountSendState(disabled, paused bool) string {
 	switch {
 	case disabled:
-		return "FROZEN (every mailbox on every domain; queued mail bounced at the relay)"
+		return "DISABLED (every mailbox on every domain; queued mail bounced at the relay)"
 	case paused:
 		return "PAUSED (every mailbox on every domain; queued mail held, not bounced)"
 	}
@@ -224,7 +225,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 			"pause — a hold can be upgraded to a freeze, but bounced mail cannot be recalled.\n" +
 			"A hold outliving the relay's ~3.2-day retry window dead-letters that backlog\n" +
 			"(preserved and redrivable, but no longer automatic).\n\n" +
-			"Neither touches inbound: a stopped or held account still receives its mail, and\n" +
+			"Neither touches inbound: a disabled or held account still receives its mail, and\n" +
 			"every mailbox stays readable. System callers only, in full — a tenant that could\n" +
 			"lift its own freeze does not have one.",
 		Args: cobra.ExactArgs(1),
@@ -332,7 +333,7 @@ func newAccountUsageCmd(a *app) *cobra.Command {
 		Aliases: []string{"usage"},
 		Short:   "Show an account's send-allowance usage for the current window",
 		Long: "What the account has SENT and how many mailboxes it has MINTED in the rolling\n" +
-			"24h window, plus the caps in force and whether sending is frozen.\n\n" +
+			"24h window, plus the caps in force and whether sending is disabled.\n\n" +
 			"`accounts traffic` shows what went out; this shows what is LEFT. When a tenant\n" +
 			"reports an unexplained 429, this is usually where the reason is — the\n" +
 			"per-mailbox reading looks healthy while the account total is exhausted.",
@@ -348,7 +349,7 @@ func newAccountUsageCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(u, func(w io.Writer) {
 				printTable(w, a.out, []string{"FIELD", "VALUE"}, [][]string{
-					{"Sending", fmtAccountSendState(u.Frozen, u.Paused)},
+					{"Sending", fmtAccountSendState(u.Disabled, u.Paused)},
 					{"Window", fmt.Sprintf("rolling %dh", u.WindowSeconds/3600)},
 					{"Messages", fmt.Sprintf("%d of %s", u.Send.Messages, fmtSendLimit(u.Send.MsgsPerDay))},
 					{"Recipients", fmt.Sprintf("%d of %s", u.Send.Recipients, fmtSendLimit(u.Send.RcptsPerDay))},

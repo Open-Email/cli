@@ -592,7 +592,7 @@ Mode is the question "should this mail survive?":
   backlog is bounced. This is what you want for a spammer, whose client should
   stop retrying against you.
 
-Both are **send-only**. A stopped or held account keeps receiving mail and every
+Both are **send-only**. A disabled or held account keeps receiving mail and every
 mailbox stays readable — which is what makes either safe to use before you have
 finished the investigation. Neither expires on its own; `--resume`/`--unfreeze`
 when you are done, and the very next submission goes through (there is no cache

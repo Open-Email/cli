@@ -18,7 +18,7 @@ func rulesMbx() coreapi.Mailbox {
 const twoRulesJSON = `{"rules":[
 	{"name":"Acme","match":"all","conditions":[{"field":"from","op":"contains","value":"@acme.com"}],"actions":[{"type":"fileInto","label":"Work"}],"stop":false},
 	{"name":"Big","match":"any","conditions":[{"field":"size","op":"over","value":5242880}],"actions":[{"type":"discard"}],"enabled":false,"stop":true}
-],"status":"active","activeScript":"openemail.rules","script":"# sieve","updatedAt":100}`
+],"state":"active","activeScript":"openemail.rules","script":"# sieve","updatedAt":100}`
 
 // The mailboxes screen drills into filters with F.
 func TestMailboxFiltersActionOpensRules(t *testing.T) {
@@ -74,8 +74,8 @@ func TestRulesSummaryStates(t *testing.T) {
 		want string
 	}{
 		{"active", twoRulesJSON, "ACTIVE"},
-		{"displaced", `{"rules":[],"status":"inactive","activeScript":"mine","script":"","updatedAt":1}`, "NOT ACTIVE"},
-		{"unfiltered", `{"rules":[],"status":"inactive","activeScript":null,"script":"","updatedAt":1}`, "no active filter"},
+		{"displaced", `{"rules":[],"state":"inactive","activeScript":"mine","script":"","updatedAt":1}`, "NOT ACTIVE"},
+		{"unfiltered", `{"rules":[],"state":"inactive","activeScript":null,"script":"","updatedAt":1}`, "no active filter"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestRulesToggleAction(t *testing.T) {
 		if r.Method == http.MethodPut {
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &put)
-			w.Write([]byte(`{"rules":[],"status":"active","created":false,"script":""}`))
+			w.Write([]byte(`{"rules":[],"state":"active","created":false,"script":""}`))
 			return
 		}
 		w.Write([]byte(twoRulesJSON))
@@ -168,7 +168,7 @@ func TestRulesReorder(t *testing.T) {
 			putCalls++
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &put)
-			w.Write([]byte(`{"rules":[],"status":"active","created":false,"script":""}`))
+			w.Write([]byte(`{"rules":[],"state":"active","created":false,"script":""}`))
 			return
 		}
 		w.Write([]byte(twoRulesJSON))
@@ -199,7 +199,7 @@ func TestRulesStaleIndexRefused(t *testing.T) {
 		if r.Method == http.MethodPut {
 			t.Error("a stale index must not write")
 		}
-		w.Write([]byte(`{"rules":[],"status":"active","activeScript":null,"script":"","updatedAt":1}`))
+		w.Write([]byte(`{"rules":[],"state":"active","activeScript":null,"script":"","updatedAt":1}`))
 	})
 	defer done()
 	if _, err := reorderRule(context.Background(), c, "01M", ruleRow{index: 3}, -1); err == nil {

@@ -34,8 +34,8 @@ type dmarcState struct {
 
 func newDmarcState() *dmarcState {
 	st := &dmarcState{}
-	for i, w := range coreapi.DmarcWindows {
-		if w == coreapi.DmarcWindowDefault {
+	for i, w := range coreapi.DmarcRanges {
+		if w == coreapi.DmarcRangeDefault {
 			st.i.Store(int64(i))
 			break
 		}
@@ -44,7 +44,7 @@ func newDmarcState() *dmarcState {
 }
 
 func (d *dmarcState) window() string {
-	return coreapi.DmarcWindows[int(d.i.Load())%len(coreapi.DmarcWindows)]
+	return coreapi.DmarcRanges[int(d.i.Load())%len(coreapi.DmarcRanges)]
 }
 
 func (d *dmarcState) cycle() string { d.i.Add(1); return d.window() }
@@ -165,8 +165,8 @@ func dmarcDesc(domain string) resourceDesc {
 			}
 		},
 		actions: []action{
-			{key: "R", label: "R window", do: func(ctx context.Context, c *coreapi.Client, _ any) (string, error) {
-				return "window: " + st.cycle(), nil
+			{key: "R", label: "R range", do: func(ctx context.Context, c *coreapi.Client, _ any) (string, error) {
+				return "range: " + st.cycle(), nil
 			}},
 			{key: "i", label: "i reports", run: func(ctx context.Context, ui *Options, _ any) pane {
 				return newScreenPane(ctx, ui, dmarcReportsDesc(domain))

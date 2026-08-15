@@ -19,8 +19,9 @@ type VerifyResult struct {
 	Kind         string  `json:"kind"`
 	CanSend      bool    `json:"canSend"`
 	// SendHold says WHICH kind of no, and is present only when CanSend is false:
-	// "stopped" is permanent as far as the user is concerned (a domain that
-	// cannot send, or a freeze), "paused" is a hold that will be lifted. A UI
+	// "disabled" is permanent as far as the user is concerned (a domain that
+	// cannot send, or a disabled sender), "paused" is a hold that will be
+	// lifted. A UI
 	// needs the difference — "sending is not available" and "sending is paused"
 	// are different messages. Advisory, like CanSend; the submission gate is the
 	// authority.
@@ -77,14 +78,14 @@ func (c *Client) VerifyLogin(ctx context.Context, username, password, clientIP s
 // PickupIngest is the pop3-fetch ingestion path (system-only): stream a fetched RFC822
 // message for a pickup source. checksum (BLAKE3 hex, optional) becomes the
 // delivery-key suffix. Returns a DeliverResult (delivered/filtered).
-func (c *Client) PickupIngest(ctx context.Context, sourceID string, getBody func() (io.ReadCloser, error), bodyLen int64, checksum string) (*DeliverResult, []byte, error) {
+func (c *Client) PickupIngest(ctx context.Context, pickupID string, getBody func() (io.ReadCloser, error), bodyLen int64, checksum string) (*DeliverResult, []byte, error) {
 	headers := map[string]string{}
 	if checksum != "" {
 		headers["X-Checksum"] = checksum
 	}
 	var out DeliverResult
 	raw, err := c.doJSONRaw(ctx, request{
-		method: http.MethodPost, path: "/deliver/pickup/" + escapeSegment(sourceID),
+		method: http.MethodPost, path: "/deliver/pickup/" + escapeSegment(pickupID),
 		getBody: getBody, bodyLen: bodyLen, contentType: "message/rfc822",
 		headers: headers, idempotent: true,
 	}, &out)
@@ -97,19 +98,19 @@ func (c *Client) PickupIngest(ctx context.Context, sourceID string, getBody func
 // PickupReportInput is the pop3-fetch run-completion callback body. Only Status and
 // Error are persisted by core; the counters are validated but discarded.
 type PickupReportInput struct {
-	Status   string  `json:"status"` // ok | partial | auth_failed | error
-	Error    *string `json:"error,omitempty"`
-	JobID    string  `json:"jobId,omitempty"`
-	Uploaded *int64  `json:"uploaded,omitempty"`
-	Deleted  *int64  `json:"deleted,omitempty"`
-	Failed   *int64  `json:"failed,omitempty"`
+	Status        string  `json:"status"` // ok | partial | auth_failed | error
+	Error         *string `json:"error,omitempty"`
+	JobID         string  `json:"jobId,omitempty"`
+	UploadedCount *int64  `json:"uploadedCount,omitempty"`
+	DeletedCount  *int64  `json:"deletedCount,omitempty"`
+	FailedCount   *int64  `json:"failedCount,omitempty"`
 }
 
 // PickupReport records a pickup run's outcome (system-only). ok/partial clear the
 // failure counter; auth_failed/error increment it and can auto-disable the source.
-func (c *Client) PickupReport(ctx context.Context, sourceID string, in PickupReportInput) error {
+func (c *Client) PickupReport(ctx context.Context, pickupID string, in PickupReportInput) error {
 	return c.doJSON(ctx, request{
-		method: http.MethodPost, path: "/pickups/" + escapeSegment(sourceID) + "/report",
+		method: http.MethodPost, path: "/pickups/" + escapeSegment(pickupID) + "/report",
 		body: mustJSON(in), contentType: "application/json",
 	}, nil)
 }

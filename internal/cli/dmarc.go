@@ -24,24 +24,25 @@ import (
 // to answer "can I move to p=reject yet?" in one screen. The other two drill
 // into the evidence behind that verdict.
 
-// dmarcWindowFlag registers --window with the DMARC vocabulary. It is
-// deliberately NOT the traffic/events --range set: core calibrates readiness
-// thresholds in days and rejects anything outside 7d|30d|90d, so sharing the
-// flag would just produce 400s from muscle memory.
-func dmarcWindowFlag(cmd *cobra.Command, window *string) {
-	cmd.Flags().StringVar(window, "window", coreapi.DmarcWindowDefault,
-		"reporting window: "+strings.Join(coreapi.DmarcWindows, "|"))
+// dmarcRangeFlag registers --range with the DMARC vocabulary. Same flag name
+// as the traffic/events --range, but deliberately NOT the same value set: core
+// calibrates readiness thresholds in days and rejects anything outside
+// 7d|30d|90d, so the values are checked locally before a 400 comes back from
+// muscle memory.
+func dmarcRangeFlag(cmd *cobra.Command, rng *string) {
+	cmd.Flags().StringVar(rng, "range", coreapi.DmarcRangeDefault,
+		"reporting window: "+strings.Join(coreapi.DmarcRanges, "|"))
 }
 
-// checkDmarcWindow rejects an unknown window locally so the user gets the
+// checkDmarcRange rejects an unknown range locally so the user gets the
 // accepted set rather than a bare validation_failed from core — the values
 // differ from every other time-window flag in the CLI.
-func checkDmarcWindow(window string) error {
-	if coreapi.ValidDmarcWindow(window) {
+func checkDmarcRange(rng string) error {
+	if coreapi.ValidDmarcRange(rng) {
 		return nil
 	}
-	return usageError(fmt.Errorf("--window %q is not one of %s (note: NOT the traffic/events ranges)",
-		window, strings.Join(coreapi.DmarcWindows, "|")))
+	return usageError(fmt.Errorf("--range %q is not one of %s (note: NOT the traffic/events ranges)",
+		rng, strings.Join(coreapi.DmarcRanges, "|")))
 }
 
 func newDomainDmarcCmd(a *app) *cobra.Command {
@@ -58,7 +59,7 @@ func newDomainDmarcCmd(a *app) *cobra.Command {
 			"This reads ingested reports; it does not check the domain's _dmarc DNS record.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := checkDmarcWindow(window); err != nil {
+			if err := checkDmarcRange(window); err != nil {
 				return err
 			}
 			client, err := a.authedClient()
@@ -73,7 +74,7 @@ func newDomainDmarcCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	dmarcWindowFlag(cmd, &window)
+	dmarcRangeFlag(cmd, &window)
 	return cmd
 }
 
@@ -92,7 +93,7 @@ func newDomainDmarcSourcesCmd(a *app) *cobra.Command {
 			"(a CRM, a ticketing tool) or a spoofer — identify it before tightening the policy.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := checkDmarcWindow(window); err != nil {
+			if err := checkDmarcRange(window); err != nil {
 				return err
 			}
 			if limit < 0 || limit > 500 {
@@ -149,7 +150,7 @@ func newDomainDmarcSourcesCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	dmarcWindowFlag(cmd, &window)
+	dmarcRangeFlag(cmd, &window)
 	cmd.Flags().IntVar(&limit, "limit", 0, "max sources to return (1–500; default 100)")
 	return cmd
 }

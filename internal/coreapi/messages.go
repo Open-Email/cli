@@ -351,12 +351,12 @@ func (c *Client) EmptyTrash(ctx context.Context, mailboxID string) (int64, error
 	q := url.Values{}
 	q.Set("state", "expunged")
 	var out struct {
-		Purged int64 `json:"purged"`
+		PurgedCount int64 `json:"purgedCount"`
 	}
 	err := c.doJSON(ctx, request{
 		method: http.MethodDelete, path: c.messagesPath(mailboxID), query: q,
 	}, &out)
-	return out.Purged, err
+	return out.PurgedCount, err
 }
 
 // MimeBatch fetches cached ENVELOPE/BODYSTRUCTURE for up to 200 message ids. The

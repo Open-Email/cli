@@ -10,7 +10,7 @@ import (
 
 // GetDomainEvents builds ?range=&outcome=&source=&limit=&cursor= (omitting
 // empties), hits /domains/:domain/events, and decodes the keyset page —
-// including nullable columns (attempt null, sizeBytes present) and the
+// including nullable columns (attempt null, size present) and the
 // cursor (string on a middle page).
 func TestGetDomainEventsBuildsQueryAndDecodes(t *testing.T) {
 	var gotPath string
@@ -21,7 +21,7 @@ func TestGetDomainEventsBuildsQueryAndDecodes(t *testing.T) {
 			{"eventTime":1784,"source":"inbound","outcome":"delivered","detail":null,"deliveryId":"dlv1",
 			 "envelopeFrom":"a@x.test","envelopeTo":"b@x.example","originalAddress":null,"matchedBy":"exact",
 			 "routeKind":"mailbox","routeTarget":"mbx:m1","mailboxId":"m1","messageId":"01M",
-			 "messageIdHeader":"<id@x>","subject":"Hi","sizeBytes":2048,"blobHash":"sha","attempt":null,"response":null}
+			 "messageIdHeader":"<id@x>","subject":"Hi","size":2048,"blobHash":"sha","attempt":null,"response":null}
 		]}`))
 	}))
 	defer srv.Close()
@@ -51,8 +51,8 @@ func TestGetDomainEventsBuildsQueryAndDecodes(t *testing.T) {
 	if e.Attempt != nil {
 		t.Fatalf("attempt should decode null → nil, got %v", *e.Attempt)
 	}
-	if e.SizeBytes == nil || *e.SizeBytes != 2048 {
-		t.Fatalf("sizeBytes = %v, want 2048", e.SizeBytes)
+	if e.Size == nil || *e.Size != 2048 {
+		t.Fatalf("size = %v, want 2048", e.Size)
 	}
 	if e.Subject == nil || *e.Subject != "Hi" || e.Detail != nil {
 		t.Fatalf("bad nullable strings: subject=%v detail=%v", e.Subject, e.Detail)

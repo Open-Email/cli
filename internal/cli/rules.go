@@ -48,7 +48,7 @@ func rulesState(cmd *cobra.Command, client *coreapi.Client, mbx string) (*coreap
 		return st, nil
 	}
 	if coreapi.IsNotFound(err) {
-		return &coreapi.FilterRulesState{Rules: []coreapi.FilterRule{}, Status: "inactive"}, nil
+		return &coreapi.FilterRulesState{Rules: []coreapi.FilterRule{}, State: "inactive"}, nil
 	}
 	return nil, err
 }
@@ -71,7 +71,7 @@ func newRulesListCmd(a *app) *cobra.Command {
 			st, err := client.GetRules(cmd.Context(), mbx)
 			if err != nil {
 				if coreapi.IsNotFound(err) {
-					a.out.Emit(map[string]any{"rules": []coreapi.FilterRule{}, "status": "none"}, func(w io.Writer) {
+					a.out.Emit(map[string]any{"rules": []coreapi.FilterRule{}, "state": "none"}, func(w io.Writer) {
 						a.out.Msgf("no filter rules — create one with `openemail rules add`")
 					})
 					return nil
@@ -99,7 +99,7 @@ func newRulesListCmd(a *app) *cobra.Command {
 // mail — the question a rules listing must never leave ambiguous.
 func printRulesStatus(a *app, st *coreapi.FilterRulesState) {
 	switch {
-	case st.Status == "active":
+	case st.State == "active":
 		a.out.Msgf("these rules are the active filter")
 	case st.ActiveScript != nil:
 		a.out.Warnf("NOT active — the hand-written script %q is the active filter; `openemail rules put`/edits re-activate these", *st.ActiveScript)
@@ -456,7 +456,7 @@ func newRulesScriptCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			a.out.Emit(map[string]any{"script": st.Script, "status": st.Status}, func(w io.Writer) {
+			a.out.Emit(map[string]any{"script": st.Script, "state": st.State}, func(w io.Writer) {
 				fmt.Fprint(os.Stdout, st.Script)
 				if !strings.HasSuffix(st.Script, "\n") {
 					fmt.Fprintln(os.Stdout)

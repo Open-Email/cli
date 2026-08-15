@@ -9,13 +9,13 @@ import (
 )
 
 // UploadResult is POST /uploads: a staged blob referenced by later calls.
-// Expires is an ISO 8601 UTC instant after which the upload is treated as
+// ExpiresAt is the epoch-seconds instant after which the upload is treated as
 // gone — reference it before then.
 type UploadResult struct {
-	BlobID  string `json:"blobId"`
-	Type    string `json:"type"`
-	Size    int64  `json:"size"`
-	Expires string `json:"expires"`
+	BlobID    string `json:"blobId"`
+	Type      string `json:"type"`
+	Size      int64  `json:"size"`
+	ExpiresAt int64  `json:"expiresAt"`
 }
 
 // UploadBlob stages arbitrary bytes for later reference (an attachment on

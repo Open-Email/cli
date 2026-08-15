@@ -445,11 +445,11 @@ func newMemberAddCmd(a *app) *cobra.Command {
 					}
 					return err
 				}
-				added += res.Added
-				duplicates += res.Duplicates
+				added += res.AddedCount
+				duplicates += res.DuplicateCount
 				done = end
 			}
-			a.out.Emit(map[string]any{"address": address, "added": added, "duplicates": duplicates}, func(w io.Writer) {
+			a.out.Emit(map[string]any{"address": address, "addedCount": added, "duplicateCount": duplicates}, func(w io.Writer) {
 				a.out.Successf("added %d, duplicates %d", added, duplicates)
 			})
 			return nil

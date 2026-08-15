@@ -185,12 +185,13 @@ func fmtSendCap(n *int64) string {
 // while both of these are things an operator DID and can undo.
 //
 // The two modes are named apart because their effect on QUEUED mail differs: a
-// freeze bounces it, a hold keeps it. FROZEN is reported first, since core
-// resolves a row carrying both toward the permanent answer.
+// freeze bounces it, a hold keeps it. DISABLED (core's word for the freeze) is
+// reported first, since core resolves a row carrying both toward the permanent
+// answer.
 func fmtSendState(disabled, paused bool) string {
 	switch {
 	case disabled:
-		return "FROZEN (submissions refused permanently; queued mail bounced at the relay)"
+		return "DISABLED (submissions refused permanently; queued mail bounced at the relay)"
 	case paused:
 		return "PAUSED (submissions deferred; queued mail held, not bounced)"
 	}

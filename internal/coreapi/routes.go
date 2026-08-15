@@ -159,8 +159,8 @@ func (c *Client) ReplaceMembers(ctx context.Context, address string, members []s
 // RouteMemberBatchResult reports one batch add's insertion counts:
 // already-present members count as duplicates, never errors.
 type RouteMemberBatchResult struct {
-	Added      int64 `json:"added"`
-	Duplicates int64 `json:"duplicates"`
+	AddedCount     int64 `json:"addedCount"`
+	DuplicateCount int64 `json:"duplicateCount"`
 }
 
 // BatchAddMembers adds up to 1000 members in one atomic call. Idempotent by

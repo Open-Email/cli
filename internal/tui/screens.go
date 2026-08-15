@@ -63,9 +63,9 @@ func domainsDesc() resourceDesc {
 			d := item.(coreapi.Domain)
 			kvs := []kv{
 				{k: "domain", v: d.Domain},
-				// verified is true for every row that exists — control of the
-				// domain is the precondition for core creating it at all.
-				{k: "verified", v: yn(d.Verified)},
+				// No "verified" line: every row that exists is verified —
+				// control of the domain is the precondition for core creating
+				// it at all.
 				{k: "receiving", v: yn(d.Receiving)},
 				{k: "sending", v: yn(d.Sending)},
 				{k: "enabled", v: yn(d.Enabled)},
@@ -123,7 +123,7 @@ func domainsDesc() resourceDesc {
 				dm      *coreapi.DomainDmarc
 				dmErr   error
 				kvs     []kv
-				window  = coreapi.DmarcWindowDefault
+				window  = coreapi.DmarcRangeDefault
 				outcome []string
 			)
 			wg.Add(2)
@@ -198,15 +198,16 @@ func mailboxesDesc() resourceDesc {
 				if m.QuotaBytes != nil {
 					quota = fmtBytes(*m.QuotaBytes)
 				}
-				// A stopped or held mailbox is marked here because this list is the
-				// only place the TUI shows a live mailbox at all — opening one goes
-				// straight to its messages, so an unmarked row is a mailbox whose
-				// sending is stopped with nothing anywhere saying so. The two modes
-				// are named apart: FROZEN bounces queued mail, PAUSED holds it.
+				// A disabled or held mailbox is marked here because this list is
+				// the only place the TUI shows a live mailbox at all — opening one
+				// goes straight to its messages, so an unmarked row is a mailbox
+				// whose sending is disabled with nothing anywhere saying so. The
+				// two modes are named apart: DISABLED bounces queued mail, PAUSED
+				// holds it.
 				address := strOr(m.PrimaryAddress, "—")
 				switch {
 				case m.SendDisabled:
-					address += " [FROZEN]"
+					address += " [DISABLED]"
 				case m.SendPaused:
 					address += " [PAUSED]"
 				}
@@ -568,14 +569,14 @@ func accountsDesc() resourceDesc {
 			}
 			rows := make([]rowData, len(pg.Items))
 			for i, a := range pg.Items {
-				// Marked for the same reason a frozen mailbox is, one scope up:
+				// Marked for the same reason a disabled mailbox is, one scope up:
 				// this list is where an operator looks for the tenant they
-				// stopped, and an unmarked row is an account whose sending is
-				// frozen with nothing anywhere saying so.
+				// disabled, and an unmarked row is an account whose sending is
+				// disabled with nothing anywhere saying so.
 				name := a.Name
 				switch {
 				case a.SendDisabled:
-					name += " [FROZEN]"
+					name += " [DISABLED]"
 				case a.SendPaused:
 					name += " [PAUSED]"
 				}
@@ -591,7 +592,7 @@ func accountsDesc() resourceDesc {
 			sending := "enabled"
 			switch {
 			case a.SendDisabled:
-				sending = "FROZEN — every mailbox on every domain; queued mail bounced at the relay"
+				sending = "DISABLED — every mailbox on every domain; queued mail bounced at the relay"
 			case a.SendPaused:
 				sending = "PAUSED — every mailbox on every domain; queued mail held, not bounced"
 			}
@@ -971,7 +972,7 @@ func trafficEventsDesc(domain string) resourceDesc {
 				{k: "delivery id", v: strOr(e.DeliveryID, "—")},
 				{k: "message id", v: strOr(e.MessageID, "—")},
 				{k: "message-id hdr", v: strOr(e.MessageIDHeader, "—")},
-				{k: "size", v: int64Or(e.SizeBytes, "—")},
+				{k: "size", v: int64Or(e.Size, "—")},
 				{k: "blob hash", v: strOr(e.BlobHash, "—")},
 				{k: "attempt", v: int32Ptr(e.Attempt)},
 				{k: "response", v: strOr(e.Response, "—")},

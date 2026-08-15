@@ -19,21 +19,21 @@ import (
 // local part and whose arriving mail is parsed as aggregate reports. Renderers
 // must never label either one a bare "dmarc".
 
-// DmarcWindows is the window vocabulary these endpoints accept, in cycle order.
-// Deliberately NOT the traffic/events range set (1h|6h|24h|7d|30d): readiness
-// thresholds are calibrated in days against a fixed enum so a caller cannot
-// cherry-pick a window that manufactures a "ready" verdict. Core answers
+// DmarcRanges is the `?range=` vocabulary these endpoints accept, in cycle
+// order. Deliberately NOT the traffic/events range set (1h|6h|24h|7d|30d):
+// readiness thresholds are calibrated in days against a fixed enum so a caller
+// cannot cherry-pick a window that manufactures a "ready" verdict. Core answers
 // 400 validation_failed for anything else.
-var DmarcWindows = []string{"7d", "30d", "90d"}
+var DmarcRanges = []string{"7d", "30d", "90d"}
 
-// DmarcWindowDefault mirrors core's own default. 7d is a poor default despite
+// DmarcRangeDefault mirrors core's own default. 7d is a poor default despite
 // being the shortest: readiness needs 7 observed days, so a 7d request nearly
 // always trips the short_window blocker.
-const DmarcWindowDefault = "30d"
+const DmarcRangeDefault = "30d"
 
-// ValidDmarcWindow reports whether s is one of DmarcWindows.
-func ValidDmarcWindow(s string) bool {
-	for _, w := range DmarcWindows {
+// ValidDmarcRange reports whether s is one of DmarcRanges.
+func ValidDmarcRange(s string) bool {
+	for _, w := range DmarcRanges {
 		if w == s {
 			return true
 		}
@@ -161,12 +161,12 @@ type DomainDmarcReports struct {
 	NextCursor *string       `json:"nextCursor,omitempty"`
 }
 
-// GetDomainDmarc returns the summary + readiness verdict. window is one of
-// DmarcWindows (empty → core's default).
-func (c *Client) GetDomainDmarc(ctx context.Context, domain, window string) (*DomainDmarc, error) {
+// GetDomainDmarc returns the summary + readiness verdict. rng is one of
+// DmarcRanges (empty → core's default).
+func (c *Client) GetDomainDmarc(ctx context.Context, domain, rng string) (*DomainDmarc, error) {
 	q := url.Values{}
-	if window != "" {
-		q.Set("window", window)
+	if rng != "" {
+		q.Set("range", rng)
 	}
 	var out DomainDmarc
 	err := c.doJSON(ctx, request{
@@ -180,12 +180,12 @@ func (c *Client) GetDomainDmarc(ctx context.Context, domain, window string) (*Do
 }
 
 // GetDomainDmarcSources returns every classified source over the window.
-// window is one of DmarcWindows (empty → core's default); limit ≤ 500
+// rng is one of DmarcRanges (empty → core's default); limit ≤ 500
 // (0 → core's default 100).
-func (c *Client) GetDomainDmarcSources(ctx context.Context, domain, window string, limit int) (*DomainDmarcSources, error) {
+func (c *Client) GetDomainDmarcSources(ctx context.Context, domain, rng string, limit int) (*DomainDmarcSources, error) {
 	q := url.Values{}
-	if window != "" {
-		q.Set("window", window)
+	if rng != "" {
+		q.Set("range", rng)
 	}
 	if limit > 0 {
 		q.Set("limit", itoa(limit))

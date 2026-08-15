@@ -57,8 +57,8 @@ type RulesDocument struct {
 // active filter, which script IS active (nil = filtering off), and the Sieve
 // the rules compile to.
 type FilterRulesState struct {
-	Rules  []FilterRule `json:"rules"`
-	Status string       `json:"status"` // active | inactive
+	Rules []FilterRule `json:"rules"`
+	State string       `json:"state"` // active | inactive
 	// ActiveScript names whatever script is currently active; nil means no
 	// active script at all (delivery is unfiltered).
 	ActiveScript *string `json:"activeScript"`
@@ -66,11 +66,11 @@ type FilterRulesState struct {
 	UpdatedAt    int64   `json:"updatedAt"`
 }
 
-// FilterRulesPutResult is PUT /rules. Status is always "active" — a successful
+// FilterRulesPutResult is PUT /rules. State is always "active" — a successful
 // put makes the rules the active filter, displacing any hand-written script.
 type FilterRulesPutResult struct {
 	Rules   []FilterRule `json:"rules"`
-	Status  string       `json:"status"`
+	State   string       `json:"state"`
 	Created bool         `json:"created"`
 	Script  string       `json:"script"`
 }

@@ -54,20 +54,20 @@ func TestParseMaxMailboxesFlag(t *testing.T) {
 }
 
 // The account freeze is the widest abuse control the CLI exposes, so its
-// rendering must be unmissable when frozen and quiet when not — and it must say
+// rendering must be unmissable when disabled and quiet when not — and it must say
 // the SCOPE, since the reason to reach for it over the per-mailbox freeze is
 // that it also covers mailboxes the tenant has not created yet.
 func TestFmtAccountSendState(t *testing.T) {
 	if got := fmtAccountSendState(false, false); got != "enabled" {
 		t.Errorf("fmtAccountSendState(live) = %q; want %q", got, "enabled")
 	}
-	frozen := fmtAccountSendState(true, false)
-	if !strings.Contains(frozen, "FROZEN") {
-		t.Errorf("fmtAccountSendState(frozen) = %q; want it to shout FROZEN", frozen)
+	disabled := fmtAccountSendState(true, false)
+	if !strings.Contains(disabled, "DISABLED") {
+		t.Errorf("fmtAccountSendState(disabled) = %q; want it to shout DISABLED", disabled)
 	}
 	for _, want := range []string{"every mailbox", "every domain", "relay"} {
-		if !strings.Contains(frozen, want) {
-			t.Errorf("fmtAccountSendState(frozen) = %q; want it to mention %q", frozen, want)
+		if !strings.Contains(disabled, want) {
+			t.Errorf("fmtAccountSendState(disabled) = %q; want it to mention %q", disabled, want)
 		}
 	}
 
@@ -78,7 +78,7 @@ func TestFmtAccountSendState(t *testing.T) {
 	if !strings.Contains(paused, "PAUSED") {
 		t.Errorf("fmtAccountSendState(paused) = %q; want it to shout PAUSED", paused)
 	}
-	if strings.Contains(paused, "FROZEN") {
+	if strings.Contains(paused, "DISABLED") {
 		t.Errorf("fmtAccountSendState(paused) = %q; must not read as a freeze", paused)
 	}
 	if !strings.Contains(paused, "held") {
@@ -87,7 +87,7 @@ func TestFmtAccountSendState(t *testing.T) {
 
 	// Both set resolves toward the FREEZE, matching what core actually does — so
 	// the CLI can never describe behavior the tenant is not getting.
-	if got := fmtAccountSendState(true, true); !strings.Contains(got, "FROZEN") {
+	if got := fmtAccountSendState(true, true); !strings.Contains(got, "DISABLED") {
 		t.Errorf("fmtAccountSendState(both) = %q; want the permanent answer to win", got)
 	}
 }

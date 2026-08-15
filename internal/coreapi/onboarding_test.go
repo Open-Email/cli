@@ -26,7 +26,7 @@ func TestCreateDomainReturnsDomainAndRecords(t *testing.T) {
 			"aliasOf":null,"fbl":false,"dmarc":false,"jmap":false,
 			"dnsStatus":{"mx":true,"spf":false,"dkim":false,"dmarc":false},
 			"dnsCheckedAt":1700000000,"accountId":"ACC","createdAt":1700000000,
-			"verified":true,"receiving":true,"sending":false,
+			"receiving":true,"sending":false,
 			"records":[
 				{"kind":"mx","type":"MX","name":"a.test","value":"mx.open.email","priority":10,
 				 "purpose":"Receive mail","required":true,"ok":true,"found":["mx.open.email"]},
@@ -40,7 +40,7 @@ func TestCreateDomainReturnsDomainAndRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !d.Verified || !d.Receiving || d.Sending {
+	if !d.Receiving || d.Sending {
 		t.Fatalf("lifecycle mis-decoded: %+v", d)
 	}
 	if d.Domain != "a.test" {

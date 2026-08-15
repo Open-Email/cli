@@ -144,7 +144,7 @@ func newMailboxListCmd(a *app) *cobra.Command {
 				rows := make([][]string, 0, len(items))
 				for _, m := range items {
 					address := strOr(m.PrimaryAddress, "—")
-					// A frozen mailbox is marked in the LIST, not just in `get`.
+					// A disabled mailbox is marked in the LIST, not just in `get`.
 					// The question an operator brings to this table during an
 					// incident is "which of these did I stop?", and answering it
 					// only in a per-mailbox read means opening them one at a time.
@@ -156,7 +156,7 @@ func newMailboxListCmd(a *app) *cobra.Command {
 					// mail and which are merely holding it.
 					switch {
 					case m.SendDisabled:
-						address += "  [FROZEN]"
+						address += "  [DISABLED]"
 					case m.SendPaused:
 						address += "  [PAUSED]"
 					}

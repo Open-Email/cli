@@ -116,7 +116,7 @@ func newAdminPickupCmd(a *app) *cobra.Command {
 func newAdminPickupIngestCmd(a *app) *cobra.Command {
 	var file, checksum string
 	cmd := &cobra.Command{
-		Use:   "ingest <sourceId>",
+		Use:   "ingest <pickupId>",
 		Short: "Ingest a fetched RFC822 message for a pickup source (pop3-fetch path)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -148,7 +148,7 @@ func newAdminPickupReportCmd(a *app) *cobra.Command {
 		uploaded, deleted, faild int64
 	)
 	cmd := &cobra.Command{
-		Use:   "report <sourceId> --status <ok|partial|auth_failed|error>",
+		Use:   "report <pickupId> --status <ok|partial|auth_failed|error>",
 		Short: "Record a pickup run's outcome (pop3-fetch callback)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -166,13 +166,13 @@ func newAdminPickupReportCmd(a *app) *cobra.Command {
 				in.Error = &errMsg
 			}
 			if cmd.Flags().Changed("uploaded") {
-				in.Uploaded = &uploaded
+				in.UploadedCount = &uploaded
 			}
 			if cmd.Flags().Changed("deleted") {
-				in.Deleted = &deleted
+				in.DeletedCount = &deleted
 			}
 			if cmd.Flags().Changed("failed") {
-				in.Failed = &faild
+				in.FailedCount = &faild
 			}
 			if err := client.PickupReport(cmd.Context(), args[0], in); err != nil {
 				return err

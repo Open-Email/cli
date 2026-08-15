@@ -817,7 +817,7 @@ func newMessageTrashCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			a.out.Emit(map[string]any{"purged": purged}, func(w io.Writer) {
+			a.out.Emit(map[string]any{"purgedCount": purged}, func(w io.Writer) {
 				a.out.Successf("Purged %d message(s) from trash", purged)
 			})
 			return nil

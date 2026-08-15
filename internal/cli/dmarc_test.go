@@ -112,17 +112,17 @@ func TestDmarcPolicyTransitionNoRecommendation(t *testing.T) {
 	}
 }
 
-func TestDmarcWindowValidation(t *testing.T) {
+func TestDmarcRangeValidation(t *testing.T) {
 	// The traffic/events ranges are the trap: they are a different set, and
 	// typing one out of habit must be answered locally with the right one.
-	if err := checkDmarcWindow("24h"); err == nil {
+	if err := checkDmarcRange("24h"); err == nil {
 		t.Fatal("24h is a traffic range, not a DMARC window — should be rejected")
 	} else if !strings.Contains(err.Error(), "7d|30d|90d") {
 		t.Errorf("rejection should name the accepted set, got %v", err)
 	}
-	for _, w := range coreapi.DmarcWindows {
-		if err := checkDmarcWindow(w); err != nil {
-			t.Errorf("checkDmarcWindow(%q) = %v", w, err)
+	for _, w := range coreapi.DmarcRanges {
+		if err := checkDmarcRange(w); err != nil {
+			t.Errorf("checkDmarcRange(%q) = %v", w, err)
 		}
 	}
 }

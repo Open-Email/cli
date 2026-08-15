@@ -238,8 +238,8 @@ func TestLiveE2E_TrashLifecycle(t *testing.T) {
 	}
 
 	purge := sysJSON(t, "messages", "trash", "empty", "-m", c.mailbox, "--yes")
-	if p, _ := num(purge, "purged"); p < 1 {
-		t.Fatalf("purged = %v, want >= 1", purge["purged"])
+	if p, _ := num(purge, "purgedCount"); p < 1 {
+		t.Fatalf("purgedCount = %v, want >= 1", purge["purgedCount"])
 	}
 	after := sysJSON(t, "messages", "list", "-m", c.mailbox, "--trash")
 	if findByID(after, "messages", msgID) != nil {

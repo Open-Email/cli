@@ -173,12 +173,12 @@ func TestRespondPimObject(t *testing.T) {
 	}
 }
 
-// A 207 partial import is a success at the transport layer; Failed carries the
-// tally and failed items keep their error.
+// A 207 partial import is a success at the transport layer; FailedCount carries
+// the tally and failed items keep their error.
 func TestImportPimCollection207(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(207)
-		w.Write([]byte(`{"items":[{"uid":"u1","href":"u1.ics","status":"created","etag":"e1"},{"uid":"u2","href":null,"status":"failed","error":"object_too_large"}],"created":1,"replaced":0,"failed":1,"syncToken":"oe-sync:1:7"}`))
+		w.Write([]byte(`{"items":[{"uid":"u1","href":"u1.ics","status":"created","etag":"e1"},{"uid":"u2","href":null,"status":"failed","error":"object_too_large"}],"createdCount":1,"replacedCount":0,"failedCount":1,"syncToken":"oe-sync:1:7"}`))
 	}))
 	defer srv.Close()
 	res, err := m3Client(t, srv.URL).ImportPimCollection(context.Background(),
@@ -186,7 +186,7 @@ func TestImportPimCollection207(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportPimCollection: %v", err)
 	}
-	if res.Failed != 1 || res.Items[1].Href != nil || res.Items[1].Error != "object_too_large" {
+	if res.FailedCount != 1 || res.Items[1].Href != nil || res.Items[1].Error != "object_too_large" {
 		t.Fatalf("bad decode: %+v", res)
 	}
 }

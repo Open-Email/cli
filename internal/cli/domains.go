@@ -445,7 +445,6 @@ func newDomainEventsCmd(a *app) *cobra.Command {
 func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 	rows := [][]string{
 		{"Domain", d.Domain},
-		{"Verified", boolYN(d.Verified)},
 		{"Receiving", boolYN(d.Receiving)},
 		{"Sending", boolYN(d.Sending)},
 		{"Enabled", boolYN(d.Enabled)},

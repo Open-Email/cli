@@ -64,7 +64,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `mailboxes` | create/list/get/update/delete/restore, `use` (set default) |
 | `keys` | account API keys: create/list/revoke |
 | `accounts` | accounts (create/list/update are system-only), get, `traffic`, `send-usage`; `create --with-key` also mints the account's first API key; `update --freeze` is the tenant-scale send STOP and `update --pause` its reversible HOLD (both cover every mailbox on every domain the account owns, queued relay backlog included, and neither touches inbound — but a freeze bounces that backlog while a pause defers it), `update --send-*-per-day` sets the tenant-scale volume caps, `traffic` is the cross-mailbox rollup of what went OUT and `send-usage` of what is LEFT |
-| `domains` | domains (`create` is create-or-advance: requires your verification TXT, activates sending once SPF + both DKIM CNAMEs resolve), `dns <domain>` (required records + liveness) + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness) and `dmarc-sources <domain>` take `--window 7d\|30d\|90d`; `dmarc-reports <domain>` pages the raw reports over the full retention (`--limit/--cursor/--all`, no window) |
+| `domains` | domains (`create` is create-or-advance: requires your verification TXT, activates sending once SPF + both DKIM CNAMEs resolve), `dns <domain>` (required records + liveness) + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness) and `dmarc-sources <domain>` take `--range 7d\|30d\|90d`; `dmarc-reports <domain>` pages the raw reports over the full retention (`--limit/--cursor/--all`, no window) |
 | `routes` | address routes + `members list\|add\|remove\|replace` |
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's login credentials (app-passwords; `--expires-in` for session-scoped ones, @-free usernames for mail-less identities) |
@@ -118,7 +118,7 @@ id=$(openemail watch -m alice@example.com --until 'message.new' --timeout 30s | 
 openemail watch -m alice@example.com --fetch --exec 'jq -r .message.subject'
 
 # "Can I move this domain to p=reject yet?" — readiness, blockers, top sources.
-openemail domains dmarc example.com --window 30d
+openemail domains dmarc example.com --range 30d
 openemail domains dmarc-sources example.com   # every sender, unaligned ones first
 openemail domains dmarc-reports example.com   # the raw ingest log (empty ⇒ check rua=)
 

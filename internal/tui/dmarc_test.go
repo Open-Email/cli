@@ -12,7 +12,7 @@ import (
 	"github.com/Open-Email/cli/internal/coreapi"
 )
 
-// windowRecorder collects the ?window each stubbed request carried. The screen
+// windowRecorder collects the ?range each stubbed request carried. The screen
 // issues its two reads concurrently, so the handler runs on two goroutines and
 // the recorder must be synchronized — an unguarded slice here trips -race.
 type windowRecorder struct {
@@ -35,12 +35,12 @@ func (w *windowRecorder) take() []string {
 }
 
 // dmarcServer stubs the two endpoints the DMARC screen issues together,
-// recording the ?window each was asked for so the snapshot-per-fetch discipline
+// recording the ?range each was asked for so the snapshot-per-fetch discipline
 // is testable (the verdict and the rows must describe ONE window).
 func dmarcServer(t *testing.T, windows *windowRecorder, empty bool) (*coreapi.Client, func()) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		windows.add(r.URL.Query().Get("window"))
+		windows.add(r.URL.Query().Get("range"))
 		w.WriteHeader(200)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/dmarc/sources"):
@@ -116,8 +116,8 @@ func TestDmarcDescSortsUnalignedFirst(t *testing.T) {
 	}
 	// Both endpoints must have been asked for the same window.
 	seen := windows.take()
-	if len(seen) != 2 || seen[0] != seen[1] || seen[0] != coreapi.DmarcWindowDefault {
-		t.Errorf("both reads should snapshot one window (%s), server saw %v", coreapi.DmarcWindowDefault, seen)
+	if len(seen) != 2 || seen[0] != seen[1] || seen[0] != coreapi.DmarcRangeDefault {
+		t.Errorf("both reads should snapshot one window (%s), server saw %v", coreapi.DmarcRangeDefault, seen)
 	}
 }
 
@@ -146,7 +146,7 @@ func TestDmarcDescSummaryAndWindowCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
-	if !strings.Contains(flash, "window: ") {
+	if !strings.Contains(flash, "range: ") {
 		t.Errorf("cycle flash = %q", flash)
 	}
 	windows.take() // drop the first fetch's records
@@ -154,7 +154,7 @@ func TestDmarcDescSummaryAndWindowCycle(t *testing.T) {
 		t.Fatalf("refetch: %v", err)
 	}
 	seen := windows.take()
-	if len(seen) != 2 || seen[0] == coreapi.DmarcWindowDefault || seen[0] != seen[1] {
+	if len(seen) != 2 || seen[0] == coreapi.DmarcRangeDefault || seen[0] != seen[1] {
 		t.Errorf("cycled window should be queried by both reads, server saw %v", seen)
 	}
 }
