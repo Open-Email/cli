@@ -85,7 +85,7 @@ func TestComposeMessage(t *testing.T) {
 
 	at := int64(1700000000)
 	res, _, err := m3Client(t, srv.URL).ComposeMessage(context.Background(), "01M",
-		SendRequest{From: SendAddress{Address: "me@x.test"}, Subject: "Draft"},
+		SendRequest{From: SendAddress{Email: "me@x.test"}, Subject: "Draft"},
 		ComposeOptions{Label: "Drafts", Flags: []string{"draft", "seen"}, InternalDate: &at, DeliveryID: "d9"})
 	if err != nil {
 		t.Fatalf("ComposeMessage: %v", err)
@@ -97,7 +97,7 @@ func TestComposeMessage(t *testing.T) {
 	if gotQuery != "flags=draft%2Cseen&internaldate=1700000000&label=Drafts" {
 		t.Errorf("query = %q", gotQuery)
 	}
-	if from, _ := gotBody["from"].(map[string]any); from["address"] != "me@x.test" {
+	if from, _ := gotBody["from"].(map[string]any); from["email"] != "me@x.test" {
 		t.Errorf("body = %v", gotBody)
 	}
 	if res.Status != "delivered" || res.MessageID != "01X" || res.UID == nil || *res.UID != 7 {
@@ -112,7 +112,7 @@ func TestComposeMessageFiltered(t *testing.T) {
 	}))
 	defer srv.Close()
 	res, _, err := m3Client(t, srv.URL).ComposeMessage(context.Background(), "01M",
-		SendRequest{From: SendAddress{Address: "me@x.test"}}, ComposeOptions{Filter: true})
+		SendRequest{From: SendAddress{Email: "me@x.test"}}, ComposeOptions{Filter: true})
 	if err != nil {
 		t.Fatalf("ComposeMessage: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestComposeMessageRetriesOnlyWithADeliveryID(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := m3Client(t, srv.URL)
-	req := SendRequest{From: SendAddress{Address: "me@x.test"}}
+	req := SendRequest{From: SendAddress{Email: "me@x.test"}}
 
 	res, _, err := c.ComposeMessage(context.Background(), "01M", req, ComposeOptions{DeliveryID: "d1"})
 	if err != nil {

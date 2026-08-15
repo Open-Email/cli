@@ -32,8 +32,8 @@ func TestParseSendAddress(t *testing.T) {
 		if !tc.valid {
 			continue
 		}
-		if got.Address != tc.addr {
-			t.Errorf("parseSendAddress(%q).Address = %q, want %q", tc.in, got.Address, tc.addr)
+		if got.Email != tc.addr {
+			t.Errorf("parseSendAddress(%q).Email = %q, want %q", tc.in, got.Email, tc.addr)
 		}
 		if tc.hasName {
 			if got.Name == nil || *got.Name != tc.name {
@@ -52,7 +52,7 @@ func TestParseSendAddresses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseSendAddresses: %v", err)
 	}
-	if len(got) != 3 || got[2].Address != "c@x.com" {
+	if len(got) != 3 || got[2].Email != "c@x.com" {
 		t.Fatalf("got %+v, want three addresses", got)
 	}
 	got, err = parseSendAddresses([]string{`"Doe, Jane" <j@x.com>, k@x.com`})

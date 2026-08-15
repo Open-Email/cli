@@ -717,18 +717,28 @@
               }
             ]
           },
+          "modified": {
+            "description": "Present iff the patch carried unchangedSince (a precondition was actually evaluated): true = CAS refused, false = applied",
+            "type": "boolean"
+          },
+          "modseq": {
+            "description": "Present when the patch carried CAS context (label/unchangedSince): the NEW modseq on status=updated, the CURRENT modseq on status=modified",
+            "format": "int64",
+            "type": "integer"
+          },
           "purgeAfter": {
             "description": "Present iff status=expunged",
             "format": "int64",
             "type": "integer"
           },
           "status": {
-            "description": "updated | expunged | not_found (missing, pending or in trash) | too_many_keywords",
+            "description": "updated | expunged | not_found (missing, pending or in trash) | too_many_keywords | modified (CAS precondition failed)",
             "enum": [
               "updated",
               "expunged",
               "not_found",
-              "too_many_keywords"
+              "too_many_keywords",
+              "modified"
             ],
             "type": "string"
           }
@@ -2936,6 +2946,11 @@
       },
       "LabelInfo": {
         "properties": {
+          "highestModseq": {
+            "description": "RFC 7162 HIGHESTMODSEQ for the label",
+            "format": "int64",
+            "type": "integer"
+          },
           "id": {
             "format": "int64",
             "type": "integer"
@@ -2979,7 +2994,29 @@
           "uidNext",
           "messageCount",
           "unseenCount",
-          "sortOrder"
+          "sortOrder",
+          "highestModseq"
+        ],
+        "type": "object"
+      },
+      "MailAddress": {
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name; RFC 2047-encoded when not plain ASCII",
+            "maxLength": 320,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "email"
         ],
         "type": "object"
       },
@@ -3411,6 +3448,11 @@
       },
       "MessageLabel": {
         "properties": {
+          "modseq": {
+            "description": "RFC 7162 MODSEQ of this membership row (floored to 1)",
+            "format": "int64",
+            "type": "integer"
+          },
           "name": {
             "type": "string"
           },
@@ -3426,7 +3468,8 @@
         "required": [
           "name",
           "uid",
-          "uidValidity"
+          "uidValidity",
+          "modseq"
         ],
         "type": "object"
       },
@@ -3522,6 +3565,11 @@
               "string",
               "null"
             ]
+          },
+          "modseq": {
+            "description": "Per-label MODSEQ — present only in a label's UID listing",
+            "format": "int64",
+            "type": "integer"
           },
           "receivedAt": {
             "format": "int64",
@@ -6749,6 +6797,32 @@
         ],
         "type": "object"
       },
+      "VanishedResult": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque pagination cursor when results are truncated",
+            "type": "string"
+          },
+          "highestModseq": {
+            "description": "Current RFC 7162 HIGHESTMODSEQ of the label",
+            "format": "int64",
+            "type": "integer"
+          },
+          "vanished": {
+            "description": "List of expunged UIDs since the requested modseq",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "highestModseq",
+          "vanished"
+        ],
+        "type": "object"
+      },
       "VerifyResult": {
         "properties": {
           "accountId": {
@@ -7477,7 +7551,7 @@
             "description": "Account not found or not accessible to this principal"
           }
         },
-        "summary": "List this account's directory audit trail (who changed what, when, from where)",
+        "summary": "List this account's directory audit trail (who changed what, when, from where). Newest first; nothing older than 180 days is ever returned, and storage is reclaimed on the next audit read or write (there is no cron). Records survive deletion of the mailbox or resource they describe",
         "tags": [
           "Accounts"
         ]
@@ -14424,6 +14498,86 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/labels/{label}/vanished": {
+      "get": {
+        "operationId": "get_LabelVanished",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "label",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Find UIDs expunged after this modseq",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "Find UIDs expunged after this modseq",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 2000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VanishedResult"
+                }
+              }
+            },
+            "description": "Vanished UIDs and current highestModseq"
+          },
+          "400": {
+            "description": "validation_failed — malformed query"
+          },
+          "404": {
+            "description": "Mailbox or label not found"
+          },
+          "410": {
+            "description": "cannot_calculate_changes (requested modseq predates imap_floor_modseq)"
+          }
+        },
+        "summary": "Get vanished (expunged) UIDs for a label since a given modseq (IMAP QRESYNC)",
+        "tags": [
+          "Labels"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/messages": {
       "delete": {
         "operationId": "delete_MessageEmptyTrash",
@@ -14744,6 +14898,11 @@
                     },
                     "type": "array"
                   },
+                  "label": {
+                    "description": "Label context for the unchangedSince check. Non-empty: an empty string would pass the `patch.label ? …` guards downstream and silently downgrade a label-scoped CAS to the message-wide MAX(modseq), which answers a DIFFERENT question than the client asked.",
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "labelsAdd": {
                     "items": {
                       "type": "string"
@@ -14762,6 +14921,11 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "unchangedSince": {
+                    "description": "RFC 7162 CONDSTORE precondition: apply only where the message's modseq (in `label`, floored to 1) is <= this. ABSENT means unconditional; an explicit 0 is the always-fail probe (§3.1.3.1) and refuses every message — the two are deliberately distinct.",
+                    "minimum": 0,
+                    "type": "integer"
                   }
                 },
                 "required": [
@@ -15214,74 +15378,20 @@
                   },
                   "bcc": {
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 100,
                     "type": "array"
                   },
                   "cc": {
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 100,
                     "type": "array"
                   },
                   "from": {
-                    "properties": {
-                      "address": {
-                        "maxLength": 320,
-                        "minLength": 3,
-                        "type": "string"
-                      },
-                      "name": {
-                        "description": "Display name; RFC 2047-encoded when not plain ASCII",
-                        "maxLength": 320,
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "address"
-                    ],
-                    "type": "object"
+                    "$ref": "#/components/schemas/MailAddress"
                   },
                   "headers": {
                     "additionalProperties": {
@@ -15323,25 +15433,7 @@
                   },
                   "replyTo": {
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 10,
                     "type": "array"
@@ -15362,25 +15454,7 @@
                   },
                   "to": {
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Display name; RFC 2047-encoded when not plain ASCII",
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 100,
                     "type": "array"
@@ -17664,72 +17738,27 @@
                   "bcc": {
                     "description": "Recipients that receive the message but appear in no header on the wire. They DO appear in a `Bcc:` header on the sender's own Sent copy, which is the only place that record exists — MessageMeta.bcc reads it back",
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 50,
                     "type": "array"
                   },
                   "cc": {
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 50,
                     "type": "array"
                   },
                   "from": {
-                    "description": "Must resolve to this mailbox. Also becomes the envelope sender, so the From header stays DMARC-aligned with the DKIM signature",
-                    "properties": {
-                      "address": {
-                        "maxLength": 320,
-                        "minLength": 3,
-                        "type": "string"
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/MailAddress"
                       },
-                      "name": {
-                        "maxLength": 320,
-                        "type": [
-                          "string",
-                          "null"
-                        ]
+                      {
+                        "description": "Must resolve to this mailbox. Also becomes the envelope sender, so the From header stays DMARC-aligned with the DKIM signature"
                       }
-                    },
-                    "required": [
-                      "address"
-                    ],
-                    "type": "object"
+                    ]
                   },
                   "headers": {
                     "additionalProperties": {
@@ -17760,24 +17789,7 @@
                   },
                   "replyTo": {
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 10,
                     "type": "array"
@@ -17797,24 +17809,7 @@
                   },
                   "to": {
                     "items": {
-                      "properties": {
-                        "address": {
-                          "maxLength": 320,
-                          "minLength": 3,
-                          "type": "string"
-                        },
-                        "name": {
-                          "maxLength": 320,
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "address"
-                      ],
-                      "type": "object"
+                      "$ref": "#/components/schemas/MailAddress"
                     },
                     "maxItems": 50,
                     "type": "array"
@@ -20583,7 +20578,7 @@
             "description": "system_credentials_required"
           }
         },
-        "summary": "List the deployment-wide directory audit trail (system only)",
+        "summary": "List the deployment-wide directory audit trail, including platform-scope rows no tenant read can reach (system only). Nothing older than 180 days is ever returned",
         "tags": [
           "System"
         ]
@@ -21205,6 +21200,11 @@
   "security": [
     {
       "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.open.email"
     }
   ],
   "webhooks": {}

@@ -327,14 +327,14 @@ func parseSendAddress(s string) (*coreapi.SendAddress, error) {
 			return nil, fmt.Errorf("no address in %q", s)
 		}
 		if name == "" {
-			return &coreapi.SendAddress{Address: addr}, nil
+			return &coreapi.SendAddress{Email: addr}, nil
 		}
-		return &coreapi.SendAddress{Address: addr, Name: &name}, nil
+		return &coreapi.SendAddress{Email: addr, Name: &name}, nil
 	}
 	if strings.ContainsAny(s, " <>") {
 		return nil, fmt.Errorf("unparseable address %q (use `addr` or `Name <addr>`)", s)
 	}
-	return &coreapi.SendAddress{Address: s}, nil
+	return &coreapi.SendAddress{Email: s}, nil
 }
 
 // renderSendResult prints the per-recipient outcomes — the reason this route

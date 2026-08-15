@@ -15,6 +15,8 @@ type MessageLabel struct {
 	Name        string `json:"name"`
 	UID         int64  `json:"uid"`
 	UIDValidity int64  `json:"uidValidity"`
+	// Modseq is the RFC 7162 MODSEQ of this membership row (floored to 1).
+	Modseq int64 `json:"modseq"`
 }
 
 // MessageMeta is the shared message-metadata object (core's rowToMeta), returned
@@ -57,6 +59,8 @@ type MessageMeta struct {
 	// live in Flags and are never repeated here.
 	Keywords []string `json:"keywords"`
 	UID      *int64   `json:"uid,omitempty"`
+	// Modseq is the per-label MODSEQ — present only in a label's UID listing.
+	Modseq *int64 `json:"modseq,omitempty"`
 }
 
 // ExpungedMessageMeta is a trash-listing row: MessageMeta (labels always empty)

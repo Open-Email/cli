@@ -19,6 +19,8 @@ type LabelInfo struct {
 	// SortOrder is the resolved presentation order (JMAP Mailbox sortOrder): a
 	// stored value, else the role default (inbox=1…trash=6, user labels=100).
 	SortOrder int64 `json:"sortOrder"`
+	// HighestModseq is the label's RFC 7162 HIGHESTMODSEQ (CONDSTORE).
+	HighestModseq int64 `json:"highestModseq"`
 }
 
 // CreatedLabel is the (smaller) create response.

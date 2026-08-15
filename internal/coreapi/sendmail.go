@@ -37,10 +37,13 @@ func (c *Client) UploadBlob(ctx context.Context, mailboxID string, getBody func(
 	return &out, nil
 }
 
-// SendAddress is one addressee. Name is optional; Address is required.
+// SendAddress is one addressee — `{ name, email }`, the same spelling core's
+// read surfaces use (content headers, MessageMeta, webhooks, JMAP EmailAddress),
+// so an address read from a message goes back into a send unchanged. Name is
+// optional; Email is required.
 type SendAddress struct {
-	Address string  `json:"address"`
-	Name    *string `json:"name,omitempty"`
+	Email string  `json:"email"`
+	Name  *string `json:"name,omitempty"`
 }
 
 // SendAttachment is one attachment in any of its three forms — exactly one is
