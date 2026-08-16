@@ -11,8 +11,8 @@ import (
 )
 
 // eventsServer stubs GET /domains/:domain/events, recording the ?range and
-// ?cursor it was asked for, and returns two events (newest first) plus a next
-// cursor so load-more/keyset behavior is exercisable.
+// ?cursor it was asked for, and returns two events (newest first) plus a
+// nextCursor so load-more/keyset behavior is exercisable.
 func eventsServer(t *testing.T, gotRange, gotCursor *string) (*coreapi.Client, func()) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -20,7 +20,7 @@ func eventsServer(t *testing.T, gotRange, gotCursor *string) (*coreapi.Client, f
 		*gotCursor = r.URL.Query().Get("cursor")
 		w.WriteHeader(200)
 		w.Write([]byte(`{
-			"domain":"example.test","range":"` + *gotRange + `","estimated":false,"cursor":"NEXT",
+			"domain":"example.test","range":"` + *gotRange + `","estimated":false,"nextCursor":"NEXT",
 			"events":[
 				{"eventTime":100,"source":"inbound","outcome":"delivered","envelopeFrom":"a@x.test",
 				 "envelopeTo":"b@example.test","subject":"Hi there","detail":null,"deliveryId":"d2","attempt":null},

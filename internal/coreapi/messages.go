@@ -158,12 +158,12 @@ func (c *Client) messagePath(mailboxID, messageID string) string {
 
 // ListMessages returns one page of live messages, newest-first (see ListOpts
 // for the order/sortBy knobs). The next-page cursor rides the response's
-// `cursor` field (not `nextCursor`).
+// `nextCursor` field — absent once the listing is exhausted.
 func (c *Client) ListMessages(ctx context.Context, mailboxID string, opts ListOpts) (Page[MessageMeta], error) {
 	q := opts.values(opts.Cursor)
 	var out struct {
-		Messages []MessageMeta `json:"messages"`
-		Cursor   *string       `json:"cursor"`
+		Messages   []MessageMeta `json:"messages"`
+		NextCursor string        `json:"nextCursor"`
 	}
 	err := c.doJSON(ctx, request{
 		method: http.MethodGet, path: c.messagesPath(mailboxID), query: q, idempotent: true,
@@ -171,7 +171,7 @@ func (c *Client) ListMessages(ctx context.Context, mailboxID string, opts ListOp
 	if err != nil {
 		return Page[MessageMeta]{}, err
 	}
-	return Page[MessageMeta]{Items: out.Messages, NextCursor: derefStr(out.Cursor)}, nil
+	return Page[MessageMeta]{Items: out.Messages, NextCursor: out.NextCursor}, nil
 }
 
 // ListTrash returns one page of soft-deleted (expunged) messages. Takes the
@@ -181,8 +181,8 @@ func (c *Client) ListTrash(ctx context.Context, mailboxID string, opts ListOpts)
 	q := opts.values(opts.Cursor)
 	q.Set("state", "expunged")
 	var out struct {
-		Messages []ExpungedMessageMeta `json:"messages"`
-		Cursor   *string               `json:"cursor"`
+		Messages   []ExpungedMessageMeta `json:"messages"`
+		NextCursor string                `json:"nextCursor"`
 	}
 	err := c.doJSON(ctx, request{
 		method: http.MethodGet, path: c.messagesPath(mailboxID), query: q, idempotent: true,
@@ -190,7 +190,7 @@ func (c *Client) ListTrash(ctx context.Context, mailboxID string, opts ListOpts)
 	if err != nil {
 		return Page[ExpungedMessageMeta]{}, err
 	}
-	return Page[ExpungedMessageMeta]{Items: out.Messages, NextCursor: derefStr(out.Cursor)}, nil
+	return Page[ExpungedMessageMeta]{Items: out.Messages, NextCursor: out.NextCursor}, nil
 }
 
 // GetMessage returns one live message's metadata.

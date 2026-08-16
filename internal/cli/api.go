@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 
-	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +15,6 @@ func newAPICmd(a *app) *cobra.Command {
 		data, rawBody string
 		headers       []string
 		queries       []string
-		listRoutes    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "api <METHOD> <path>",
@@ -26,24 +23,9 @@ func newAPICmd(a *app) *cobra.Command {
 			"/api/v1 (with or without the prefix). Response status goes to stderr, body to\n" +
 			"stdout.\n\n" +
 			"  openemail api GET /mailboxes\n" +
-			"  openemail api POST /routes -d '{\"address\":\"a@b\",\"destinationType\":\"group\"}'\n" +
-			"  openemail api --list-routes",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if listRoutes {
-				return nil
-			}
-			return cobra.RangeArgs(2, 2)(cmd, args)
-		},
+			"  openemail api POST /routes -d '{\"address\":\"a@b\",\"destinationType\":\"group\"}'",
+		Args: cobra.RangeArgs(2, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// --list-routes hits the UNAUTHENTICATED /openapi.json, so it does not
-			// require a token (an unauthenticated client is fine).
-			if listRoutes {
-				unauth, err := a.client()
-				if err != nil {
-					return err
-				}
-				return a.apiListRoutes(cmd, unauth)
-			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -109,7 +91,6 @@ func newAPICmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&rawBody, "raw-body", "", "send this file's bytes as the body verbatim")
 	cmd.Flags().StringArrayVarP(&headers, "header", "H", nil, "extra request header 'Key: Value' (repeatable)")
 	cmd.Flags().StringArrayVar(&queries, "query", nil, "query parameter k=v (repeatable)")
-	cmd.Flags().BoolVar(&listRoutes, "list-routes", false, "list every route from the OpenAPI spec and exit")
 	return cmd
 }
 
@@ -142,50 +123,4 @@ func writeAPIBody(body []byte) {
 	if len(body) > 0 && body[len(body)-1] != '\n' {
 		fmt.Fprintln(os.Stdout)
 	}
-}
-
-// apiListRoutes fetches the unauthenticated OpenAPI spec and lists method+path.
-func (a *app) apiListRoutes(cmd *cobra.Command, client *coreapi.Client) error {
-	spec, err := client.GetOpenAPISpec(cmd.Context())
-	if err != nil {
-		return err
-	}
-	var doc struct {
-		Paths map[string]map[string]json.RawMessage `json:"paths"`
-	}
-	if err := json.Unmarshal(spec, &doc); err != nil {
-		return fmt.Errorf("parse openapi spec: %w", err)
-	}
-	type route struct{ method, path string }
-	var routes []route
-	for p, methods := range doc.Paths {
-		for m := range methods {
-			mu := strings.ToUpper(m)
-			switch mu {
-			case "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS":
-				routes = append(routes, route{mu, p})
-			}
-		}
-	}
-	sort.Slice(routes, func(i, j int) bool {
-		if routes[i].path != routes[j].path {
-			return routes[i].path < routes[j].path
-		}
-		return routes[i].method < routes[j].method
-	})
-	if a.out.JSON() {
-		out := make([]map[string]string, len(routes))
-		for i, r := range routes {
-			out[i] = map[string]string{"method": r.method, "path": r.path}
-		}
-		a.out.Emit(map[string]any{"routes": out}, nil)
-		return nil
-	}
-	rows := make([][]string, len(routes))
-	for i, r := range routes {
-		rows[i] = []string{r.method, r.path}
-	}
-	printTable(os.Stdout, a.out, []string{"METHOD", "PATH"}, rows)
-	a.out.Msgf("%d routes", len(routes))
-	return nil
 }

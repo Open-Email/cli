@@ -150,14 +150,12 @@ type DmarcReport struct {
 }
 
 // DomainDmarcReports is GET /domains/:domain/dmarc/reports — the ingest log,
-// newest reporting window first. It paginates on `cursor` (always present,
-// null on the last page); NextCursor is its API-wide mirror, present only
-// while more pages exist. Page[T] predates the mirror and does not apply here;
+// newest reporting window first. NextCursor is the API-wide continuation
+// token, present only while more pages exist. Page[T] does not apply here;
 // --all callers adapt it (see Depaginate).
 type DomainDmarcReports struct {
 	Domain     string        `json:"domain"`
 	Reports    []DmarcReport `json:"reports"`
-	Cursor     *string       `json:"cursor"`
 	NextCursor *string       `json:"nextCursor,omitempty"`
 }
 

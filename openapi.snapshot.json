@@ -1258,12 +1258,6 @@
       },
       "DeadLetterList": {
         "properties": {
-          "cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "deadLetters": {
             "items": {
               "$ref": "#/components/schemas/DeadLetter"
@@ -1275,8 +1269,7 @@
           }
         },
         "required": [
-          "deadLetters",
-          "cursor"
+          "deadLetters"
         ],
         "type": "object"
       },
@@ -2291,12 +2284,6 @@
       },
       "DomainDmarcReports": {
         "properties": {
-          "cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "domain": {
             "type": "string"
           },
@@ -2312,8 +2299,7 @@
         },
         "required": [
           "domain",
-          "reports",
-          "cursor"
+          "reports"
         ],
         "type": "object"
       },
@@ -2386,12 +2372,6 @@
       },
       "DomainEvents": {
         "properties": {
-          "cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "domain": {
             "type": "string"
           },
@@ -2415,7 +2395,6 @@
           "domain",
           "range",
           "events",
-          "cursor",
           "estimated"
         ],
         "type": "object"
@@ -3673,7 +3652,7 @@
       "MessageMeta": {
         "properties": {
           "bcc": {
-            "description": "Display view of the Bcc: header (capped) — in practice 'who will this draft blind-copy'. Empty for RECEIVED mail as a matter of fact, not policy: a blind copy is blind because the header is stripped before transmission, so there is nothing to parse. Non-empty for mail this mailbox composed. Null = unknown (pre-v12 row / unparseable head). NOT available on GET /content, whose headers come from the part_index env",
+            "description": "Display view of the Bcc: header (capped) — in practice 'who will this draft blind-copy'. Empty for RECEIVED mail as a matter of fact, not policy: a blind copy is blind because the header is stripped before transmission, so there is nothing to parse. Non-empty for mail this mailbox composed. Null = unknown (unparseable head). NOT available on GET /content, whose headers come from the part_index env",
             "items": {
               "$ref": "#/components/schemas/ContentAddress"
             },
@@ -3689,7 +3668,7 @@
             "type": "string"
           },
           "cc": {
-            "description": "Display view of the Cc: header (capped). Null = unknown (pre-v11 row / unparseable head), which is NOT the same as [] (no carbon copies) — a reply-all should fetch /content rather than answer a shorter list",
+            "description": "Display view of the Cc: header (capped). Null = unknown (unparseable head), which is NOT the same as [] (no carbon copies) — a reply-all should fetch /content rather than answer a shorter list",
             "items": {
               "$ref": "#/components/schemas/ContentAddress"
             },
@@ -3719,7 +3698,7 @@
             "type": "array"
           },
           "from": {
-            "description": "Display view of the From: header (original case), stamped at delivery. Null = unknown (pre-v8 row / unparseable head) — fall back to envelopeFrom",
+            "description": "Display view of the From: header (original case), stamped at delivery. Null = unknown (unparseable head) — fall back to envelopeFrom",
             "items": {
               "$ref": "#/components/schemas/ContentAddress"
             },
@@ -6256,12 +6235,6 @@
       },
       "SystemEvents": {
         "properties": {
-          "cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "estimated": {
             "type": "boolean"
           },
@@ -6281,7 +6254,6 @@
         "required": [
           "range",
           "events",
-          "cursor",
           "estimated"
         ],
         "type": "object"
@@ -6578,12 +6550,6 @@
           "canonicalThreadId": {
             "type": "string"
           },
-          "cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "messageCount": {
             "format": "int64",
             "type": "integer"
@@ -6614,7 +6580,6 @@
         "required": [
           "threadId",
           "messages",
-          "cursor",
           "messageCount",
           "replyContext"
         ],
@@ -16814,13 +16779,6 @@
                   "anyOf": [
                     {
                       "properties": {
-                        "cursor": {
-                          "description": "Keyset cursor for the next page; null on the last page",
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
                         "messages": {
                           "items": {
                             "$ref": "#/components/schemas/MessageMeta"
@@ -16828,25 +16786,17 @@
                           "type": "array"
                         },
                         "nextCursor": {
-                          "description": "Same keyset position as cursor, in the API-wide spelling; absent on the last page",
+                          "description": "Opaque cursor for the next page; absent on the last page",
                           "type": "string"
                         }
                       },
                       "required": [
-                        "messages",
-                        "cursor"
+                        "messages"
                       ],
                       "type": "object"
                     },
                     {
                       "properties": {
-                        "cursor": {
-                          "description": "Keyset cursor for the next page; null on the last page",
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
                         "messages": {
                           "items": {
                             "$ref": "#/components/schemas/ExpungedMessageMeta"
@@ -16854,13 +16804,12 @@
                           "type": "array"
                         },
                         "nextCursor": {
-                          "description": "Same keyset position as cursor, in the API-wide spelling; absent on the last page",
+                          "description": "Opaque cursor for the next page; absent on the last page",
                           "type": "string"
                         }
                       },
                       "required": [
-                        "messages",
-                        "cursor"
+                        "messages"
                       ],
                       "type": "object"
                     }
@@ -20042,7 +19991,7 @@
         ]
       },
       "put": {
-        "description": "Compiles the rules to Sieve, stores both, and activates the result — so a previously active hand-written script is deactivated (last management action wins). Rules are evaluated top to bottom; `stop` halts further rules. An empty `rules` array is legal and means 'rules mode, no rules yet'. Refused 409 name_conflict when a hand-written script already occupies the reserved name `openemail.rules` — delete or rename it via the Sieve API first.",
+        "description": "Compiles the rules to Sieve, stores both, and activates the result — so a previously active hand-written script is deactivated (last management action wins). Rules are evaluated top to bottom; `stop` halts further rules. An empty `rules` array is legal and means 'rules mode, no rules yet'.",
         "operationId": "put_RulesPut",
         "parameters": [
           {
@@ -20102,7 +20051,7 @@
                 }
               }
             },
-            "description": "name_conflict (a hand-written script holds the reserved name), or too_many_scripts"
+            "description": "too_many_scripts"
           },
           "413": {
             "content": {
@@ -21459,15 +21408,8 @@
               "application/json": {
                 "schema": {
                   "properties": {
-                    "cursor": {
-                      "description": "Keyset cursor for the next page; null on the last page",
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
                     "nextCursor": {
-                      "description": "Same keyset position as cursor, in the API-wide spelling; absent on the last page",
+                      "description": "Opaque cursor for the next page; absent on the last page",
                       "type": "string"
                     },
                     "threads": {
@@ -21478,8 +21420,7 @@
                     }
                   },
                   "required": [
-                    "threads",
-                    "cursor"
+                    "threads"
                   ],
                   "type": "object"
                 }

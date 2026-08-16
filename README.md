@@ -86,7 +86,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `suppressions` (alias `do-not-send`) | the account's OWN do-not-send list: `list`/`check`/`add`/`remove` — addresses this account never mails; `remove` also lifts a platform hard-bounce block on the address (the deployment-global evidence list stays under `admin suppressions`) |
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
 | `deliver` | `check --to <addr>` (RCPT pre-flight), `inbound` (inject a test message) |
-| `api` | call any route directly (escape hatch), `--list-routes` |
+| `api` | call any route directly (escape hatch) |
 | `admin` | operator-only (system keys): `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,add,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys) |
 | `completion` / `upgrade` / `version` | shells, upgrade help, version |
 
@@ -233,7 +233,6 @@ openemail admin dkim activate                      # flip early, once DNS resolv
 # Hit any endpoint the CLI doesn't wrap yet.
 openemail api GET /domains/example.com/traffic --query range=7d
 openemail api POST /routes -d '{"address":"a@x.com","destinationType":"group"}'
-openemail api --list-routes
 ```
 
 ## Configuration

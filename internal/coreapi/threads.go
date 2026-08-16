@@ -29,9 +29,8 @@ type ReplyContext struct {
 
 // ThreadView is a single thread with its messages (oldest-first) and reply
 // context. CanonicalThreadID is present only when the requested id had been
-// merged away and was recovered. NextCursor mirrors the top-level `cursor`
-// the anonymous GetThread wrapper decodes — present only while more pages
-// exist.
+// merged away and was recovered. NextCursor is the member-page continuation —
+// present only while more pages exist.
 type ThreadView struct {
 	ThreadID          string        `json:"threadId"`
 	CanonicalThreadID *string       `json:"canonicalThreadId,omitempty"`
@@ -47,13 +46,13 @@ func (c *Client) threadsPath(mailboxID string) string {
 
 // ListThreads returns one page of threads (newest activity first; under
 // SortBy "date" that activity — and the exemplar — is the newest-DATED member
-// rather than the newest-arrived one). The next-page cursor rides the `cursor`
-// field (string|null), not `nextCursor`.
+// rather than the newest-arrived one). The next-page cursor rides the
+// `nextCursor` field — absent once the listing is exhausted.
 func (c *Client) ListThreads(ctx context.Context, mailboxID string, opts ListOpts) (Page[ThreadListItem], error) {
 	q := opts.values(opts.Cursor)
 	var out struct {
-		Threads []ThreadListItem `json:"threads"`
-		Cursor  *string          `json:"cursor"`
+		Threads    []ThreadListItem `json:"threads"`
+		NextCursor string           `json:"nextCursor"`
 	}
 	err := c.doJSON(ctx, request{
 		method: http.MethodGet, path: c.threadsPath(mailboxID), query: q, idempotent: true,
@@ -61,11 +60,11 @@ func (c *Client) ListThreads(ctx context.Context, mailboxID string, opts ListOpt
 	if err != nil {
 		return Page[ThreadListItem]{}, err
 	}
-	return Page[ThreadListItem]{Items: out.Threads, NextCursor: derefStr(out.Cursor)}, nil
+	return Page[ThreadListItem]{Items: out.Threads, NextCursor: out.NextCursor}, nil
 }
 
 // GetThread returns one thread's messages (oldest-first). Members paginate
-// ascending via the `cursor` field.
+// ascending via the response's `nextCursor` field.
 func (c *Client) GetThread(ctx context.Context, mailboxID, threadID string, limit int, cursor string) (*ThreadView, string, error) {
 	q := url.Values{}
 	if limit > 0 {
@@ -74,10 +73,7 @@ func (c *Client) GetThread(ctx context.Context, mailboxID, threadID string, limi
 	if cursor != "" {
 		q.Set("cursor", cursor)
 	}
-	var out struct {
-		ThreadView
-		Cursor *string `json:"cursor"`
-	}
+	var out ThreadView
 	err := c.doJSON(ctx, request{
 		method: http.MethodGet, path: c.threadsPath(mailboxID) + "/" + escapeSegment(threadID),
 		query: q, idempotent: true,
@@ -85,6 +81,5 @@ func (c *Client) GetThread(ctx context.Context, mailboxID, threadID string, limi
 	if err != nil {
 		return nil, "", err
 	}
-	tv := out.ThreadView
-	return &tv, derefStr(out.Cursor), nil
+	return &out, derefStr(out.NextCursor), nil
 }

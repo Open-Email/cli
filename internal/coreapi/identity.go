@@ -2,7 +2,7 @@ package coreapi
 
 import (
 	"context"
-	"strings"
+	"fmt"
 )
 
 // Principal types, mirroring core's src/types.ts Principal union.
@@ -10,13 +10,11 @@ const (
 	PrincipalSystem  = "system"
 	PrincipalAccount = "account"
 	PrincipalMailbox = "mailbox"
-	PrincipalUnknown = "unknown"
 )
 
 // Principal is what the current token resolves to. AccountID is set for
-// account principals; MailboxID and CredentialID are known only when core's
-// /auth/whoami answered (older deployments cannot introspect a mailbox
-// principal's own mailbox id).
+// account principals; MailboxID and CredentialID for mailbox ones. Every field
+// comes straight from core's /auth/whoami.
 type Principal struct {
 	Type         string
 	AccountID    string
@@ -25,58 +23,23 @@ type Principal struct {
 	KeyID        string
 }
 
-// Resolve classifies the current bearer. It asks /auth/whoami first — the
-// exact, single-call answer — and falls back to probing whenever whoami cannot
-// answer (a deployment predating the endpoint, or any non-401 refusal):
-// /api-keys distinguishes mailbox tokens (403), /accounts distinguishes system
-// from account keys, and the api-keys page reveals the tenant id. Either way a
-// bad/revoked key surfaces its 401.
+// Resolve classifies the current bearer from core's /auth/whoami — the exact,
+// single-call answer. Any failure is surfaced to the caller rather than
+// degraded into a guess: a 401 is a bad or revoked key, and anything else means
+// core could not be asked, which must not be reported as a principal.
 func (c *Client) Resolve(ctx context.Context) (Principal, error) {
-	if w, werr := c.Whoami(ctx); werr == nil && w.Type != "" {
-		return Principal{
-			Type:         w.Type,
-			AccountID:    derefStr(w.AccountID),
-			MailboxID:    derefStr(w.MailboxID),
-			CredentialID: derefStr(w.CredentialID),
-			KeyID:        derefStr(w.KeyID),
-		}, nil
-	} else if werr != nil && IsUnauthorized(werr) {
-		// A bad/revoked key: the probes would only repeat the same 401.
-		return Principal{}, werr
-	}
-
-	if strings.HasPrefix(c.cfg.Token, "oemp_") {
-		// Fenced from /api-keys: a valid mailbox token yields 403
-		// insufficient_scope, a bad one yields 401.
-		_, err := c.ListAPIKeys(ctx, 1, "")
-		if err == nil || IsInsufficientScope(err) || IsForbidden(err) {
-			return Principal{Type: PrincipalMailbox}, nil
-		}
-		return Principal{}, err
-	}
-
-	page, err := c.ListAPIKeys(ctx, 25, "")
+	w, err := c.Whoami(ctx)
 	if err != nil {
-		if IsInsufficientScope(err) || IsForbidden(err) {
-			// A mailbox token lacking the oemp_ prefix — unusual, but classify it.
-			return Principal{Type: PrincipalMailbox}, nil
-		}
 		return Principal{}, err
 	}
-
-	// Only a system principal may list accounts; an account principal is refused.
-	if _, aerr := c.ListAccounts(ctx, 1, ""); aerr == nil {
-		return Principal{Type: PrincipalSystem}, nil
-	} else if !IsForbidden(aerr) && !IsSystemCredentialsRequired(aerr) {
-		return Principal{}, aerr
+	if w.Type == "" {
+		return Principal{}, fmt.Errorf("coreapi: /auth/whoami returned no principal type")
 	}
-
-	acct := ""
-	for _, k := range page.Items {
-		if k.AccountID != nil && *k.AccountID != "" {
-			acct = *k.AccountID
-			break
-		}
-	}
-	return Principal{Type: PrincipalAccount, AccountID: acct}, nil
+	return Principal{
+		Type:         w.Type,
+		AccountID:    derefStr(w.AccountID),
+		MailboxID:    derefStr(w.MailboxID),
+		CredentialID: derefStr(w.CredentialID),
+		KeyID:        derefStr(w.KeyID),
+	}, nil
 }

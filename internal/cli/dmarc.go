@@ -183,27 +183,26 @@ func newDomainDmarcReportsCmd(a *app) *cobra.Command {
 			var reports []coreapi.DmarcReport
 			next := ""
 			if all {
-				// This response paginates on `cursor`, not the directory's
-				// `nextCursor`, so it is adapted into Page[T] rather than
-				// returned as one.
+				// This response is not a Page[T] on the wire, so it is
+				// adapted into one rather than returned as one.
 				reports, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.DmarcReport], error) {
 					pg, e := client.ListDomainDmarcReports(ctx, domain, limit, cur)
 					if e != nil {
 						return coreapi.Page[coreapi.DmarcReport]{}, e
 					}
-					return coreapi.Page[coreapi.DmarcReport]{Items: pg.Reports, NextCursor: strOr(pg.Cursor, "")}, nil
+					return coreapi.Page[coreapi.DmarcReport]{Items: pg.Reports, NextCursor: strOr(pg.NextCursor, "")}, nil
 				})
 			} else {
 				var pg *coreapi.DomainDmarcReports
 				pg, err = client.ListDomainDmarcReports(ctx, domain, limit, cursor)
 				if err == nil {
-					reports, next = pg.Reports, strOr(pg.Cursor, "")
+					reports, next = pg.Reports, strOr(pg.NextCursor, "")
 				}
 			}
 			if err != nil {
 				return err
 			}
-			a.out.Emit(map[string]any{"domain": domain, "reports": reports, "cursor": next}, func(w io.Writer) {
+			a.out.Emit(map[string]any{"domain": domain, "reports": reports, "nextCursor": next}, func(w io.Writer) {
 				if len(reports) == 0 {
 					a.out.Msgf("%s — no reports yet", a.out.Bold(domain))
 					a.out.Msgf("  reporters send aggregate reports daily; check the domain publishes a rua= pointing at this platform")

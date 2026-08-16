@@ -94,9 +94,7 @@ func contractPairings() []pairing {
 		{val: ContentAddress{}, comp: "ContentAddress"},
 		{val: ThreadListItem{}, comp: "ThreadListItem"},
 		{val: ReplyContext{}, comp: "ReplyContext"},
-		// GetThread decodes the top-level `cursor` in an anonymous wrapper, not on
-		// ThreadView itself.
-		{val: ThreadView{}, comp: "ThreadView", ignoreSpec: []string{"cursor"}},
+		{val: ThreadView{}, comp: "ThreadView"},
 		{val: AppendResult{}, comp: "AppendResult"},
 		{val: PatchResult{}, comp: "MessageUpdateResult"},
 		{val: DeleteResult{}, comp: "MessageDeleteResult"},

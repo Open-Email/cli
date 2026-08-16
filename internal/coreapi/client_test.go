@@ -232,67 +232,6 @@ func TestOrdinaryCallStillBoundedByRequestTimeout(t *testing.T) {
 	}
 }
 
-func TestResolveClassifiesPrincipals(t *testing.T) {
-	cases := []struct {
-		name    string
-		token   string
-		handler http.HandlerFunc
-		want    string
-		wantAcc string
-	}{
-		{
-			name:  "account",
-			token: "oek_acct",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				switch {
-				case strings.HasSuffix(r.URL.Path, "/api-keys"):
-					w.Write([]byte(`{"apiKeys":[{"id":"k","name":"n","role":"account","accountId":"acc1","createdAt":1}]}`))
-				case strings.HasSuffix(r.URL.Path, "/accounts"):
-					w.WriteHeader(403)
-					w.Write([]byte(`{"error":"system_credentials_required"}`))
-				}
-			},
-			want:    PrincipalAccount,
-			wantAcc: "acc1",
-		},
-		{
-			name:  "system",
-			token: "oek_sys",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if strings.HasSuffix(r.URL.Path, "/accounts") {
-					w.Write([]byte(`{"accounts":[]}`))
-					return
-				}
-				w.Write([]byte(`{"apiKeys":[]}`))
-			},
-			want: PrincipalSystem,
-		},
-		{
-			name:  "mailbox",
-			token: "oemp_alice",
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(403)
-				w.Write([]byte(`{"error":"insufficient_scope"}`))
-			},
-			want: PrincipalMailbox,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(tc.handler)
-			defer srv.Close()
-			c, _ := New(Config{BaseURL: srv.URL, Token: tc.token, RetryBackoffMin: time.Millisecond})
-			id, err := c.Resolve(context.Background())
-			if err != nil {
-				t.Fatalf("Resolve: %v", err)
-			}
-			if id.Type != tc.want || id.AccountID != tc.wantAcc {
-				t.Fatalf("got %q/%q want %q/%q", id.Type, id.AccountID, tc.want, tc.wantAcc)
-			}
-		})
-	}
-}
-
 func TestEscapedPathSegmentPreservation(t *testing.T) {
 	var requestedURI string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

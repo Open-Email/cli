@@ -252,7 +252,7 @@ func dmarcReportsDesc(domain string) resourceDesc {
 					item: r,
 				}
 			}
-			return rows, strOr(pg.Cursor, ""), nil
+			return rows, strOr(pg.NextCursor, ""), nil
 		},
 		detail: func(item any) []kv {
 			r := item.(coreapi.DmarcReport)

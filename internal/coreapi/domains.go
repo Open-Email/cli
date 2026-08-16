@@ -225,15 +225,13 @@ type TrafficEvent struct {
 }
 
 // DomainEvents is GET /domains/:domain/events — a keyset-paginated page of the
-// per-event traffic log. Cursor rides the response's `cursor` field (string or
-// null; null on the last page); NextCursor is its API-wide mirror, present
-// only while more pages exist. Estimated is always false (this is the
+// per-event traffic log. NextCursor is the API-wide continuation token,
+// present only while more pages exist. Estimated is always false (this is the
 // unsampled durable record, unlike DomainTraffic).
 type DomainEvents struct {
 	Domain     string         `json:"domain"`
 	Range      string         `json:"range"`
 	Events     []TrafficEvent `json:"events"`
-	Cursor     *string        `json:"cursor"`
 	NextCursor *string        `json:"nextCursor,omitempty"`
 	Estimated  bool           `json:"estimated"`
 }
@@ -360,8 +358,9 @@ func (c *Client) GetDomainTraffic(ctx context.Context, domain, rng string) (*Dom
 // GetDomainEvents returns one keyset page of the per-event traffic log. rng is
 // one of 1h|6h|24h|7d|30d (empty → core default 24h); outcome/source are
 // optional closed-enum filters (empty → omitted); cursor is the opaque token
-// from a prior page's Cursor (empty → first page). Follow *DomainEvents.Cursor
-// (null on the last page) to paginate; --all callers thread it via Depaginate.
+// from a prior page's NextCursor (empty → first page). Follow
+// *DomainEvents.NextCursor (absent on the last page) to paginate; --all
+// callers thread it via Depaginate.
 func (c *Client) GetDomainEvents(ctx context.Context, domain, rng, outcome, source string, limit int, cursor string) (*DomainEvents, error) {
 	q := url.Values{}
 	if rng != "" {

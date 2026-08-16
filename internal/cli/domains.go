@@ -404,19 +404,19 @@ func newDomainEventsCmd(a *app) *cobra.Command {
 					if e != nil {
 						return coreapi.Page[coreapi.TrafficEvent]{}, e
 					}
-					return coreapi.Page[coreapi.TrafficEvent]{Items: de.Events, NextCursor: strOr(de.Cursor, "")}, nil
+					return coreapi.Page[coreapi.TrafficEvent]{Items: de.Events, NextCursor: strOr(de.NextCursor, "")}, nil
 				})
 			} else {
 				var de *coreapi.DomainEvents
 				de, err = client.GetDomainEvents(ctx, domain, rng, outcome, source, limit, cursor)
 				if err == nil {
-					events, next = de.Events, strOr(de.Cursor, "")
+					events, next = de.Events, strOr(de.NextCursor, "")
 				}
 			}
 			if err != nil {
 				return err
 			}
-			a.out.Emit(map[string]any{"events": events, "cursor": next}, func(w io.Writer) {
+			a.out.Emit(map[string]any{"events": events, "nextCursor": next}, func(w io.Writer) {
 				rows := make([][]string, 0, len(events))
 				for _, e := range events {
 					rows = append(rows, []string{

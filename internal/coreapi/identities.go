@@ -78,8 +78,7 @@ type WhoamiResult struct {
 	CredentialID *string `json:"credentialId"`
 }
 
-// Whoami introspects the current bearer. 404 on deployments predating the
-// endpoint — Resolve falls back to probing there.
+// Whoami introspects the current bearer.
 func (c *Client) Whoami(ctx context.Context) (*WhoamiResult, error) {
 	var out WhoamiResult
 	err := c.doJSON(ctx, request{

@@ -51,15 +51,6 @@ func Dir() (string, error) {
 	return filepath.Join(base, "openemail"), nil
 }
 
-// Path returns the config file path.
-func Path() (string, error) {
-	dir, err := Dir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "config.toml"), nil
-}
-
 // Load reads the config, returning an empty (but usable) document if none exists.
 func Load() (*File, error) {
 	dir, err := Dir()

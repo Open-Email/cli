@@ -115,9 +115,6 @@ func IsUnauthorized(err error) bool { return Status(err) == 401 }
 // IsForbidden reports a 403 (scope/policy denial).
 func IsForbidden(err error) bool { return Status(err) == 403 }
 
-// IsConflict reports a 409 (already-exists, in-use, ...). Code carries which.
-func IsConflict(err error) bool { return Status(err) == 409 }
-
 // IsValidation reports the house validation_failed envelope.
 func IsValidation(err error) bool { return Code(err) == "validation_failed" }
 

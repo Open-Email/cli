@@ -949,7 +949,7 @@ func trafficEventsDesc(domain string) resourceDesc {
 					item: e,
 				}
 			}
-			return rows, strOr(de.Cursor, ""), nil
+			return rows, strOr(de.NextCursor, ""), nil
 		},
 		detail: func(item any) []kv {
 			e := item.(coreapi.TrafficEvent)

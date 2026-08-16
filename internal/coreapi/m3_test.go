@@ -131,14 +131,14 @@ func TestGetMessageRawStreams(t *testing.T) {
 	}
 }
 
-// list messages carries the next-page cursor in the `cursor` field (NOT
-// nextCursor), and null cursor means the last page.
+// list messages carries the next-page cursor in the `nextCursor` field; an
+// absent nextCursor means the last page.
 func TestListMessagesCursorField(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("cursor") == "" {
-			w.Write([]byte(`{"messages":[{"id":"m1"}],"cursor":"c9"}`))
+			w.Write([]byte(`{"messages":[{"id":"m1"}],"nextCursor":"c9"}`))
 		} else {
-			w.Write([]byte(`{"messages":[{"id":"m2"}],"cursor":null}`))
+			w.Write([]byte(`{"messages":[{"id":"m2"}]}`))
 		}
 	}))
 	defer srv.Close()
@@ -213,7 +213,7 @@ func TestListTrashFields(t *testing.T) {
 		if r.URL.Query().Get("state") != "expunged" {
 			t.Errorf("state: got %q", r.URL.Query().Get("state"))
 		}
-		w.Write([]byte(`{"messages":[{"id":"m1","labels":[],"flags":[],"envelopeFrom":"a","envelopeTo":"b","referencesIds":[],"receivedAt":5,"size":1,"blobHash":"h","blobGen":"g","expungedAt":100,"purgeAfter":200,"expungedLabels":["INBOX"]}],"cursor":null}`))
+		w.Write([]byte(`{"messages":[{"id":"m1","labels":[],"flags":[],"envelopeFrom":"a","envelopeTo":"b","referencesIds":[],"receivedAt":5,"size":1,"blobHash":"h","blobGen":"g","expungedAt":100,"purgeAfter":200,"expungedLabels":["INBOX"]}]}`))
 	}))
 	defer srv.Close()
 	page, err := m3Client(t, srv.URL).ListTrash(context.Background(), "mbx", ListOpts{})
@@ -428,7 +428,7 @@ func TestListOptsQueryParams(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		queries = append(queries, r.URL.RawQuery)
 		w.WriteHeader(200)
-		w.Write([]byte(`{"messages":[],"threads":[],"cursor":null}`))
+		w.Write([]byte(`{"messages":[],"threads":[]}`))
 	}))
 	defer srv.Close()
 	c := m3Client(t, srv.URL)

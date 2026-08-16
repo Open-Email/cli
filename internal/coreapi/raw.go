@@ -61,28 +61,3 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query url.
 	}
 	return &RawResponse{Status: resp.StatusCode, Header: resp.Header, Body: data}, nil
 }
-
-// GetOpenAPISpec fetches the unauthenticated OpenAPI document (served at
-// <base>/openapi.json, outside the /api/v1 auth fence) for route discovery.
-func (c *Client) GetOpenAPISpec(ctx context.Context) ([]byte, error) {
-	u := *c.base
-	u.Path = c.base.Path + "/openapi.json"
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", c.cfg.UserAgent)
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.hc.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return nil, decodeAPIError(resp.StatusCode, data)
-	}
-	return io.ReadAll(io.LimitReader(resp.Body, maxJSONBody))
-}

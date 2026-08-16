@@ -11,13 +11,13 @@ import (
 // GetDomainEvents builds ?range=&outcome=&source=&limit=&cursor= (omitting
 // empties), hits /domains/:domain/events, and decodes the keyset page —
 // including nullable columns (attempt null, size present) and the
-// cursor (string on a middle page).
+// nextCursor (present on a middle page).
 func TestGetDomainEventsBuildsQueryAndDecodes(t *testing.T) {
 	var gotPath string
 	var q url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, q = r.URL.Path, r.URL.Query()
-		w.Write([]byte(`{"domain":"x.example","range":"7d","estimated":false,"cursor":"CUR2","events":[
+		w.Write([]byte(`{"domain":"x.example","range":"7d","estimated":false,"nextCursor":"CUR2","events":[
 			{"eventTime":1784,"source":"inbound","outcome":"delivered","detail":null,"deliveryId":"dlv1",
 			 "envelopeFrom":"a@x.test","envelopeTo":"b@x.example","originalAddress":null,"matchedBy":"exact",
 			 "routeKind":"mailbox","routeTarget":"mbx:m1","mailboxId":"m1","messageId":"01M",
@@ -38,8 +38,8 @@ func TestGetDomainEventsBuildsQueryAndDecodes(t *testing.T) {
 			t.Fatalf("query %s = %q, want %q", k, got, want)
 		}
 	}
-	if de.Cursor == nil || *de.Cursor != "CUR2" {
-		t.Fatalf("cursor = %v, want CUR2", de.Cursor)
+	if de.NextCursor == nil || *de.NextCursor != "CUR2" {
+		t.Fatalf("nextCursor = %v, want CUR2", de.NextCursor)
 	}
 	if len(de.Events) != 1 {
 		t.Fatalf("want 1 event, got %d", len(de.Events))
@@ -59,19 +59,19 @@ func TestGetDomainEventsBuildsQueryAndDecodes(t *testing.T) {
 	}
 }
 
-// A null cursor is the last-page sentinel — it must decode to a nil pointer so
-// --all / Depaginate stops.
+// An absent nextCursor is the last-page sentinel — it must decode to a nil
+// pointer so --all / Depaginate stops.
 func TestGetDomainEventsNullCursorEndsPagination(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`{"domain":"x.example","range":"24h","estimated":false,"cursor":null,"events":[]}`))
+		w.Write([]byte(`{"domain":"x.example","range":"24h","estimated":false,"events":[]}`))
 	}))
 	defer srv.Close()
 	de, err := testClient(t, srv.URL).GetDomainEvents(context.Background(), "x.example", "", "", "", 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if de.Cursor != nil {
-		t.Fatalf("null cursor should decode to nil, got %q", *de.Cursor)
+	if de.NextCursor != nil {
+		t.Fatalf("an absent nextCursor should decode to nil, got %q", *de.NextCursor)
 	}
 }
 
@@ -81,7 +81,7 @@ func TestGetDomainEventsOmitsEmptyParams(t *testing.T) {
 	var q url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q = r.URL.Query()
-		w.Write([]byte(`{"domain":"x.example","range":"24h","estimated":false,"cursor":null,"events":[]}`))
+		w.Write([]byte(`{"domain":"x.example","range":"24h","estimated":false,"events":[]}`))
 	}))
 	defer srv.Close()
 	if _, err := testClient(t, srv.URL).GetDomainEvents(context.Background(), "x.example", "", "", "", 0, ""); err != nil {
