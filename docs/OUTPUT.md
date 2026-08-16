@@ -33,8 +33,10 @@ error goes to stderr.
 
 Pagination exceptions (mirroring core):
 
-- `labels messages` is a **UID window** (`--uid-min/--uid-max/--limit`), not a
-  cursor. Page forward with `--uid-min <lastUid+1>`.
+- `labels messages` and `labels uids` are a **UID window** (`--uid-min/--uid-max/
+  --limit`), not a cursor. Page forward with `--uid-min <lastUid+1>`. `uids` is
+  the folder-sync projection (uid, modseq, flags, keywords, size, dates,
+  blobHash) at up to 10000 rows a page; `messages` is the full metadata at 1000.
 - `search --group-thread` is single-page (a `--cursor` there is rejected).
 - `labels list`, `sieve scripts list`, and `credentials list` are unpaginated.
 

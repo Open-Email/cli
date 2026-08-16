@@ -25,6 +25,55 @@ func pageValues(limit int, cursor string) url.Values {
 	return q
 }
 
+// ListOpts are the knobs the message, trash and thread listings share.
+//
+// Order and SortBy are independent axes and both default to the SERVER's
+// choice when empty (desc, arrival) — they are omitted from the query rather
+// than spelled out, so this client never has to track a default core owns.
+//
+//   - Order:  "asc" | "desc"     — direction.
+//   - SortBy: "arrival" | "date" — which date. "date" is the Date header
+//     (falling back to arrival where it is absent); "arrival" is the order
+//     mail reached the mailbox.
+//
+// Both must be held CONSTANT across a cursor crawl. SortBy more strictly than
+// Order: the two keys mint different cursor shapes, so core answers 400
+// invalid_cursor rather than silently re-windowing the page. Depaginate holds
+// one ListOpts for the whole crawl, so it cannot get this wrong.
+//
+// Label does not apply to the trash listing — expunged messages carry no label
+// memberships, and core refuses the combination with `label_not_applicable`.
+type ListOpts struct {
+	Label  string
+	Limit  int
+	Cursor string
+	Order  string
+	SortBy string
+}
+
+// WithCursor is the crawl step: the same knobs at a new position. Depaginate
+// takes a cursor per call, and copying the struct rather than mutating it is
+// what keeps every page of a crawl on the key its cursor was minted under.
+func (o ListOpts) WithCursor(cursor string) ListOpts {
+	o.Cursor = cursor
+	return o
+}
+
+// values renders the listing knobs, with `cursor` overridden for a crawl step.
+func (o ListOpts) values(cursor string) url.Values {
+	q := pageValues(o.Limit, cursor)
+	if o.Label != "" {
+		q.Set("label", o.Label)
+	}
+	if o.Order != "" {
+		q.Set("order", o.Order)
+	}
+	if o.SortBy != "" {
+		q.Set("sortBy", o.SortBy)
+	}
+	return q
+}
+
 // DefaultMaxPages is the safety cap on pages drained in a single --all call to prevent runaway OOM.
 const DefaultMaxPages = 10000
 

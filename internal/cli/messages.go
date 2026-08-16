@@ -49,6 +49,8 @@ func newMessageListCmd(a *app) *cobra.Command {
 		all    bool
 		limit  int
 		cursor string
+		order  string
+		sortBy string
 	)
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -56,6 +58,9 @@ func newMessageListCmd(a *app) *cobra.Command {
 		Short:   "List messages newest-first (or the trash with --trash)",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateListOrder(order, sortBy); err != nil {
+				return err
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -69,24 +74,27 @@ func newMessageListCmd(a *app) *cobra.Command {
 				if label != "" {
 					return usageError(errors.New("--label cannot be combined with --trash (expunged messages carry no labels)"))
 				}
-				return a.listTrash(ctx, client, mbx, all, limit, cursor)
+				return a.listTrash(ctx, client, mbx, all, coreapi.ListOpts{
+					Limit: limit, Cursor: cursor, Order: order, SortBy: sortBy,
+				})
 			}
+			opts := coreapi.ListOpts{Label: label, Limit: limit, Cursor: cursor, Order: order, SortBy: sortBy}
 			var items []coreapi.MessageMeta
 			next := ""
 			if all {
 				items, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.MessageMeta], error) {
-					return client.ListMessages(ctx, mbx, label, limit, cur)
+					return client.ListMessages(ctx, mbx, opts.WithCursor(cur))
 				})
 			} else {
 				var page coreapi.Page[coreapi.MessageMeta]
-				page, err = client.ListMessages(ctx, mbx, label, limit, cursor)
+				page, err = client.ListMessages(ctx, mbx, opts)
 				items, next = page.Items, page.NextCursor
 			}
 			if err != nil {
 				return err
 			}
 			a.out.Emit(map[string]any{"messages": items, "nextCursor": next}, func(w io.Writer) {
-				printTable(w, a.out, messageListHeaders, messageListRows(items))
+				printTable(w, a.out, messageListHeaders, messageListRows(items, sortBy))
 				a.moreHint(next)
 			})
 			return nil
@@ -97,20 +105,21 @@ func newMessageListCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
 	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–200)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous page")
+	addListOrderFlags(cmd, &order, &sortBy)
 	return cmd
 }
 
-func (a *app) listTrash(ctx context.Context, client *coreapi.Client, mbx string, all bool, limit int, cursor string) error {
+func (a *app) listTrash(ctx context.Context, client *coreapi.Client, mbx string, all bool, opts coreapi.ListOpts) error {
 	var items []coreapi.ExpungedMessageMeta
 	next := ""
 	var err error
 	if all {
 		items, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.ExpungedMessageMeta], error) {
-			return client.ListTrash(ctx, mbx, limit, cur)
+			return client.ListTrash(ctx, mbx, opts.WithCursor(cur))
 		})
 	} else {
 		var page coreapi.Page[coreapi.ExpungedMessageMeta]
-		page, err = client.ListTrash(ctx, mbx, limit, cursor)
+		page, err = client.ListTrash(ctx, mbx, opts)
 		items, next = page.Items, page.NextCursor
 	}
 	if err != nil {

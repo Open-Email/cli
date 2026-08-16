@@ -30,6 +30,8 @@ func newThreadListCmd(a *app) *cobra.Command {
 		all    bool
 		limit  int
 		cursor string
+		order  string
+		sortBy string
 	)
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -37,6 +39,9 @@ func newThreadListCmd(a *app) *cobra.Command {
 		Short:   "List threads, newest activity first",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateListOrder(order, sortBy); err != nil {
+				return err
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -46,15 +51,16 @@ func newThreadListCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			opts := coreapi.ListOpts{Label: label, Limit: limit, Cursor: cursor, Order: order, SortBy: sortBy}
 			var items []coreapi.ThreadListItem
 			next := ""
 			if all {
 				items, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.ThreadListItem], error) {
-					return client.ListThreads(ctx, mbx, label, limit, cur)
+					return client.ListThreads(ctx, mbx, opts.WithCursor(cur))
 				})
 			} else {
 				var page coreapi.Page[coreapi.ThreadListItem]
-				page, err = client.ListThreads(ctx, mbx, label, limit, cursor)
+				page, err = client.ListThreads(ctx, mbx, opts)
 				items, next = page.Items, page.NextCursor
 			}
 			if err != nil {
@@ -65,7 +71,12 @@ func newThreadListCmd(a *app) *cobra.Command {
 				for _, t := range items {
 					rows = append(rows, []string{
 						t.ThreadID, fmt.Sprintf("%d", t.MessageCount),
-						fmtEpoch(t.LastReceivedAt),
+						// The LAST column is the date the page was ORDERED by, so
+						// the column and the row order cannot disagree: under
+						// sortBy=date that is the exemplar's own sent date (the
+						// exemplar being the newest-dated member), not the
+						// thread's MAX(receivedAt).
+						fmtEpoch(threadActivityAt(t, sortBy)),
 						truncate(t.Exemplar.EnvelopeFrom, 26),
 						truncate(msgSubjectDisplay(t.Exemplar), 40),
 					})
@@ -80,7 +91,22 @@ func newThreadListCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
 	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous page")
+	addListOrderFlags(cmd, &order, &sortBy)
 	return cmd
+}
+
+// threadActivityAt is the epoch the thread row's LAST column shows, matching
+// the key the listing was sorted by. Under sortBy=date core makes the exemplar
+// the newest-DATED member, so the exemplar's own date IS the sort position;
+// LastReceivedAt (MAX over live members) is the arrival-mode answer.
+func threadActivityAt(t coreapi.ThreadListItem, sortBy string) int64 {
+	if sortBy == "date" && t.Exemplar.SentAt != nil {
+		return *t.Exemplar.SentAt
+	}
+	if sortBy == "date" {
+		return t.Exemplar.ReceivedAt
+	}
+	return t.LastReceivedAt
 }
 
 func newThreadGetCmd(a *app) *cobra.Command {
@@ -126,7 +152,7 @@ func newThreadGetCmd(a *app) *cobra.Command {
 				if tv.CanonicalThreadID != nil {
 					a.out.Warnf("requested id was merged — canonical thread is %s", *tv.CanonicalThreadID)
 				}
-				printTable(w, a.out, messageListHeaders, messageListRows(tv.Messages))
+				printTable(w, a.out, messageListHeaders, messageListRows(tv.Messages, ""))
 				if tv.ReplyContext != nil {
 					a.out.Msgf("reply subject: %s", strOr(tv.ReplyContext.Subject, "—"))
 					a.out.Msgf("reply to:      %s", strOr(tv.ReplyContext.To, "—"))

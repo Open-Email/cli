@@ -21,6 +21,7 @@ func newLabelsCmd(a *app) *cobra.Command {
 		newLabelRenameCmd(a),
 		newLabelDeleteCmd(a),
 		newLabelMessagesCmd(a),
+		newLabelUidsCmd(a),
 		newLabelExpungeCmd(a),
 	)
 	return cmd
@@ -192,6 +193,51 @@ func newLabelMessagesCmd(a *app) *cobra.Command {
 	cmd.Flags().Int64Var(&uidMin, "uid-min", 0, "lowest UID to include (inclusive)")
 	cmd.Flags().Int64Var(&uidMax, "uid-max", 0, "highest UID to include (inclusive)")
 	cmd.Flags().Int64Var(&limit, "limit", 0, "max messages to return (1–1000)")
+	return cmd
+}
+
+func newLabelUidsCmd(a *app) *cobra.Command {
+	var uidMin, uidMax, limit int64
+	cmd := &cobra.Command{
+		Use:   "uids <label>",
+		Short: "List a label's UID index (uid, modseq, flags, size, date) — the folder-sync projection, up to 10000 a page",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
+			if err != nil {
+				return err
+			}
+			rows, uidValidity, err := client.LabelUids(cmd.Context(), mbx, args[0], uidMin, uidMax, limit)
+			if err != nil {
+				return err
+			}
+			a.out.Emit(map[string]any{"messages": rows, "uidValidity": uidValidity}, func(w io.Writer) {
+				table := make([][]string, 0, len(rows))
+				for _, m := range rows {
+					flags := m.Flags
+					if len(m.Keywords) > 0 {
+						flags = append(append([]string{}, m.Flags...), m.Keywords...)
+					}
+					table = append(table, []string{
+						fmt.Sprintf("%d", m.UID), m.ID, fmt.Sprintf("%d", m.ModSeq),
+						fmtBytes(m.Size), fmtEpoch(m.ReceivedAt), flagsDisplay(flags),
+					})
+				}
+				printTable(w, a.out, []string{"UID", "ID", "MODSEQ", "SIZE", "DATE", "FLAGS"}, table)
+				if len(rows) > 0 && (limit == 0 || int64(len(rows)) == limit) {
+					a.out.Msgf("more may follow — re-run with --uid-min %d", rows[len(rows)-1].UID+1)
+				}
+			})
+			return nil
+		},
+	}
+	cmd.Flags().Int64Var(&uidMin, "uid-min", 0, "lowest UID to include (inclusive)")
+	cmd.Flags().Int64Var(&uidMax, "uid-max", 0, "highest UID to include (inclusive)")
+	cmd.Flags().Int64Var(&limit, "limit", 0, "max rows to return (1–10000)")
 	return cmd
 }
 

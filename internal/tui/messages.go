@@ -120,7 +120,7 @@ func (p *messagesPane) fetchCmd(cursor string, replace bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
 		defer cancel()
-		pg, err := p.ui.Client.ListMessages(ctx, p.mbx.ID, "", pageLimit, cursor)
+		pg, err := p.ui.Client.ListMessages(ctx, p.mbx.ID, coreapi.ListOpts{Limit: pageLimit, Cursor: cursor})
 		return msgsPageMsg{paneID: p.id, seq: seq, items: pg.Items, next: pg.NextCursor, replace: replace, err: err}
 	}
 }

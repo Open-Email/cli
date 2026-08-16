@@ -100,6 +100,11 @@ openemail send --from me@example.com --to you@example.com --subject Hi --text 'H
 cat message.eml | openemail send --from me@example.com --to you@example.com
 openemail send --from me@example.com --to you@example.com --file msg.eml --save
 
+# List by the Date header rather than by arrival (the two disagree for delayed,
+# clock-skewed and imported mail; the DATE column follows whichever you pick).
+openemail messages list --sort-by date
+openemail threads list --sort-by date --order asc
+
 # Move a message between labels, mark it read, then read its raw body.
 openemail messages move <id> --from INBOX --to Archive
 openemail messages flag <id> --set seen

@@ -156,13 +156,11 @@ func (c *Client) messagePath(mailboxID, messageID string) string {
 	return c.messagesPath(mailboxID) + "/" + escapeSegment(messageID)
 }
 
-// ListMessages returns one page of live messages, newest-first. The next-page
-// cursor rides the response's `cursor` field (not `nextCursor`).
-func (c *Client) ListMessages(ctx context.Context, mailboxID, label string, limit int, cursor string) (Page[MessageMeta], error) {
-	q := pageValues(limit, cursor)
-	if label != "" {
-		q.Set("label", label)
-	}
+// ListMessages returns one page of live messages, newest-first (see ListOpts
+// for the order/sortBy knobs). The next-page cursor rides the response's
+// `cursor` field (not `nextCursor`).
+func (c *Client) ListMessages(ctx context.Context, mailboxID string, opts ListOpts) (Page[MessageMeta], error) {
+	q := opts.values(opts.Cursor)
 	var out struct {
 		Messages []MessageMeta `json:"messages"`
 		Cursor   *string       `json:"cursor"`
@@ -176,9 +174,11 @@ func (c *Client) ListMessages(ctx context.Context, mailboxID, label string, limi
 	return Page[MessageMeta]{Items: out.Messages, NextCursor: derefStr(out.Cursor)}, nil
 }
 
-// ListTrash returns one page of soft-deleted (expunged) messages.
-func (c *Client) ListTrash(ctx context.Context, mailboxID string, limit int, cursor string) (Page[ExpungedMessageMeta], error) {
-	q := pageValues(limit, cursor)
+// ListTrash returns one page of soft-deleted (expunged) messages. Takes the
+// same ListOpts as the live listing minus Label, which core refuses here.
+func (c *Client) ListTrash(ctx context.Context, mailboxID string, opts ListOpts) (Page[ExpungedMessageMeta], error) {
+	opts.Label = ""
+	q := opts.values(opts.Cursor)
 	q.Set("state", "expunged")
 	var out struct {
 		Messages []ExpungedMessageMeta `json:"messages"`

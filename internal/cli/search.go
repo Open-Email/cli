@@ -106,7 +106,7 @@ func newSearchCmd(a *app) *cobra.Command {
 					return derr
 				}
 				a.out.Emit(map[string]any{"results": results, "nextCursor": ""}, func(w io.Writer) {
-					printTable(w, a.out, messageListHeaders, messageListRows(results))
+					printTable(w, a.out, messageListHeaders, messageListRows(results, ""))
 				})
 				return nil
 			}
@@ -116,7 +116,7 @@ func newSearchCmd(a *app) *cobra.Command {
 				return err
 			}
 			a.out.Emit(map[string]any{"results": res.Results, "nextCursor": res.NextCursor}, func(w io.Writer) {
-				printTable(w, a.out, messageListHeaders, messageListRows(res.Results))
+				printTable(w, a.out, messageListHeaders, messageListRows(res.Results, ""))
 				a.moreHint(res.NextCursor)
 			})
 			return nil
@@ -178,7 +178,7 @@ func runStructuredSearch(cmd *cobra.Command, a *app, client *coreapi.Client, mbx
 		return err
 	}
 	a.out.Emit(res, func(w io.Writer) {
-		printTable(w, a.out, messageListHeaders, messageListRows(res.Results))
+		printTable(w, a.out, messageListHeaders, messageListRows(res.Results, ""))
 		if sf.snippet {
 			printSnippets(a, res.Snippets)
 		}

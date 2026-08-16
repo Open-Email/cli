@@ -65,15 +65,32 @@ func truncate(s string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
-// messageListRows builds the standard message table rows.
-func messageListRows(msgs []coreapi.MessageMeta) [][]string {
+// listDateOf is the epoch the DATE column shows under a listing's sort key.
+//
+// It follows the key rather than always printing ReceivedAt so a row's date and
+// its position can never disagree — a message whose Date header puts it at the
+// top of a --sort-by=date listing must not print the arrival time that explains
+// nothing about where it sits. sortBy "" (core's default, arrival) and any
+// unrecognized value print arrival, and "date" falls back to arrival for a
+// message with no Date header, which is exactly core's COALESCE.
+func listDateOf(m coreapi.MessageMeta, sortBy string) int64 {
+	if sortBy == "date" && m.SentAt != nil {
+		return *m.SentAt
+	}
+	return m.ReceivedAt
+}
+
+// messageListRows builds the standard message table rows. sortBy names the key
+// the rows are ordered by (empty for the surfaces that do not sort by date —
+// search is relevance-ranked, a thread view is chronological).
+func messageListRows(msgs []coreapi.MessageMeta, sortBy string) [][]string {
 	rows := make([][]string, 0, len(msgs))
 	for _, m := range msgs {
 		rows = append(rows, []string{
 			m.ID,
 			truncate(m.EnvelopeFrom, 28),
 			truncate(msgSubjectDisplay(m), 40),
-			fmtEpoch(m.ReceivedAt),
+			fmtEpoch(listDateOf(m, sortBy)),
 			flagsDisplay(m.Flags),
 			truncate(labelNamesDisplay(m), 20),
 		})

@@ -143,14 +143,14 @@ func TestListMessagesCursorField(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := m3Client(t, srv.URL)
-	p1, err := c.ListMessages(context.Background(), "mbx", "", 0, "")
+	p1, err := c.ListMessages(context.Background(), "mbx", ListOpts{})
 	if err != nil {
 		t.Fatalf("ListMessages: %v", err)
 	}
 	if p1.NextCursor != "c9" {
 		t.Fatalf("page1 cursor: got %q want c9", p1.NextCursor)
 	}
-	p2, _ := c.ListMessages(context.Background(), "mbx", "", 0, "c9")
+	p2, _ := c.ListMessages(context.Background(), "mbx", ListOpts{Cursor: "c9"})
 	if p2.NextCursor != "" {
 		t.Fatalf("page2 cursor: got %q want empty", p2.NextCursor)
 	}
@@ -216,7 +216,7 @@ func TestListTrashFields(t *testing.T) {
 		w.Write([]byte(`{"messages":[{"id":"m1","labels":[],"flags":[],"envelopeFrom":"a","envelopeTo":"b","referencesIds":[],"receivedAt":5,"size":1,"blobHash":"h","blobGen":"g","expungedAt":100,"purgeAfter":200,"expungedLabels":["INBOX"]}],"cursor":null}`))
 	}))
 	defer srv.Close()
-	page, err := m3Client(t, srv.URL).ListTrash(context.Background(), "mbx", 0, "")
+	page, err := m3Client(t, srv.URL).ListTrash(context.Background(), "mbx", ListOpts{})
 	if err != nil {
 		t.Fatalf("ListTrash: %v", err)
 	}
@@ -250,6 +250,33 @@ func TestLabelMessagesUIDRange(t *testing.T) {
 	}
 	if uidv != 3 || len(msgs) != 1 || msgs[0].UID == nil || *msgs[0].UID != 10 {
 		t.Fatalf("msgs=%+v uidv=%d", msgs, uidv)
+	}
+}
+
+// The folder-sync projection: same query contract, the narrow row shape.
+func TestLabelUidsUIDRange(t *testing.T) {
+	var q map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/mailboxes/mbx/labels/INBOX/uids" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		q = map[string]string{
+			"uidMin": r.URL.Query().Get("uidMin"),
+			"uidMax": r.URL.Query().Get("uidMax"),
+			"limit":  r.URL.Query().Get("limit"),
+		}
+		w.Write([]byte(`{"messages":[{"id":"m1","uid":10,"modseq":7,"flags":["seen"],"keywords":["$work"],"size":1,"receivedAt":5,"sentAt":null,"blobHash":"h"}],"uidValidity":3}`))
+	}))
+	defer srv.Close()
+	rows, uidv, err := m3Client(t, srv.URL).LabelUids(context.Background(), "mbx", "INBOX", 10, 20, 5000)
+	if err != nil {
+		t.Fatalf("LabelUids: %v", err)
+	}
+	if q["uidMin"] != "10" || q["uidMax"] != "20" || q["limit"] != "5000" {
+		t.Fatalf("query: %+v", q)
+	}
+	if uidv != 3 || len(rows) != 1 || rows[0].UID != 10 || rows[0].ModSeq != 7 || rows[0].SentAt != nil || len(rows[0].Keywords) != 1 {
+		t.Fatalf("rows=%+v uidv=%d", rows, uidv)
 	}
 }
 
@@ -389,5 +416,71 @@ func TestPickupRealBooleans(t *testing.T) {
 	}
 	if !p.DeleteAfterFetch || !p.Enabled || p.LastStatus == nil || *p.LastStatus != "ok" {
 		t.Fatalf("got %+v", p)
+	}
+}
+
+// The listing knobs reach the wire, and — the half that is easy to lose — are
+// ABSENT when unset. Core defaults to arrival/desc, so a client that always
+// spelled a value would be choosing on the user's behalf; and a crawl must keep
+// the key it started with, or core refuses the cursor it just handed out.
+func TestListOptsQueryParams(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		w.WriteHeader(200)
+		w.Write([]byte(`{"messages":[],"threads":[],"cursor":null}`))
+	}))
+	defer srv.Close()
+	c := m3Client(t, srv.URL)
+	ctx := context.Background()
+
+	if _, err := c.ListMessages(ctx, "mbx", ListOpts{}); err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if queries[0] != "" {
+		t.Fatalf("bare listing sent %q, want no query at all", queries[0])
+	}
+
+	if _, err := c.ListMessages(ctx, "mbx", ListOpts{
+		Label: "INBOX", Limit: 25, Order: "asc", SortBy: "date",
+	}); err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	for _, want := range []string{"label=INBOX", "limit=25", "order=asc", "sortBy=date"} {
+		if !strings.Contains(queries[1], want) {
+			t.Fatalf("query %q missing %q", queries[1], want)
+		}
+	}
+
+	if _, err := c.ListThreads(ctx, "mbx", ListOpts{SortBy: "date"}); err != nil {
+		t.Fatalf("ListThreads: %v", err)
+	}
+	if !strings.Contains(queries[2], "sortBy=date") {
+		t.Fatalf("thread listing dropped sortBy: %q", queries[2])
+	}
+
+	// The trash listing takes the same struct, and Label is dropped rather than
+	// sent: core answers 400 label_not_applicable for it, so passing one through
+	// would turn a caller's harmless leftover into a failed listing.
+	if _, err := c.ListTrash(ctx, "mbx", ListOpts{Label: "INBOX", SortBy: "date"}); err != nil {
+		t.Fatalf("ListTrash: %v", err)
+	}
+	if strings.Contains(queries[3], "label=") {
+		t.Fatalf("trash listing sent a label: %q", queries[3])
+	}
+	for _, want := range []string{"state=expunged", "sortBy=date"} {
+		if !strings.Contains(queries[3], want) {
+			t.Fatalf("query %q missing %q", queries[3], want)
+		}
+	}
+
+	// A crawl step keeps every knob and moves only the cursor — the property
+	// that makes Depaginate safe under a non-default key.
+	step := ListOpts{Label: "INBOX", SortBy: "date", Order: "asc"}.WithCursor("1700000000:01MSG")
+	if step.SortBy != "date" || step.Order != "asc" || step.Label != "INBOX" {
+		t.Fatalf("WithCursor dropped a knob: %+v", step)
+	}
+	if step.Cursor != "1700000000:01MSG" {
+		t.Fatalf("WithCursor did not set the cursor: %+v", step)
 	}
 }

@@ -45,13 +45,12 @@ func (c *Client) threadsPath(mailboxID string) string {
 	return "/mailboxes/" + escapeSegment(mailboxID) + "/threads"
 }
 
-// ListThreads returns one page of threads (newest activity first). The next-page
-// cursor rides the `cursor` field (string|null), not `nextCursor`.
-func (c *Client) ListThreads(ctx context.Context, mailboxID, label string, limit int, cursor string) (Page[ThreadListItem], error) {
-	q := pageValues(limit, cursor)
-	if label != "" {
-		q.Set("label", label)
-	}
+// ListThreads returns one page of threads (newest activity first; under
+// SortBy "date" that activity — and the exemplar — is the newest-DATED member
+// rather than the newest-arrived one). The next-page cursor rides the `cursor`
+// field (string|null), not `nextCursor`.
+func (c *Client) ListThreads(ctx context.Context, mailboxID string, opts ListOpts) (Page[ThreadListItem], error) {
+	q := opts.values(opts.Cursor)
 	var out struct {
 		Threads []ThreadListItem `json:"threads"`
 		Cursor  *string          `json:"cursor"`

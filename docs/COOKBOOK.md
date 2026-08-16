@@ -282,6 +282,31 @@ by `--position` instead of a cursor. Core allows at most one full-text condition
 a bare query and `--subject`/`--body` are mutually exclusive. Dates take RFC3339,
 `YYYY-MM-DD`, or a relative `7d`/`24h`; sizes take a `k`/`m`/`g` suffix.
 
+## List by the date the sender wrote, not by arrival
+
+```sh
+openemail messages list --sort-by date              # the Date header
+openemail messages list --sort-by date --order asc  # oldest first
+openemail threads list --sort-by date               # conversations, same key
+openemail messages list --trash --sort-by date      # the trash tier too
+```
+
+A message carries two dates and they do not have to agree: `receivedAt` (when it
+reached the mailbox) and the `Date:` header (when the sender says they wrote it).
+They diverge for a delayed relay, a sender with a wrong clock, a POP3 backfill,
+and imported mail — and that is when a listing looks out of order.
+
+`--sort-by arrival` is the default and lists in the order mail landed here.
+`--sort-by date` is what a mail client's Date column implies, and is how to make
+a listing agree with what Thunderbird or the webmail shows. A message with no
+parseable `Date:` header sorts by its arrival rather than sinking to the end.
+The **DATE column follows the flag**, so the dates you see always explain the
+order you see.
+
+Cursors follow the key, so hold `--sort-by` constant while paging: a cursor from
+the other key is refused (`invalid_cursor`) rather than quietly returning a
+differently-windowed page. `--all` holds it for you.
+
 ## Send with attachments
 
 ```sh

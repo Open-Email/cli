@@ -84,6 +84,7 @@ func contractPairings() []pairing {
 		{val: LabelInfo{}, comp: "LabelInfo"},
 		{val: CreatedLabel{}, comp: "CreatedLabel"},
 		{val: ExpungedUID{}, comp: "ExpungedUID"},
+		{val: LabelUidEntry{}, comp: "LabelUidEntry"},
 		{val: MimeEntry{}, comp: "MimeEntry"},
 		// Structured content view (GET .../content).
 		{val: ContentResult{}, comp: "ContentResult"},

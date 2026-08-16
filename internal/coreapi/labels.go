@@ -114,6 +114,44 @@ func (c *Client) ExpungeLabel(ctx context.Context, mailboxID, label string) (exp
 	return out.Expunged, out.MessagesExpunged, err
 }
 
+// LabelUidEntry is one row of GET /labels/:label/uids — the folder-sync
+// projection of MessageMeta (what an IMAP/POP3 server holds per message).
+type LabelUidEntry struct {
+	ID         string   `json:"id"`
+	UID        int64    `json:"uid"`
+	ModSeq     int64    `json:"modseq"`
+	Flags      []string `json:"flags"`
+	Keywords   []string `json:"keywords"`
+	Size       int64    `json:"size"`
+	ReceivedAt int64    `json:"receivedAt"`
+	SentAt     *int64   `json:"sentAt"`
+	BlobHash   string   `json:"blobHash"`
+}
+
+// LabelUids lists a label's UID index UID-ascending — LabelMessages narrowed to
+// the nine sync fields, at up to 10000 rows a page. Same uidMin/uidMax paging.
+func (c *Client) LabelUids(ctx context.Context, mailboxID, label string, uidMin, uidMax, limit int64) (rows []LabelUidEntry, uidValidity int64, err error) {
+	q := url.Values{}
+	if uidMin > 0 {
+		q.Set("uidMin", itoa64(uidMin))
+	}
+	if uidMax > 0 {
+		q.Set("uidMax", itoa64(uidMax))
+	}
+	if limit > 0 {
+		q.Set("limit", itoa64(limit))
+	}
+	var out struct {
+		Messages    []LabelUidEntry `json:"messages"`
+		UIDValidity int64           `json:"uidValidity"`
+	}
+	err = c.doJSON(ctx, request{
+		method: http.MethodGet, path: c.labelPath(mailboxID, label) + "/uids",
+		query: q, idempotent: true,
+	}, &out)
+	return out.Messages, out.UIDValidity, err
+}
+
 // LabelMessages lists a label's messages UID-ascending within an optional UID
 // range (IMAP UID FETCH). No cursor pagination — page forward by setting
 // uidMin=lastUid+1. Each message carries a top-level uid within this label.

@@ -3115,6 +3115,88 @@
         ],
         "type": "object"
       },
+      "LabelUidEntry": {
+        "properties": {
+          "blobHash": {
+            "type": "string"
+          },
+          "flags": {
+            "description": "seen | answered | flagged | draft | deleted",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keywords": {
+            "description": "Arbitrary keywords (never the four bitmask-backed ones)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "modseq": {
+            "description": "RFC 7162 MODSEQ of this membership row (floored to 1)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "receivedAt": {
+            "description": "IMAP INTERNALDATE",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sentAt": {
+            "description": "The Date header, when parseable",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uid": {
+            "description": "The message's UID in this label",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "uid",
+          "modseq",
+          "flags",
+          "keywords",
+          "size",
+          "receivedAt",
+          "sentAt",
+          "blobHash"
+        ],
+        "type": "object"
+      },
+      "LabelUidPage": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/LabelUidEntry"
+            },
+            "type": "array"
+          },
+          "uidValidity": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "messages",
+          "uidValidity"
+        ],
+        "type": "object"
+      },
       "MailAddress": {
         "properties": {
           "email": {
@@ -16331,6 +16413,95 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/labels/{label}/uids": {
+      "get": {
+        "operationId": "get_LabelUidList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "label",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uidMin",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uidMax",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Default 1000",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Default 1000",
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelUidPage"
+                }
+              }
+            },
+            "description": "The page, UID-ascending, plus uidValidity"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — malformed UID range or limit"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or label not found"
+          }
+        },
+        "summary": "List a label's UID index UID-ascending — id, uid, modseq, flags, keywords, size, dates, blobHash — the folder-sync projection an IMAP/POP3 server holds per message (up to 10000 per page)",
+        "tags": [
+          "Labels"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/labels/{label}/vanished": {
       "get": {
         "operationId": "get_LabelVanished",
@@ -16593,15 +16764,29 @@
             }
           },
           {
-            "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+            "description": "Listing direction: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
             "in": "query",
             "name": "order",
             "required": false,
             "schema": {
-              "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+              "description": "Listing direction: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
               "enum": [
                 "asc",
                 "desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort key: arrival (default) = the order mail reached this mailbox (message id); date = the Date header, falling back to arrival where it is absent or unparseable (RFC 5256 SORT DATE). Cursors follow the key, so hold it constant across a crawl — unlike order, a mismatched cursor is refused with 400 invalid_cursor rather than silently re-windowing. Note that under arrival an imported message (APPEND with ?internaldate=) lists where it was imported, not at its receivedAt; date orders imported mail by its own header",
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "description": "Sort key: arrival (default) = the order mail reached this mailbox (message id); date = the Date header, falling back to arrival where it is absent or unparseable (RFC 5256 SORT DATE). Cursors follow the key, so hold it constant across a crawl — unlike order, a mismatched cursor is refused with 400 invalid_cursor rather than silently re-windowing. Note that under arrival an imported message (APPEND with ?internaldate=) lists where it was imported, not at its receivedAt; date orders imported mail by its own header",
+              "enum": [
+                "arrival",
+                "date"
               ],
               "type": "string"
             }
@@ -16693,7 +16878,7 @@
                 }
               }
             },
-            "description": "validation_failed, or label_not_applicable (label filter with state=expunged)"
+            "description": "validation_failed, label_not_applicable (label filter with state=expunged), or invalid_cursor (a cursor from a different sortBy)"
           },
           "404": {
             "content": {
@@ -16706,7 +16891,7 @@
             "description": "Mailbox not found or not accessible to this principal, or unknown_label (the label filter names no existing label)"
           }
         },
-        "summary": "List messages newest-first (order=asc for oldest-first) with cursor pagination, optionally filtered to one label. Hold order constant across a crawl — cursors do not encode direction, so a cursor reused under the opposite order yields a differently-windowed page, not an error. state=expunged lists the trash (restorable messages) instead. For UID-ordered listing use GET /mailboxes/:id/labels/:label/messages.",
+        "summary": "List messages newest-first (order=asc for oldest-first) with cursor pagination, optionally filtered to one label. sortBy=date orders by the Date header instead of by arrival. Hold order and sortBy constant across a crawl — cursors do not encode direction, so a cursor reused under the opposite order yields a differently-windowed page, not an error. state=expunged lists the trash (restorable messages) instead. For UID-ordered listing use GET /mailboxes/:id/labels/:label/messages.",
         "tags": [
           "Messages"
         ]
@@ -21240,15 +21425,29 @@
             }
           },
           {
-            "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+            "description": "Listing direction: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
             "in": "query",
             "name": "order",
             "required": false,
             "schema": {
-              "description": "Listing direction by message id: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
+              "description": "Listing direction: desc (default) = newest first, asc = oldest first. Hold it constant across a cursor crawl — cursors do not encode direction, so switching mid-crawl re-windows the page rather than erroring",
               "enum": [
                 "asc",
                 "desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort key: arrival (default) = the order mail reached this mailbox (message id); date = the Date header, falling back to arrival where it is absent or unparseable (RFC 5256 SORT DATE). Cursors follow the key, so hold it constant across a crawl — unlike order, a mismatched cursor is refused with 400 invalid_cursor rather than silently re-windowing. Note that under arrival an imported message (APPEND with ?internaldate=) lists where it was imported, not at its receivedAt; date orders imported mail by its own header",
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "description": "Sort key: arrival (default) = the order mail reached this mailbox (message id); date = the Date header, falling back to arrival where it is absent or unparseable (RFC 5256 SORT DATE). Cursors follow the key, so hold it constant across a crawl — unlike order, a mismatched cursor is refused with 400 invalid_cursor rather than silently re-windowing. Note that under arrival an imported message (APPEND with ?internaldate=) lists where it was imported, not at its receivedAt; date orders imported mail by its own header",
+              "enum": [
+                "arrival",
+                "date"
               ],
               "type": "string"
             }
@@ -21286,7 +21485,17 @@
                 }
               }
             },
-            "description": "threads: [{ threadId, messageCount, unseenCount, lastReceivedAt, exemplar: MessageMeta of the newest live member }]; nextCursor present while a further page exists (cursor, its always-present null-terminated twin, stays for existing clients). threadId is opaque and convergent, NOT stable — a merge re-stamps the losing thread (GET /threads/:threadId recovers a merged-away id)"
+            "description": "threads: [{ threadId, messageCount, unseenCount, lastReceivedAt, exemplar: MessageMeta of the newest live member — the newest-DATED member under sortBy=date }]; nextCursor present while a further page exists (cursor, its always-present null-terminated twin, stays for existing clients). threadId is opaque and convergent, NOT stable — a merge re-stamps the losing thread (GET /threads/:threadId recovers a merged-away id)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_cursor (a cursor from a different sortBy)"
           },
           "404": {
             "content": {
@@ -21299,7 +21508,7 @@
             "description": "Mailbox (or, as unknown_label, the label filter) not found"
           }
         },
-        "summary": "List conversations, newest activity first (order=asc for oldest activity first). Snapshot semantics: new activity or a thread merge between pages can skip or re-home a conversation — restart the crawl for a consistent view; under order=asc a thread that gains a newer member mid-crawl can re-qualify and appear twice in one crawl. Hold order constant across a crawl — cursors do not encode direction, so a cursor reused under the opposite order yields a differently-windowed page, not an error. label filters Gmail-style (a thread matches when ANY live member carries the label).",
+        "summary": "List conversations, newest activity first (order=asc for oldest activity first). sortBy=date measures that activity by the newest member's Date header instead of by arrival, and makes the exemplar that same member. Snapshot semantics: new activity or a thread merge between pages can skip or re-home a conversation — restart the crawl for a consistent view; under order=asc a thread that gains a newer member mid-crawl can re-qualify and appear twice in one crawl. Hold order and sortBy constant across a crawl — cursors do not encode direction, so a cursor reused under the opposite order yields a differently-windowed page, not an error. label filters Gmail-style (a thread matches when ANY live member carries the label).",
         "tags": [
           "Threads"
         ]

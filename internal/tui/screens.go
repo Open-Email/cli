@@ -665,7 +665,7 @@ func trashDesc(mbx coreapi.Mailbox) resourceDesc {
 			{title: "SIZE", width: 9},
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
-			pg, err := c.ListTrash(ctx, mbx.ID, pageLimit, cursor)
+			pg, err := c.ListTrash(ctx, mbx.ID, coreapi.ListOpts{Limit: pageLimit, Cursor: cursor})
 			if err != nil {
 				return nil, "", err
 			}
