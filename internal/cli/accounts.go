@@ -175,6 +175,7 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Messages/day", fmtSendCap(acc.SendMsgsPerDay)},
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},
 		{"Max mailboxes", int64Or(acc.MaxMailboxes, "unlimited")},
+		{"Storage pool", fmtStoragePool(acc.StorageLimitBytes)},
 		{"Vanity hostnames", boolYN(acc.VanityHosts)},
 		{"Created", fmtEpoch(acc.CreatedAt)},
 	})
@@ -191,6 +192,18 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 // freeze) is checked first: core resolves a row carrying both toward the
 // freeze, so reporting the hold would describe behavior the tenant is not
 // getting.
+// fmtStoragePool is fmtSendCap for the pool: the same three states, but the
+// configured one is bytes and an operator should not have to read 53687091200.
+func fmtStoragePool(p *int64) string {
+	if p == nil {
+		return "platform default"
+	}
+	if *p == 0 {
+		return "unlimited (metered)"
+	}
+	return fmtBytes(*p)
+}
+
 func fmtAccountSendState(disabled, paused bool) string {
 	switch {
 	case disabled:
@@ -209,6 +222,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		freeze, unfreeze    bool
 		pause, resume       bool
 		vanityHosts         string
+		storageLimit        string
 	)
 	cmd := &cobra.Command{
 		Use:     "update <accountId>",
@@ -293,6 +307,16 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 				}
 				patch[f.field] = v // nil marshals as JSON null = drop the override
 			}
+			// The account storage POOL. Same three states as the send caps, but a
+			// separate parser because it takes a human size — nobody should have
+			// to type 53687091200 to set 50 GiB.
+			if cmd.Flags().Changed("storage-limit") {
+				v, perr := parseStorageLimitFlag(storageLimit)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch["storageLimitBytes"] = v
+			}
 			// The vanity-hostname gate. A plain on/off rather than the two-flag
 			// treatment the freeze gets: turning it OFF destroys nothing (it stops
 			// new claims and leaves hostnames already serving a customer's clients
@@ -337,6 +361,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&resume, "resume", false, "lift the account send hold")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns: a number, 'unlimited', or 'default' to drop the override")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&storageLimit, "storage-limit", "", "account-wide storage POOL across every mailbox it owns: a size like 50G, 'unlimited' (metered — overage billed, never refused), or 'default' for the platform pool")
 	cmd.Flags().StringVar(&vanityHosts, "vanity-hosts", "", "may this account claim VANITY HOSTNAMES (its own mail./smtp./webmail./dav. names): true|false. Gates claiming only — turning it off never revokes hostnames already serving clients")
 	return cmd
 }
@@ -344,6 +369,26 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 // parseBoolFlag reads an explicit true/false string flag. Explicit rather than a
 // bare bool because these are tri-state on the wire (absent = leave alone), and
 // a bare `--flag` could only ever mean "true".
+// parseStorageLimitFlag reads the pool's three states, accepting a human size
+// for the configured one. It mirrors parseSendCapFlag's vocabulary exactly —
+// 'default' drops the override, 'unlimited' is an explicit 0 — because an
+// operator setting a plan tier reads these flags as one family and a divergence
+// in what "default" means is the kind of thing found later, on a live account.
+func parseStorageLimitFlag(s string) (*int64, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "default":
+		return nil, nil
+	case "unlimited", "none":
+		var zero int64
+		return &zero, nil
+	}
+	n, err := parseByteSize(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --storage-limit %q: %w", s, err)
+	}
+	return &n, nil
+}
+
 func parseBoolFlag(flag, raw string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "true", "yes", "on", "1":

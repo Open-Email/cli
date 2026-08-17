@@ -2103,6 +2103,11 @@
           "jmap": {
             "type": "boolean"
           },
+          "mailboxCount": {
+            "description": "Mailboxes whose primary address is on this domain — only when mailboxCounts=true",
+            "format": "int64",
+            "type": "integer"
+          },
           "receiving": {
             "description": "enabled && canReceive",
             "type": "boolean"
@@ -2464,6 +2469,9 @@
       },
       "DomainHostnameList": {
         "properties": {
+          "canClaim": {
+            "type": "boolean"
+          },
           "domain": {
             "type": "string"
           },
@@ -2476,6 +2484,7 @@
         },
         "required": [
           "domain",
+          "canClaim",
           "hostnames"
         ],
         "type": "object"
@@ -9974,6 +9983,20 @@
       "get": {
         "operationId": "get_DomainList",
         "parameters": [
+          {
+            "description": "Also return `mailboxCount` on each row: how many mailboxes have their primary address on that domain. Opt-in because it costs one grouped scan of the caller's identities — but it is ONE query for the whole page, so a client rendering 'N mailboxes' per row must use this rather than a per-domain count call",
+            "in": "query",
+            "name": "mailboxCounts",
+            "required": false,
+            "schema": {
+              "description": "Also return `mailboxCount` on each row: how many mailboxes have their primary address on that domain. Opt-in because it costs one grouped scan of the caller's identities — but it is ONE query for the whole page, so a client rendering 'N mailboxes' per row must use this rather than a per-domain count call",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
           {
             "description": "Page size (default 100)",
             "in": "query",

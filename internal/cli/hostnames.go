@@ -186,6 +186,13 @@ func printHostnames(w io.Writer, p *Printer, list *coreapi.DomainHostnameList) {
 		rows = append(rows, []string{h.Service, hostname, target, hostnameState(h)})
 	}
 	printTable(w, p, []string{"SERVICE", "HOSTNAME", "CNAME TARGET", "STATE"}, rows)
+	// Said after the table rather than instead of it: an operator may have
+	// provisioned rows with a system key on an account that cannot claim its
+	// own, and those are exactly the rows worth still showing.
+	if !list.CanClaim {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, p.Dim("custom hostnames are not enabled on this account — a claim will be refused"))
+	}
 }
 
 // hostnameState collapses the row into the one thing an operator wants to read

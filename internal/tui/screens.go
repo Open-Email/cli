@@ -605,12 +605,21 @@ func accountsDesc() resourceDesc {
 				{k: "messages/day", v: sendCapOr(a.SendMsgsPerDay)},
 				{k: "recipients/day", v: sendCapOr(a.SendRcptsPerDay)},
 				{k: "max mailboxes", v: int64Or(a.MaxMailboxes, "∞")},
+				// The rest of the plan. Shown here rather than only in the edit
+				// form because the question "what tier is this account on" is
+				// asked far more often than it is changed, and answering it from
+				// four screens is how accounts end up half-provisioned.
+				{k: "storage pool", v: storagePoolOr(a.StorageLimitBytes)},
+				{k: "vanity hostnames", v: yn(a.VanityHosts)},
 				{k: "created", v: fmtEpoch(a.CreatedAt)},
 			}
 		},
 		actions: []action{
 			{key: "n", label: "n new", run: func(ctx context.Context, ui *Options, _ any) pane {
 				return accountFormPane(ctx, ui)
+			}},
+			{key: "e", label: "e plan", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
+				return accountPlanFormPane(ctx, ui, item.(coreapi.Account))
 			}},
 		},
 	}

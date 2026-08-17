@@ -61,6 +61,16 @@ type Domain struct {
 	Receiving bool `json:"receiving"`
 	// Sending is enabled && canSend && !sendPaused.
 	Sending bool `json:"sending"`
+
+	// MailboxCount is how many mailboxes have their primary address on this
+	// domain, and is present ONLY when the listing asked for it
+	// (GET /domains?mailboxCounts=true). A pointer, not a bare int64, because
+	// the two states are different claims: nil is "we did not ask", 0 is "core
+	// counted none". It exists so a client rendering the number does it with
+	// ONE call for the page rather than one count call per domain — the shape
+	// that made the console's domains table fail intermittently once a tenant
+	// had enough domains to outrun its own deadline.
+	MailboxCount *int64 `json:"mailboxCount,omitempty"`
 }
 
 // DNSRecord is one record a domain needs, with the copy-pasteable value. Kind
@@ -426,7 +436,12 @@ type DomainHostname struct {
 }
 
 type DomainHostnameList struct {
-	Domain    string           `json:"domain"`
+	Domain string `json:"domain"`
+	// CanClaim reports whether this account may claim a hostname at all
+	// (`accounts.vanity_hosts`). Advisory — a claim re-checks it server-side —
+	// but it is what lets a client say "not enabled" instead of walking someone
+	// into a 403, or worse into publishing a CNAME that will never be served.
+	CanClaim  bool             `json:"canClaim"`
 	Hostnames []DomainHostname `json:"hostnames"`
 }
 

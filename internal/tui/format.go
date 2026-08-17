@@ -99,6 +99,20 @@ func sendCapOr(p *int64) string {
 	return strconv.FormatInt(*p, 10)
 }
 
+// storagePoolOr is sendCapOr for the account storage pool: same three states,
+// but a byte count read as a raw integer is unreadable, so the configured case
+// goes through fmtBytes. Kept apart rather than teaching sendCapOr a unit,
+// because every other caller of that is a message or recipient COUNT.
+func storagePoolOr(p *int64) string {
+	if p == nil {
+		return "platform default"
+	}
+	if *p == 0 {
+		return "unlimited"
+	}
+	return fmtBytes(*p)
+}
+
 func yn(b bool) string {
 	if b {
 		return "yes"
