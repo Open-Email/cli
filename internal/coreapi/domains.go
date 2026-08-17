@@ -388,3 +388,98 @@ func (c *Client) GetDomainEvents(ctx context.Context, domain, rng, outcome, sour
 	}
 	return &out, nil
 }
+
+// --- vanity hostnames (migration 0034) --------------------------------------
+
+// HostnameCheckStatus is the per-aspect detail behind a vanity hostname's last
+// check. Everything here is DISPLAY state: a certificate that has not appeared
+// yet, or a Cloudflare state machine mid-flight, is normal seconds after a
+// claim. Only the row's VerifiedAt says whether the hostname is servable.
+type HostnameCheckStatus struct {
+	CNAME string   `json:"cname"`
+	Found []string `json:"found"`
+	// mail/smtp only. CAA "blocked" is the one value that refuses verification —
+	// an unknown answer never does.
+	CAA         string `json:"caa,omitempty"`
+	Certificate string `json:"certificate,omitempty"`
+	// webmail/dav only: Cloudflare's two independent state machines.
+	CF *struct {
+		Status     *string `json:"status"`
+		SSLStatus  *string `json:"sslStatus"`
+		Ready      bool    `json:"ready"`
+		Configured bool    `json:"configured"`
+	} `json:"cf,omitempty"`
+}
+
+// DomainHostname is one service's vanity-hostname slot. Reported for ALL four
+// services, claimed or not, so a client renders the whole set (and the target
+// to CNAME at) without hard-coding the service list.
+type DomainHostname struct {
+	Service    string               `json:"service"`
+	Domain     string               `json:"domain"`
+	Hostname   *string              `json:"hostname"`
+	Target     *string              `json:"target"`
+	VerifiedAt *int64               `json:"verifiedAt"`
+	CheckedAt  *int64               `json:"checkedAt"`
+	Status     *HostnameCheckStatus `json:"status"`
+	CreatedAt  *int64               `json:"createdAt"`
+}
+
+type DomainHostnameList struct {
+	Domain    string           `json:"domain"`
+	Hostnames []DomainHostname `json:"hostnames"`
+}
+
+func (c *Client) ListDomainHostnames(ctx context.Context, domain string) (*DomainHostnameList, error) {
+	var out DomainHostnameList
+	err := c.doJSON(ctx, request{
+		method: http.MethodGet,
+		path:   "/domains/" + escapeSegment(domain) + "/hostnames",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) SetDomainHostname(ctx context.Context, domain, service, hostname string) (*DomainHostnameList, error) {
+	var out DomainHostnameList
+	err := c.doJSON(ctx, request{
+		method:      http.MethodPut,
+		path:        "/domains/" + escapeSegment(domain) + "/hostnames/" + escapeSegment(service),
+		body:        mustJSON(map[string]string{"hostname": hostname}),
+		contentType: "application/json",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteDomainHostname(ctx context.Context, domain, service string) error {
+	return c.doJSON(ctx, request{
+		method: http.MethodDelete,
+		path:   "/domains/" + escapeSegment(domain) + "/hostnames/" + escapeSegment(service),
+	}, nil)
+}
+
+// CheckDomainHostnames re-resolves every claimed hostname and stores the
+// verdict. It is the ONLY writer of VerifiedAt, in both directions — a customer
+// who publishes the CNAME becomes servable, and one who removes it stops being
+// renewed.
+func (c *Client) CheckDomainHostnames(ctx context.Context, domain string, force bool) (*DomainHostnameList, error) {
+	q := url.Values{}
+	if force {
+		q.Set("force", "true")
+	}
+	var out DomainHostnameList
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost,
+		path:   "/domains/" + escapeSegment(domain) + "/hostnames/check",
+		query:  q,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

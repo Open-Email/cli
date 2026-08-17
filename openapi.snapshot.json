@@ -48,6 +48,9 @@
               "null"
             ]
           },
+          "vanityHosts": {
+            "type": "boolean"
+          },
           "verificationToken": {
             "type": [
               "string",
@@ -65,6 +68,7 @@
           "sendMsgsPerDay",
           "sendRcptsPerDay",
           "storageLimitBytes",
+          "vanityHosts",
           "createdAt"
         ],
         "type": "object"
@@ -1912,6 +1916,13 @@
       },
       "DnsRecord": {
         "properties": {
+          "accept": {
+            "description": "Other values that also satisfy this record. Present where either of two of OUR hosts is correct — a domain that claimed a vanity DAV hostname may keep the platform target published while it migrates",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "kind": {
             "enum": [
               "ownership",
@@ -2154,13 +2165,6 @@
               "integer",
               "null"
             ]
-          },
-          "webmailHost": {
-            "description": "The domain's own webmail hostname, when one has been claimed",
-            "type": [
-              "string",
-              "null"
-            ]
           }
         },
         "required": [
@@ -2168,8 +2172,7 @@
           "brandName",
           "hasLogo",
           "logoType",
-          "logoUpdatedAt",
-          "webmailHost"
+          "logoUpdatedAt"
         ],
         "type": "object"
       },
@@ -2396,6 +2399,84 @@
           "range",
           "events",
           "estimated"
+        ],
+        "type": "object"
+      },
+      "DomainHostname": {
+        "properties": {
+          "checkedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "hostname": {
+            "description": "The claimed hostname, or null when unclaimed",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "service": {
+            "$ref": "#/components/schemas/HostnameService"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HostnameCheckStatus"
+          },
+          "target": {
+            "description": "What to CNAME the hostname at. Null when this deployment does not offer the service",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verifiedAt": {
+            "description": "Epoch seconds of the last check that agreed. Non-null is what makes the hostname servable: the edges enumerate only verified hostnames, and a check that stops agreeing clears it",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "service",
+          "domain",
+          "hostname",
+          "target",
+          "verifiedAt",
+          "checkedAt",
+          "status",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "DomainHostnameList": {
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "hostnames": {
+            "items": {
+              "$ref": "#/components/schemas/DomainHostname"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain",
+          "hostnames"
         ],
         "type": "object"
       },
@@ -2925,6 +3006,141 @@
           "pausedIds"
         ],
         "type": "object"
+      },
+      "HostnameCheckStatus": {
+        "description": "Detail from the last check",
+        "properties": {
+          "caa": {
+            "description": "mail/smtp only: does CAA permit our certificate authority? Only `blocked` refuses verification — an unknown answer never does",
+            "enum": [
+              "ok",
+              "blocked",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "certificate": {
+            "description": "mail/smtp only, display: is a certificate being served for this hostname yet? Sampled from one node behind round-robin DNS, so `pending` shortly after a claim is expected",
+            "enum": [
+              "live",
+              "pending",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "cf": {
+            "description": "webmail/dav only",
+            "properties": {
+              "configured": {
+                "description": "False when the deployment has no SaaS zone: the claim is recorded, nothing is provisioned",
+                "type": "boolean"
+              },
+              "ready": {
+                "description": "Both state machines active — serving traffic",
+                "type": "boolean"
+              },
+              "sslStatus": {
+                "description": "Cloudflare certificate state",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "description": "Cloudflare hostname-ownership state",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "sslStatus",
+              "ready",
+              "configured"
+            ],
+            "type": "object"
+          },
+          "cname": {
+            "description": "Does the hostname resolve, through its CNAME chain, to the platform target?",
+            "enum": [
+              "ok",
+              "mismatch",
+              "missing",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "found": {
+            "description": "What the resolver actually returned",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "cname",
+          "found"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "HostnameFeed": {
+        "properties": {
+          "hostnames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "service": {
+            "$ref": "#/components/schemas/HostnameService"
+          }
+        },
+        "required": [
+          "service",
+          "hostnames",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "HostnameLookup": {
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "service": {
+            "$ref": "#/components/schemas/HostnameService"
+          }
+        },
+        "required": [
+          "hostname",
+          "domain",
+          "service"
+        ],
+        "type": "object"
+      },
+      "HostnameService": {
+        "enum": [
+          "mail",
+          "smtp",
+          "webmail",
+          "dav"
+        ],
+        "type": "string"
       },
       "Identity": {
         "allOf": [
@@ -7557,6 +7773,10 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "vanityHosts": {
+                    "description": "May this account claim VANITY HOSTNAMES — its own `mail.`/`smtp.`/`webmail.`/`dav.` names in front of the platform services? Off by default: each hostname costs a certificate order and key on our own fleets, or a billable Cloudflare custom hostname, so this is the paid-plan gate. Gates CLAIMING only — turning it off never revokes hostnames already serving a customer's clients",
+                    "type": "boolean"
                   }
                 },
                 "type": "object"
@@ -9976,10 +10196,10 @@
                 }
               }
             },
-            "description": "domain_has_routes, domain_has_patterns, or domain_is_alias_target"
+            "description": "domain_has_routes, domain_has_patterns, domain_is_alias_target, or domain_has_hostnames"
           }
         },
-        "summary": "Delete a domain (fails while routes, patterns, or alias domains reference it)",
+        "summary": "Delete a domain (fails while routes, patterns, alias domains, or vanity hostnames reference it)",
         "tags": [
           "Directory"
         ]
@@ -10787,6 +11007,270 @@
         ]
       }
     },
+    "/api/v1/domains/{domain}/hostnames": {
+      "get": {
+        "operationId": "get_DomainHostnamesGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainHostnameList"
+                }
+              }
+            },
+            "description": "Every service slot, claimed or not"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "The domain's vanity hostnames — one slot per service (mail, smtp, webmail, dav) with the CNAME target to publish and the last check's verdict",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/hostnames/check": {
+      "post": {
+        "operationId": "post_DomainHostnamesCheck",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bypass the cached verdict and re-query now",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "description": "Bypass the cached verdict and re-query now",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainHostnameList"
+                }
+              }
+            },
+            "description": "Every service slot with the refreshed verdict"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Re-check every claimed vanity hostname (CNAME, CAA, certificate/Cloudflare state) and store the verdict. Cached briefly — ?force=true re-queries",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/api/v1/domains/{domain}/hostnames/{service}": {
+      "delete": {
+        "operationId": "delete_DomainHostnameDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "enum": [
+                "mail",
+                "smtp",
+                "webmail",
+                "dav"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deletion result"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Domain not found, or no hostname claimed for this service"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "upstream_unavailable — the Cloudflare object could not be removed"
+          }
+        },
+        "summary": "Release a service's vanity hostname (and its Cloudflare custom hostname, if any)",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "put": {
+        "operationId": "put_DomainHostnameSet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "enum": [
+                "mail",
+                "smtp",
+                "webmail",
+                "dav"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "hostname": {
+                    "description": "ASCII (A-label) FQDN, a strict subdomain of this domain — e.g. `mail.acme.com` for domain `acme.com`",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hostname"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainHostnameList"
+                }
+              }
+            },
+            "description": "The claimed slot"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, invalid_hostname, hostname_not_subdomain, hostname_reserved, or hostname_in_foreign_domain"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "vanity_hosts_disabled — not enabled for this account"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Domain not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "hostname_taken, service_unavailable, or domain_is_alias"
+          }
+        },
+        "summary": "Claim a hostname for one service. Must be a strict subdomain of this domain. Publishing the CNAME is the customer's next step; nothing is served until a check verifies it",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
     "/api/v1/domains/{domain}/logo": {
       "delete": {
         "description": "Deletes the stored image and clears the logo metadata. The brand name is untouched.",
@@ -11059,6 +11543,57 @@
           }
         },
         "summary": "Liveness check",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/hostnames/{hostname}": {
+      "get": {
+        "operationId": "get_HostnameLookupGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hostname",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostnameLookup"
+                }
+              }
+            },
+            "description": "The owning domain and service"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No domain claims this hostname"
+          }
+        },
+        "summary": "(system only) Resolve a vanity hostname to its domain and service",
         "tags": [
           "System"
         ]
@@ -24283,6 +24818,79 @@
           }
         },
         "summary": "Per-event traffic log across the whole deployment (system callers only), including the operator-only `meta` column",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/hostnames": {
+      "get": {
+        "operationId": "get_SystemHostnameFeed",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "enum": [
+                "mail",
+                "smtp",
+                "webmail",
+                "dav"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Last hostname of the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Last hostname of the previous page",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ETag from a previous response",
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "description": "ETag from a previous response",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostnameFeed"
+                }
+              }
+            },
+            "description": "A page of verified hostnames"
+          },
+          "304": {
+            "description": "Unchanged since the supplied ETag"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "(system only) Every VERIFIED vanity hostname for a service — the allow-set the mail/smtp edges enumerate. Conditional: send If-None-Match to get 304 when unchanged",
         "tags": [
           "System"
         ]

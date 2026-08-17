@@ -22,6 +22,7 @@ func newDomainsCmd(a *app) *cobra.Command {
 		newDomainGetCmd(a),
 		newDomainUpdateCmd(a),
 		newDomainDNSCmd(a),
+		newDomainHostnamesCmd(a),
 		newDomainDeleteCmd(a),
 		newDomainTrafficCmd(a),
 		newDomainEventsCmd(a),

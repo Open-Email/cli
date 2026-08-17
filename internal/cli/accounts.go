@@ -175,6 +175,7 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Messages/day", fmtSendCap(acc.SendMsgsPerDay)},
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},
 		{"Max mailboxes", int64Or(acc.MaxMailboxes, "unlimited")},
+		{"Vanity hostnames", boolYN(acc.VanityHosts)},
 		{"Created", fmtEpoch(acc.CreatedAt)},
 	})
 }
@@ -207,6 +208,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		sendMsgs, sendRcpts string
 		freeze, unfreeze    bool
 		pause, resume       bool
+		vanityHosts         string
 	)
 	cmd := &cobra.Command{
 		Use:     "update <accountId>",
@@ -291,8 +293,19 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 				}
 				patch[f.field] = v // nil marshals as JSON null = drop the override
 			}
+			// The vanity-hostname gate. A plain on/off rather than the two-flag
+			// treatment the freeze gets: turning it OFF destroys nothing (it stops
+			// new claims and leaves hostnames already serving a customer's clients
+			// exactly where they are), so a mistyped value cannot cost anything.
+			if cmd.Flags().Changed("vanity-hosts") {
+				v, perr := parseBoolFlag("--vanity-hosts", vanityHosts)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch["vanityHosts"] = v
+			}
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --name, --max-mailboxes, --send-*-per-day, --freeze/--unfreeze, or --pause/--resume"))
+				return usageError(errors.New("nothing to update — pass --name, --max-mailboxes, --send-*-per-day, --vanity-hosts, --freeze/--unfreeze, or --pause/--resume"))
 			}
 			acc, err := client.UpdateAccount(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -324,7 +337,22 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&resume, "resume", false, "lift the account send hold")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns: a number, 'unlimited', or 'default' to drop the override")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&vanityHosts, "vanity-hosts", "", "may this account claim VANITY HOSTNAMES (its own mail./smtp./webmail./dav. names): true|false. Gates claiming only — turning it off never revokes hostnames already serving clients")
 	return cmd
+}
+
+// parseBoolFlag reads an explicit true/false string flag. Explicit rather than a
+// bare bool because these are tri-state on the wire (absent = leave alone), and
+// a bare `--flag` could only ever mean "true".
+func parseBoolFlag(flag, raw string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "yes", "on", "1":
+		return true, nil
+	case "false", "no", "off", "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s must be true or false, got %q", flag, raw)
+	}
 }
 
 func newAccountUsageCmd(a *app) *cobra.Command {

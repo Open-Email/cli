@@ -60,7 +60,13 @@ type Account struct {
 	// StorageLimitBytes is the account storage pool: NIL = platform default,
 	// 0 = explicitly unlimited/metered.
 	StorageLimitBytes *int64 `json:"storageLimitBytes"`
-	CreatedAt         int64  `json:"createdAt"`
+	// VanityHosts is whether this account may claim VANITY HOSTNAMES — its own
+	// `mail.`/`smtp.`/`webmail.`/`dav.` names in front of the platform services.
+	// Off by default: each one costs a certificate order and a persistent key on
+	// our own fleets, or a billable Cloudflare custom hostname. It gates CLAIMING
+	// only — clearing it never revokes hostnames already serving clients.
+	VanityHosts bool  `json:"vanityHosts"`
+	CreatedAt   int64 `json:"createdAt"`
 }
 
 // AccountSendUsage is GET /accounts/:accountId/send-usage — the tenant-scale
