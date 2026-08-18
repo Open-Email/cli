@@ -68,8 +68,9 @@ func newHostnamesSetCmd(a *app) *cobra.Command {
 		Short: "Claim a hostname for one service (mail | smtp | webmail | dav)",
 		Long: "Claim a hostname for one service. It must be a STRICT subdomain of the domain — which is " +
 			"what makes ownership self-evident, since the domain's own control was already proved.\n\n" +
-			"The claim is recorded immediately; publishing the CNAME is the customer's next step, and " +
-			"`hostnames check` is what turns a published CNAME into a served hostname.",
+			"The claim is CHECKED as it is recorded: a CNAME that is already published verifies on the " +
+			"spot, and one that is not is reported as missing, with the record to publish. " +
+			"`hostnames check` re-runs the same check later.",
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			domain, service, hostname := args[0], strings.ToLower(args[1]), args[2]
@@ -86,9 +87,19 @@ func newHostnamesSetCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(res, func(w io.Writer) {
 				printHostnames(w, a.out, res)
-				// Say what is left to do, in the customer's terms. A claim that
-				// reports nothing further looks finished and is not.
-				if slot := slotFor(res, service); slot != nil && slot.Target != nil {
+				// Say what is left to do, in the customer's terms — read off the
+				// verdict the claim came back with, so a customer who published
+				// first is told they are done rather than told to publish.
+				slot := slotFor(res, service)
+				if slot == nil || slot.Target == nil {
+					return
+				}
+				switch {
+				case slot.Status != nil && slot.Status.CF != nil && slot.Status.CF.Configured && !slot.Status.CF.Provisioned:
+					a.out.Msgf("%s", a.out.Dim("We could not set this hostname up on our side — that is not your DNS. Try `hostnames check` again in a minute."))
+				case slot.VerifiedAt != nil:
+					a.out.Msgf("%s verified — nothing more to publish.", hostname)
+				default:
 					a.out.Msgf("Publish: %s CNAME %s", hostname, *slot.Target)
 					// mail/smtp need a plain, unintercepted CNAME. That only ever
 					// bites a customer on Cloudflare (proxied by default there), so
