@@ -418,6 +418,11 @@ type HostnameCheckStatus struct {
 		SSLStatus  *string `json:"sslStatus"`
 		Ready      bool    `json:"ready"`
 		Configured bool    `json:"configured"`
+		// False with Configured true: Cloudflare refused core, so no custom
+		// hostname exists and none is being issued. Its own field because the
+		// refusal otherwise reports the same empty statuses as a hostname still
+		// being validated, and a broken deployment then reads as progress.
+		Provisioned bool `json:"provisioned"`
 	} `json:"cf,omitempty"`
 }
 
@@ -425,10 +430,17 @@ type HostnameCheckStatus struct {
 // services, claimed or not, so a client renders the whole set (and the target
 // to CNAME at) without hard-coding the service list.
 type DomainHostname struct {
-	Service    string               `json:"service"`
-	Domain     string               `json:"domain"`
-	Hostname   *string              `json:"hostname"`
-	Target     *string              `json:"target"`
+	Service  string  `json:"service"`
+	Domain   string  `json:"domain"`
+	Hostname *string `json:"hostname"`
+	Target   *string `json:"target"`
+	// DirectOnly says the customer's CNAME must be a PLAIN record nothing
+	// intercepts. True for mail/smtp: our own fleets over ports no HTTP proxy
+	// carries, so a resolver must see the target — a customer on Cloudflare must
+	// set the record to DNS only, or Cloudflare answers 1014. False for
+	// webmail/dav: a plain CNAME at any provider works; the proxying that
+	// matters is on OUR side of the target.
+	DirectOnly bool                 `json:"directOnly"`
 	VerifiedAt *int64               `json:"verifiedAt"`
 	CheckedAt  *int64               `json:"checkedAt"`
 	Status     *HostnameCheckStatus `json:"status"`

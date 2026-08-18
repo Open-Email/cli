@@ -2423,6 +2423,10 @@
               "null"
             ]
           },
+          "directOnly": {
+            "description": "Whether the customer's CNAME must be a PLAIN record that nothing intercepts. True for `mail`/`smtp`: they terminate TLS on our own fleets over ports no HTTP proxy carries, so a resolver must see the target itself — a customer on Cloudflare must set the record to DNS only (grey cloud), or Cloudflare answers 1014 and no mail client could connect through it anyway. False for `webmail`/`dav`: a plain CNAME at any DNS provider works, and a customer on Cloudflare may leave it proxied or not — the proxying that matters is on OUR side of the target",
+            "type": "boolean"
+          },
           "domain": {
             "type": "string"
           },
@@ -2460,6 +2464,7 @@
           "domain",
           "hostname",
           "target",
+          "directOnly",
           "verifiedAt",
           "checkedAt",
           "status",
@@ -3044,6 +3049,10 @@
                 "description": "False when the deployment has no SaaS zone: the claim is recorded, nothing is provisioned",
                 "type": "boolean"
               },
+              "provisioned": {
+                "description": "False with configured=true: Cloudflare refused us. A platform-side fault, not a DNS problem — distinct from a hostname still being validated, which reports the same empty statuses",
+                "type": "boolean"
+              },
               "ready": {
                 "description": "Both state machines active — serving traffic",
                 "type": "boolean"
@@ -3067,17 +3076,19 @@
               "status",
               "sslStatus",
               "ready",
-              "configured"
+              "configured",
+              "provisioned"
             ],
             "type": "object"
           },
           "cname": {
-            "description": "Does the hostname resolve, through its CNAME chain, to the platform target?",
+            "description": "Does the hostname resolve, through its CNAME chain, to the platform target? `proxied` (mail/smtp only) is the one mismatch with a known cause: the record is behind Cloudflare's proxy, so the resolver sees only Cloudflare edge addresses — the CNAME is right, the orange cloud must come off",
             "enum": [
               "ok",
               "mismatch",
               "missing",
-              "unknown"
+              "unknown",
+              "proxied"
             ],
             "type": "string"
           },
@@ -6985,14 +6996,17 @@
             "type": "integer"
           },
           "events": {
+            "description": "Every traffic row in the bucket, whatever its source",
             "format": "int64",
             "type": "integer"
           },
           "inbound": {
+            "description": "Rows with source `inbound` — mail that reached one of the domain's addresses from outside (`/deliver/inbound`, i.e. the MX, plus its paced completion). An IMAP APPEND, a POP3 pickup, a Sent copy and the fault sources are NOT counted here",
             "format": "int64",
             "type": "integer"
           },
           "outbound": {
+            "description": "Rows with source `outbound` or `relay` — the per-recipient legs of `/deliver/outbound` and the relay consumer's attempts (outbound and forwarding jobs alike)",
             "format": "int64",
             "type": "integer"
           }

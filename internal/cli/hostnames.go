@@ -90,6 +90,12 @@ func newHostnamesSetCmd(a *app) *cobra.Command {
 				// reports nothing further looks finished and is not.
 				if slot := slotFor(res, service); slot != nil && slot.Target != nil {
 					a.out.Msgf("Publish: %s CNAME %s", hostname, *slot.Target)
+					// mail/smtp need a plain, unintercepted CNAME. That only ever
+					// bites a customer on Cloudflare (proxied by default there), so
+					// name that one case and say nothing for everyone else.
+					if slot.DirectOnly {
+						a.out.Msgf("%s", a.out.Dim("If your DNS is on Cloudflare: set it to DNS only (grey cloud) — a proxied record will not work."))
+					}
 					a.out.Msgf("%s", a.out.Dim("Then run `openemail domains hostnames check "+domain+"`."))
 				}
 			})
@@ -225,6 +231,11 @@ func hostnameState(h coreapi.DomainHostname) string {
 		if h.Status.CF != nil {
 			if !h.Status.CF.Configured {
 				return "verified (not provisioned)"
+			}
+			// Not a pending state: nothing is being issued, and waiting will not
+			// change that. Named for whose problem it is, because it is ours.
+			if !h.Status.CF.Provisioned {
+				return "setup FAILED on our side"
 			}
 			if !h.Status.CF.Ready {
 				return "verified, certificate pending"
