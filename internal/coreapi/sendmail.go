@@ -83,6 +83,11 @@ type SendRecipientResult struct {
 	Address string `json:"address"`
 	Status  string `json:"status"` // delivered | queued | filtered | failed
 	Error   string `json:"error,omitempty"`
+	// DeliveryID is THIS recipient's own traffic identity (`<id>#rcpt:<addr>`),
+	// not the submission's. One id shared by N legs dedupes to a single row at
+	// query time, so every recipient after the first would vanish from a rollup
+	// — which is why core stamps a per-recipient id and reports it here.
+	DeliveryID string `json:"deliveryId,omitempty"`
 }
 
 // SendResult is the structured send response: one result per recipient. The

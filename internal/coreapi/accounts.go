@@ -41,6 +41,48 @@ func (c *Client) GetAccount(ctx context.Context, accountID string) (*Account, er
 	return &out, nil
 }
 
+// DeleteAccount soft-deletes an account (core migration 0038). Reachable by a
+// SYSTEM key or the account's OWN key — self-service deletion is the feature,
+// and the grace window is the protection.
+//
+// Destroys nothing: it stamps the lifecycle and schedules the purge. `purge`
+// waives the window and is SYSTEM-ONLY (403 otherwise) — the irreversible form
+// must not be reachable with a stolen tenant key.
+//
+// Idempotent. A repeat answers the first call's instants rather than a fresh
+// window, so a retried command cannot extend the customer's deadline.
+func (c *Client) DeleteAccount(ctx context.Context, accountID string, purge bool) (*AccountDeleteResult, error) {
+	query := url.Values{}
+	if purge {
+		query.Set("purge", "true")
+	}
+	var out AccountDeleteResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodDelete,
+		path:   "/accounts/" + escapeSegment(accountID),
+		query:  query,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RestoreAccount cancels a pending deletion. 409 not_deleted when there is
+// nothing to undo, 409 purge_in_progress once the teardown has claimed the
+// account, 410 account_purged once it has finished.
+func (c *Client) RestoreAccount(ctx context.Context, accountID string) (*Account, error) {
+	var out Account
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost,
+		path:   "/accounts/" + escapeSegment(accountID) + "/restore",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 type createAccountReq struct {
 	Name         string `json:"name"`
 	MaxMailboxes *int64 `json:"maxMailboxes,omitempty"`

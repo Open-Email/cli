@@ -55,8 +55,9 @@ type IdentityPimFacet struct {
 }
 
 // GetIdentity fetches an identity with per-facet usage. Non-adopting: reading
-// never provisions a store. A mailbox principal may read its own ("me" works);
-// account/system keys read identities they own; missing or foreign is 404.
+// never provisions a store. A mailbox principal may read its own (by the id
+// /auth/whoami reports); account/system keys read identities they own; missing
+// or foreign is 404.
 func (c *Client) GetIdentity(ctx context.Context, identityID string) (*Identity, error) {
 	var out Identity
 	err := c.doJSON(ctx, request{

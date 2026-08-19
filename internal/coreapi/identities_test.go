@@ -16,11 +16,11 @@ func TestGetIdentityMailless(t *testing.T) {
 		w.Write([]byte(`{"id":"01I","primaryAddress":null,"quotaBytes":null,"accountId":"acc1","createdAt":5,"facets":{"pim":{"storeId":"01I","provisioned":true,"collections":2,"objects":40,"bytes":98304}}}`))
 	}))
 	defer srv.Close()
-	id, err := m3Client(t, srv.URL).GetIdentity(context.Background(), "me")
+	id, err := m3Client(t, srv.URL).GetIdentity(context.Background(), "01I")
 	if err != nil {
 		t.Fatalf("GetIdentity: %v", err)
 	}
-	if gotPath != "/api/v1/identities/me" {
+	if gotPath != "/api/v1/identities/01I" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if id.PrimaryAddress != nil || id.Facets.Mail != nil {

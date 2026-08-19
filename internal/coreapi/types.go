@@ -67,6 +67,37 @@ type Account struct {
 	// only — clearing it never revokes hostnames already serving clients.
 	VanityHosts bool  `json:"vanityHosts"`
 	CreatedAt   int64 `json:"createdAt"`
+	// Deletion lifecycle (core migration 0038). All three are epoch SECONDS and
+	// all three are nil on a live account.
+	//
+	// DeletedAt set = the account is FENCED but INTACT: its API key reaches only
+	// its own lifecycle routes, its mailbox credentials no longer authenticate,
+	// inbound mail DEFERS (429, so the sending MTA queues rather than bounces)
+	// and outbound is held. Nothing has been destroyed — a restore before
+	// PurgeAt puts everything back.
+	//
+	// PurgeAt is the instant core PROMISED at delete time. It is a stored value,
+	// not one derived from a platform setting, so it is the number to count
+	// down against and it does not move.
+	//
+	// PurgedAt set = the teardown has run and this row is a scrubbed tombstone:
+	// an id and these timestamps, nothing else. It survives because the usage
+	// ledger's open days cannot close without it.
+	DeletedAt *int64 `json:"deletedAt"`
+	PurgeAt   *int64 `json:"purgeAt"`
+	PurgedAt  *int64 `json:"purgedAt"`
+}
+
+// AccountDeleteResult is DELETE /accounts/:accountId — what the soft delete
+// promised. Idempotent: a repeat answers the FIRST call's instants, so a
+// retried command never silently extends a window somebody is waiting out.
+type AccountDeleteResult struct {
+	ID        string `json:"id"`
+	DeletedAt int64  `json:"deletedAt"`
+	PurgeAt   int64  `json:"purgeAt"`
+	// Restorable is false only for a ?purge=true delete, which starts the
+	// teardown at once.
+	Restorable bool `json:"restorable"`
 }
 
 // AccountSendUsage is GET /accounts/:accountId/send-usage — the tenant-scale

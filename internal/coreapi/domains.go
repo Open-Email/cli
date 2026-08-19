@@ -71,6 +71,19 @@ type Domain struct {
 	// that made the console's domains table fail intermittently once a tenant
 	// had enough domains to outrun its own deadline.
 	MailboxCount *int64 `json:"mailboxCount,omitempty"`
+
+	// Sampled storage on this domain, present ONLY when the listing asked for it
+	// (GET /domains?usage=true) — from core's daily usage ledger, not a live
+	// count. All four are pointers because "not asked", "asked but never
+	// measured" and "measured, zero" are three different claims, and a bare
+	// int64 collapses them into the one reading that understates a bill.
+	//
+	// UsageStale means the last sweep could not read the store and CARRIED the
+	// previous level forward rather than recording a zero.
+	UsedBytes  *int64 `json:"usedBytes,omitempty"`
+	PimBytes   *int64 `json:"pimBytes,omitempty"`
+	UsageAt    *int64 `json:"usageAt,omitempty"`
+	UsageStale *bool  `json:"usageStale,omitempty"`
 }
 
 // DNSRecord is one record a domain needs, with the copy-pasteable value. Kind

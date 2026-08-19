@@ -8,6 +8,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "deletedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -20,6 +27,20 @@
           },
           "name": {
             "type": "string"
+          },
+          "purgeAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "purgedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "sendDisabled": {
             "type": "boolean"
@@ -69,7 +90,35 @@
           "sendRcptsPerDay",
           "storageLimitBytes",
           "vanityHosts",
-          "createdAt"
+          "createdAt",
+          "deletedAt",
+          "purgeAt",
+          "purgedAt"
+        ],
+        "type": "object"
+      },
+      "AccountDeleteResult": {
+        "properties": {
+          "deletedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "purgeAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "restorable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "deletedAt",
+          "purgeAt",
+          "restorable"
         ],
         "type": "object"
       },
@@ -318,6 +367,38 @@
           "rows",
           "estimated",
           "retentionDays"
+        ],
+        "type": "object"
+      },
+      "AccountUsage": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/RequestBreakdownRow"
+            },
+            "type": "array"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "from",
+          "to",
+          "days"
         ],
         "type": "object"
       },
@@ -2108,6 +2189,14 @@
             "format": "int64",
             "type": "integer"
           },
+          "pimBytes": {
+            "description": "Sampled calendar/contact bytes — only when usage=true; null when never measured",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "receiving": {
             "description": "enabled && canReceive",
             "type": "boolean"
@@ -2118,6 +2207,19 @@
           "sending": {
             "description": "enabled && canSend && !sendPaused",
             "type": "boolean"
+          },
+          "usageAt": {
+            "description": "When the sample was taken (epoch seconds) — only when usage=true",
+            "format": "int64",
+            "type": "integer"
+          },
+          "usageStale": {
+            "type": "boolean"
+          },
+          "usedBytes": {
+            "description": "Sampled mail bytes on this domain — only when usage=true",
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -2575,6 +2677,70 @@
           "rows",
           "estimated",
           "retentionDays"
+        ],
+        "type": "object"
+      },
+      "DomainUsage": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DomainUsageDay"
+            },
+            "type": "array"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "from",
+          "to",
+          "days"
+        ],
+        "type": "object"
+      },
+      "DomainUsageDay": {
+        "properties": {
+          "day": {
+            "description": "UTC date, YYYY-MM-DD",
+            "type": "string"
+          },
+          "estimated": {
+            "type": "boolean"
+          },
+          "mailBytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailboxes": {
+            "description": "Identities whose primary address was on the domain at the sample",
+            "format": "int64",
+            "type": "integer"
+          },
+          "pimBytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "day",
+          "mailBytes",
+          "pimBytes",
+          "mailboxes",
+          "estimated"
         ],
         "type": "object"
       },
@@ -3621,6 +3787,51 @@
           }
         ]
       },
+      "MailboxWithUsage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Mailbox"
+          },
+          {
+            "properties": {
+              "messageCount": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "pimBytes": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "trashBytes": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "usageAt": {
+                "description": "When this sample was taken (epoch seconds, like every other *At)",
+                "format": "int64",
+                "type": "integer"
+              },
+              "usageStale": {
+                "type": "boolean"
+              },
+              "usedBytes": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
       "MessageBatch": {
         "properties": {
           "messages": {
@@ -4089,6 +4300,171 @@
             "$ref": "#/components/schemas/ExpungeNotice"
           }
         ]
+      },
+      "MeteringAccount": {
+        "properties": {
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inProgress": {
+            "properties": {
+              "day": {
+                "type": "string"
+              },
+              "estimated": {
+                "type": "boolean"
+              },
+              "mailboxes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "sweepStart": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "day",
+              "sweepStart",
+              "mailboxes",
+              "estimated"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastStorageDay": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSweepAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nextAlarmAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sealed": {
+            "description": "The account row was confirmed gone twice on the primary; the rows are kept as evidence and readable by a system principal. Lifted automatically by the next arm or run made with the account row present.",
+            "type": "boolean"
+          },
+          "slotAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "sealed",
+          "lastStorageDay",
+          "lastSweepAt",
+          "lastError",
+          "slotAt",
+          "nextAlarmAt",
+          "inProgress"
+        ],
+        "type": "object"
+      },
+      "MeteringArmResult": {
+        "properties": {
+          "armed": {
+            "description": "Accounts whose ledger was claimed and scheduled",
+            "format": "int64",
+            "type": "integer"
+          },
+          "failed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "armed",
+          "failed"
+        ],
+        "type": "object"
+      },
+      "MeteringRunResult": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "day": {
+            "type": "string"
+          },
+          "shards": {
+            "items": {
+              "properties": {
+                "reason": {
+                  "type": "string"
+                },
+                "shard": {
+                  "type": "string"
+                },
+                "started": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "shard",
+                "started"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "started": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "started"
+        ],
+        "type": "object"
+      },
+      "MeteringStatus": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/MeteringAccount"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "rollup": {
+            "items": {
+              "$ref": "#/components/schemas/RollupShard"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "disabled"
+        ],
+        "type": "object"
       },
       "MimeBatch": {
         "properties": {
@@ -5431,6 +5807,129 @@
           }
         ]
       },
+      "PurgeRunResult": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "started": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accountId",
+          "started"
+        ],
+        "type": "object"
+      },
+      "PurgeStatus": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "deletedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "dueNow": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "dueTruncated": {
+            "type": "boolean"
+          },
+          "issues": {
+            "items": {
+              "properties": {
+                "at": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "phase": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "phase",
+                "subject",
+                "reason",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextAlarmAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "phase": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purgeAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "purgeStartedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "purgedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "retries": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "accountId",
+          "deletedAt",
+          "purgeAt",
+          "purgeStartedAt",
+          "purgedAt",
+          "phase",
+          "retries",
+          "nextAlarmAt",
+          "counts",
+          "issues",
+          "dueNow",
+          "dueTruncated"
+        ],
+        "type": "object"
+      },
       "QueueHistoryPoint": {
         "properties": {
           "backlogBytes": {
@@ -5625,6 +6124,43 @@
         ],
         "type": "object"
       },
+      "RequestBreakdownRow": {
+        "properties": {
+          "bytesOut": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "read | write | exempt (exempt calls are logged, never priced)",
+            "type": "string"
+          },
+          "principal": {
+            "description": "system | account | mailbox | none",
+            "type": "string"
+          },
+          "resource": {
+            "description": "mail | calendar | contacts | directory | account | auth | other",
+            "type": "string"
+          },
+          "surface": {
+            "description": "rest | jmap | dav | gateway | webmail | console",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "kind",
+          "principal",
+          "surface",
+          "count",
+          "bytesOut"
+        ],
+        "type": "object"
+      },
       "RevokedResult": {
         "properties": {
           "revoked": {
@@ -5633,6 +6169,171 @@
         },
         "required": [
           "revoked"
+        ],
+        "type": "object"
+      },
+      "RollupShard": {
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "firstRolledDay": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issues": {
+            "items": {
+              "properties": {
+                "at": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "day": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "day_abandoned | day_skipped | reroll_skipped | catchup_truncated | push_failed | degraded | job_discarded",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "at",
+                "day",
+                "kind",
+                "detail"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "job": {
+            "properties": {
+              "accounts": {
+                "description": "Accounts the fold holds for this day so far",
+                "format": "int64",
+                "type": "integer"
+              },
+              "day": {
+                "type": "string"
+              },
+              "failed": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "manual": {
+                "type": "boolean"
+              },
+              "pages": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "phase": {
+                "description": "legs | messages | requests | push",
+                "type": "string"
+              },
+              "pushed": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "refused": {
+                "description": "Pushes refused by the ledger (day already reported, or ledger sealed)",
+                "format": "int64",
+                "type": "integer"
+              },
+              "reroll": {
+                "type": "boolean"
+              },
+              "retries": {
+                "description": "Consecutive retryable failures of this job so far",
+                "format": "int64",
+                "type": "integer"
+              },
+              "startedAt": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "day",
+              "phase",
+              "reroll",
+              "manual",
+              "startedAt",
+              "pages",
+              "pushed",
+              "failed",
+              "refused",
+              "retries",
+              "accounts"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastRerollDay": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastRolledDay": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastRunAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nextAlarmAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "shard": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "shard",
+          "disabled",
+          "configured",
+          "lastRolledDay",
+          "firstRolledDay",
+          "lastRerollDay",
+          "lastRunAt",
+          "lastError",
+          "nextAlarmAt",
+          "retired",
+          "issues",
+          "job"
         ],
         "type": "object"
       },
@@ -6045,6 +6746,9 @@
           "address": {
             "type": "string"
           },
+          "deliveryId": {
+            "type": "string"
+          },
           "error": {
             "description": "Present only when status is failed, e.g. receiving_disabled, over_quota",
             "type": "string"
@@ -6061,7 +6765,8 @@
         },
         "required": [
           "address",
-          "status"
+          "status",
+          "deliveryId"
         ],
         "type": "object"
       },
@@ -6750,6 +7455,106 @@
           }
         ]
       },
+      "SystemUsage": {
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SystemUsageRow"
+            },
+            "type": "array"
+          },
+          "unreadable": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "day",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "SystemUsageReported": {
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "reported": {
+            "items": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "accountId",
+                "reportedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "description": "not_closed | no_row | unreachable",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "accountId",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "day",
+          "reported",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "SystemUsageRow": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "day": {
+            "$ref": "#/components/schemas/UsageDay"
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/RequestBreakdownRow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accountId",
+          "day",
+          "requests"
+        ],
+        "type": "object"
+      },
       "ThreadListItem": {
         "properties": {
           "exemplar": {
@@ -7046,6 +7851,179 @@
           "size",
           "type",
           "expiresAt"
+        ],
+        "type": "object"
+      },
+      "UsageDay": {
+        "properties": {
+          "calendarObjects": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "closedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "contactObjects": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "day": {
+            "description": "UTC date, YYYY-MM-DD",
+            "type": "string"
+          },
+          "estimated": {
+            "type": "boolean"
+          },
+          "forwardedMessages": {
+            "description": "Mail that left because this tenant CONFIGURED it to: remote routes, Sieve redirects, external group members",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "inboundBytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "inboundDeliveries": {
+            "description": "Recipient COPIES delivered into this account's mailboxes — including the local legs of a platform-internal send, which are the RECIPIENT's inbound rather than the sender's outbound",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailBytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailboxes": {
+            "description": "Identities on the account at the sample",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "outboundBytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "outboundMessages": {
+            "description": "Distinct MESSAGES relayed off the platform (one submission fanned out to many recipients is one message)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "outboundRecipients": {
+            "description": "External recipient legs relayed",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pimBytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reportedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "requestBytesOut": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "requests": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "requestsRolledAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rolledAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "trashBytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "webhookDeliveries": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "day",
+          "mailBytes",
+          "trashBytes",
+          "pimBytes",
+          "mailboxes",
+          "calendarObjects",
+          "contactObjects",
+          "estimated",
+          "inboundDeliveries",
+          "inboundBytes",
+          "outboundMessages",
+          "outboundRecipients",
+          "outboundBytes",
+          "forwardedMessages",
+          "webhookDeliveries",
+          "requests",
+          "requestBytesOut",
+          "rolledAt",
+          "requestsRolledAt",
+          "closedAt",
+          "reportedAt"
         ],
         "type": "object"
       },
@@ -7544,7 +8522,7 @@
     }
   },
   "info": {
-    "description": "Message store + routing core: mailbox Durable Objects, R2 blobs, D1 directory. Every route requires a bearer credential (401 unauthorized without one) except four: GET /api/v1/health; GET /api/v1/pim/feeds/{token} and GET /api/v1/deliveries/fetch/{token}, where the token in the path IS the credential (a calendar feed, and a webhook's fetch capability for an attachment or the raw message); and GET /api/v1/branding/*, the public white-label reads a login screen needs before any credential exists (which answer a uniform 404 for an unknown domain and an unbranded one alike). Mailbox-scoped app passwords are refused on directory routes with 403 insufficient_scope. Errors always answer { error: \"snake_case_code\", ... } — schema failures as { error: \"validation_failed\", issues }.\n\nA caller holding a mailbox app password may write `me` wherever a {mailboxId} PATH segment appears — /api/v1/mailboxes/me/messages and the rest of the subtree — and the request is served as though it had named that credential's own mailbox id. It is a path convenience only: a mailboxId inside a request BODY always names a resource explicitly. Any other principal gets 404, since `me` has no referent for an account or system key.",
+    "description": "Message store + routing core: mailbox Durable Objects, R2 blobs, D1 directory. Every route requires a bearer credential (401 unauthorized without one) except four: GET /api/v1/health; GET /api/v1/pim/feeds/{token} and GET /api/v1/deliveries/fetch/{token}, where the token in the path IS the credential (a calendar feed, and a webhook's fetch capability for an attachment or the raw message); and GET /api/v1/branding/*, the public white-label reads a login screen needs before any credential exists (which answer a uniform 404 for an unknown domain and an unbranded one alike). Mailbox-scoped app passwords are refused on directory routes with 403 insufficient_scope. Errors always answer { error: \"snake_case_code\", ... } — schema failures as { error: \"validation_failed\", issues }.",
     "title": "openemail-core",
     "version": "0.1.0"
   },
@@ -7574,6 +8552,26 @@
             "schema": {
               "description": "Opaque page cursor from a previous response",
               "type": "string"
+            }
+          },
+          {
+            "description": "Lifecycle filter (migration 0038). Default `active` = live + deleting, i.e. everything that is still a customer",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "description": "Lifecycle filter (migration 0038). Default `active` = live + deleting, i.e. everything that is still a customer",
+              "enum": [
+                "live",
+                "deleting",
+                "active",
+                "purged",
+                "all"
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -7697,6 +8695,102 @@
       }
     },
     "/api/v1/accounts/{accountId}": {
+      "delete": {
+        "operationId": "delete_AccountDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Waive the grace window and purge immediately (system callers only). Irreversible.",
+            "in": "query",
+            "name": "purge",
+            "required": false,
+            "schema": {
+              "description": "Waive the grace window and purge immediately (system callers only). Irreversible.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeleteResult"
+                }
+              }
+            },
+            "description": "Scheduled for deletion. Idempotent: a repeat answers the FIRST call's instants, never a fresh window"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required — only a system caller may pass ?purge=true"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_purged — the teardown has already run"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "upstream_unavailable — the purge executor could not be armed, so nothing was written and the account is untouched. Retry"
+          }
+        },
+        "summary": "Delete an account (soft; purged after the grace window)",
+        "tags": [
+          "Accounts"
+        ]
+      },
       "get": {
         "operationId": "get_AccountGet",
         "parameters": [
@@ -7971,6 +9065,67 @@
           }
         },
         "summary": "List this account's directory audit trail (who changed what, when, from where). Newest first; nothing older than 180 days is ever returned, and storage is reclaimed on the next audit read or write (there is no cron). Records survive deletion of the mailbox or resource they describe",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/restore": {
+      "post": {
+        "operationId": "post_AccountRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            },
+            "description": "Restored — the account is live again"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_deleted (nothing to undo) or purge_in_progress (the teardown has claimed the account and cannot be reversed)"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_purged — the teardown has already run"
+          }
+        },
+        "summary": "Cancel a pending account deletion",
         "tags": [
           "Accounts"
         ]
@@ -8407,6 +9562,92 @@
         ]
       }
     },
+    "/api/v1/accounts/{accountId}/usage": {
+      "get": {
+        "description": "Per-UTC-day storage levels (and, once the traffic rollup ships, message and request counts) for this account — the chart series and the billing export. Storage figures are the day's CLOSING level as sampled just after midnight UTC. `estimated: true` means the figures are not a clean close: carried forward from an earlier sample because the day's sweep did not complete, read off-schedule (an operator's mid-day run), or partly carried after a store's read failed. A null metric was never measured and must be rendered blank, never as zero. Days before the meter first ran are absent entirely. The window is at most 400 days; page by date for more.",
+        "operationId": "get_AccountUsageGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "First UTC day, YYYY-MM-DD (default: 29 days ago)",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "First UTC day, YYYY-MM-DD (default: 29 days ago)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Last UTC day, YYYY-MM-DD (default: today)",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Last UTC day, YYYY-MM-DD (default: today)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Add `requests`: the API-call breakdown by resource/kind/principal/surface, summed over the whole window. Off by default — the per-day totals are already on each day, and the breakdown is what a usage page draws once, not per point",
+            "in": "query",
+            "name": "requests",
+            "required": false,
+            "schema": {
+              "description": "Add `requests`: the API-call breakdown by resource/kind/principal/surface, summed over the whole window. Off by default — the per-day totals are already on each day, and the breakdown is what a usage page draws once, not per point",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsage"
+                }
+              }
+            },
+            "description": "Daily usage rows, ascending by day"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed (malformed or inverted range, or 400 days or wider)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read an account's daily usage series",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/v1/api-keys": {
       "get": {
         "operationId": "get_ApiKeyList",
@@ -8499,6 +9740,18 @@
                     "enum": [
                       "system",
                       "account"
+                    ],
+                    "type": "string"
+                  },
+                  "surface": {
+                    "description": "System callers only: which frontend holds this key, recorded on every API-request meter row it produces. A request header could not carry this — it would be a forgeable claim about who is charged — so each frontend is issued its own key with a surface",
+                    "enum": [
+                      "rest",
+                      "jmap",
+                      "dav",
+                      "gateway",
+                      "webmail",
+                      "console"
                     ],
                     "type": "string"
                   }
@@ -9321,6 +10574,16 @@
             },
             "description": "Permanent — body exceeds MAX_MESSAGE_BYTES"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Temporary — receiving_paused (the recipient's account is inside its deletion window; a restore is still possible, so the message must be queued rather than bounced) or forward_rate_limited. Carries Retry-After"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -9647,6 +10910,16 @@
               }
             },
             "description": "too_large — keep upstream (permanent; re-fetched every run)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "receiving_paused — the mailbox's account is inside its deletion window; keep upstream and retry (a restore is still possible, and ingesting would move mail off a server the customer still controls into a store about to be wiped)"
           },
           "500": {
             "content": {
@@ -10012,6 +11285,20 @@
             }
           },
           {
+            "description": "Also return each row's SAMPLED storage (`usedBytes`, `pimBytes`, `usageAt`, `usageStale`) from the daily usage ledger: the mail and PIM bytes held by mailboxes whose primary address is on that domain. ONE call for the whole page, read from the per-domain sums the sweep writes — never a scan over the tenant's mailboxes. As of `usageAt`, not live; a domain whose mail the sweep has not measured omits the fields entirely rather than reporting zero",
+            "in": "query",
+            "name": "usage",
+            "required": false,
+            "schema": {
+              "description": "Also return each row's SAMPLED storage (`usedBytes`, `pimBytes`, `usageAt`, `usageStale`) from the daily usage ledger: the mail and PIM bytes held by mailboxes whose primary address is on that domain. ONE call for the whole page, read from the per-domain sums the sweep writes — never a scan over the tenant's mailboxes. As of `usageAt`, not live; a domain whose mail the sweep has not measured omits the fields entirely rather than reporting zero",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Page size (default 100)",
             "in": "query",
             "name": "limit",
@@ -10152,7 +11439,7 @@
                 }
               }
             },
-            "description": "validation_failed, domain_not_verified (the account's TXT is not published — the response carries the record to create), account_required (system caller omitted accountId — pass an account id or an explicit null), unknown_account, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+            "description": "validation_failed, domain_not_verified (the account's TXT is not published — the response carries the record to create), account_required (system caller omitted accountId — pass an account id or an explicit null), unknown_account, alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
           },
           "403": {
             "content": {
@@ -10387,7 +11674,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch, alias_self, unknown_domain (alias target), alias_chain, or alias_fbl_exclusive"
+            "description": "validation_failed, empty_patch, alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
           },
           "403": {
             "content": {
@@ -10889,12 +12176,12 @@
             }
           },
           {
-            "description": "Exact delivery id (the `X-Delivery-Id` you sent, or the `deliveryId` a send response returned). Returns that delivery's whole retry ladder — every deferred attempt plus the terminal outcome. Derived per-recipient and per-member keys (`<id>#rcpt:<addr>`, `<id>#mbx:<id>`) are their own ids.",
+            "description": "Exact delivery id (the `X-Delivery-Id` you sent to a deliver route, or a `recipients[].deliveryId` from a send response). Returns that delivery's whole retry ladder — every deferred attempt plus the terminal outcome. A send's legs are logged per recipient under `<id>#rcpt:<addr>` (its Sent copy under `sent:<id>`), and group fan-out under `<id>#mbx:<id>`; each derived key is its own id, so the submission-level `deliveryId` matches only the Sent copy.",
             "in": "query",
             "name": "deliveryId",
             "required": false,
             "schema": {
-              "description": "Exact delivery id (the `X-Delivery-Id` you sent, or the `deliveryId` a send response returned). Returns that delivery's whole retry ladder — every deferred attempt plus the terminal outcome. Derived per-recipient and per-member keys (`<id>#rcpt:<addr>`, `<id>#mbx:<id>`) are their own ids.",
+              "description": "Exact delivery id (the `X-Delivery-Id` you sent to a deliver route, or a `recipients[].deliveryId` from a send response). Returns that delivery's whole retry ladder — every deferred attempt plus the terminal outcome. A send's legs are logged per recipient under `<id>#rcpt:<addr>` (its Sent copy under `sent:<id>`), and group fan-out under `<id>#mbx:<id>`; each derived key is its own id, so the submission-level `deliveryId` matches only the Sent copy.",
               "maxLength": 640,
               "minLength": 1,
               "type": "string"
@@ -11553,6 +12840,78 @@
         ]
       }
     },
+    "/api/v1/domains/{domain}/usage": {
+      "get": {
+        "description": "Per-UTC-day storage levels for the mailboxes whose primary address is on this domain — the domain chart. Storage only; message and request counts are per account. Kept for 90 days. A null metric was never measured; `estimated: true` means some contributing figure was carried rather than read that day. The window is at most 400 days.",
+        "operationId": "get_DomainUsageGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "First UTC day, YYYY-MM-DD (default: 29 days ago)",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "First UTC day, YYYY-MM-DD (default: 29 days ago)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Last UTC day, YYYY-MM-DD (default: today)",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Last UTC day, YYYY-MM-DD (default: today)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainUsage"
+                }
+              }
+            },
+            "description": "Daily storage rows for the domain, ascending by day"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed (malformed or inverted range, or 400 days or wider)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Domain not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read a domain's daily storage series",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "get_Health",
@@ -11883,6 +13242,20 @@
             }
           },
           {
+            "description": "Also return each row's SAMPLED storage (`usedBytes`, `trashBytes`, `pimBytes`, `messageCount`, `usageAt`) from the daily usage ledger — ONE call for the whole page, never a per-row stat read. These are as of `usageAt`, not live: a mailbox the sweep has not reached yet omits them entirely, and a client must render that as blank rather than as zero. Live figures are GET /mailboxes/:id. Live listing only",
+            "in": "query",
+            "name": "usage",
+            "required": false,
+            "schema": {
+              "description": "Also return each row's SAMPLED storage (`usedBytes`, `trashBytes`, `pimBytes`, `messageCount`, `usageAt`) from the daily usage ledger — ONE call for the whole page, never a per-row stat read. These are as of `usageAt`, not live: a mailbox the sweep has not reached yet omits them entirely, and a client must render that as blank rather than as zero. Live figures are GET /mailboxes/:id. Live listing only",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Page size (default 100)",
             "in": "query",
             "name": "limit",
@@ -11915,7 +13288,7 @@
                       "properties": {
                         "mailboxes": {
                           "items": {
-                            "$ref": "#/components/schemas/Mailbox"
+                            "$ref": "#/components/schemas/MailboxWithUsage"
                           },
                           "type": "array"
                         },
@@ -16328,6 +17701,18 @@
                       },
                       "name": {
                         "maxLength": 128,
+                        "type": "string"
+                      },
+                      "surface": {
+                        "description": "System callers only, and IGNORED for anyone else: which frontend this session credential belongs to, recorded on every API-request meter row it produces. The webmail BFF declares `webmail` when it mints a per-session password; a customer's own app password carries nothing, which is what keeps the two distinguishable",
+                        "enum": [
+                          "rest",
+                          "jmap",
+                          "dav",
+                          "gateway",
+                          "webmail",
+                          "console"
+                        ],
                         "type": "string"
                       },
                       "username": {
@@ -24375,6 +25760,108 @@
         ]
       }
     },
+    "/api/v1/system/accounts/{accountId}/purge": {
+      "get": {
+        "operationId": "get_SystemPurgeGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeStatus"
+                }
+              }
+            },
+            "description": "Purge state, D1 lifecycle and the executor's issues ledger"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          }
+        },
+        "summary": "Account purge status (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/accounts/{accountId}/purge/run": {
+      "post": {
+        "operationId": "post_SystemPurgeRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeRunResult"
+                }
+              }
+            },
+            "description": "Whether the executor had an account claimed to run"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          }
+        },
+        "summary": "Run the next purge chunk now (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/system/audit": {
       "get": {
         "operationId": "get_SystemAuditGet",
@@ -24933,6 +26420,206 @@
         ]
       }
     },
+    "/api/v1/system/metering": {
+      "get": {
+        "description": "Whether the usage meter is running, and — with `accountId` — that account's sweep health: the last day it closed, its next firing, any error from the last one, and whether a chained sweep is in progress. Reading an account also re-arms it (heal-on-touch).",
+        "operationId": "get_SystemMeteringGet",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeteringStatus"
+                }
+              }
+            },
+            "description": "Meter status"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          }
+        },
+        "summary": "Metering status (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/metering/arm": {
+      "post": {
+        "description": "Claims and schedules the daily storage sweep for a page of accounts. Idempotent. Use after enabling metering, or to bootstrap accounts created before it shipped. Follow `nextCursor` until it is absent.",
+        "operationId": "post_SystemMeteringArm",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeteringArmResult"
+                }
+              }
+            },
+            "description": "Accounts armed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "metering_disabled"
+          }
+        },
+        "summary": "Arm every account's usage ledger (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/metering/run": {
+      "post": {
+        "description": "Triggers the storage sweep for one account immediately, without changing its daily schedule. Not a backfill — a past day's storage level cannot be recomputed, only carried forward. A run made after the day's slot files the current level under TODAY, flagged `estimated`, until the scheduled sweep replaces it with the close.",
+        "operationId": "post_SystemMeteringRun",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "UTC day (YYYY-MM-DD) to RE-ROLL on every platform shard: re-reads the traffic and request logs for that day and pushes the corrected figures to every account. The storage columns are untouched — a past day's level cannot be recomputed. Mutually exclusive with accountId",
+            "in": "query",
+            "name": "day",
+            "required": false,
+            "schema": {
+              "description": "UTC day (YYYY-MM-DD) to RE-ROLL on every platform shard: re-reads the traffic and request logs for that day and pushes the corrected figures to every account. The storage columns are untouched — a past day's level cannot be recomputed. Mutually exclusive with accountId",
+              "type": "string"
+            }
+          },
+          {
+            "description": "With `day`: DISCARD a job already in flight on a shard (its scratch is dropped and the discard recorded under the shard's `issues`) instead of answering `busy`. The operator's way past a wedged day; never needed in ordinary operation.",
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "description": "With `day`: DISCARD a job already in flight on a shard (its scratch is dropped and the discard recorded under the shard's `issues`) instead of answering `busy`. The operator's way past a wedged day; never needed in ordinary operation.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeteringRunResult"
+                }
+              }
+            },
+            "description": "Sweep or re-roll triggered"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — neither or both of accountId/day, or a bad day"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "metering_disabled"
+          }
+        },
+        "summary": "Run one account's usage sweep now (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/system/pickups": {
       "get": {
         "operationId": "get_SystemPickupsGet",
@@ -25388,6 +27075,150 @@
           }
         },
         "summary": "Traffic aggregates across the whole deployment (system callers only; sampled estimates, ~90-day retention)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/usage": {
+      "get": {
+        "description": "The billing export: one row per account for one UTC day, paged by account id. `closedAt` set means the day is final — storage measured, traffic rolled, and old enough that the late-data re-roll has had its chance. Only closed days should be reported. `reportedAt` is stamped by PATCH on this path and never moves once set, so a reporter's replay converges. Accounts with no row for the day are absent, never zero.",
+        "operationId": "get_SystemUsageGet",
+        "parameters": [
+          {
+            "description": "UTC day, YYYY-MM-DD",
+            "in": "query",
+            "name": "day",
+            "required": true,
+            "schema": {
+              "description": "UTC day, YYYY-MM-DD",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`true` returns only rows a biller may report (closedAt set)",
+            "in": "query",
+            "name": "closed",
+            "required": false,
+            "schema": {
+              "description": "`true` returns only rows a biller may report (closedAt set)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemUsage"
+                }
+              }
+            },
+            "description": "One day's rows for a page of accounts"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — day is not a YYYY-MM-DD UTC date"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Read every account's usage for one day (system only)",
+        "tags": [
+          "System"
+        ]
+      },
+      "patch": {
+        "description": "Stamps `reportedAt` on one day's row for each named account. Only closed days are stamped; open ones and accounts with no row come back under `skipped` with a reason, and a ledger that could not be reached comes back `unreachable` (retry it). Replays converge — the first stamp is kept, never moved. Stamp FIRST, then export the stamped rows: a closed day can still be corrected by an operator's re-roll until it is stamped, and once stamped nothing rewrites it.",
+        "operationId": "patch_SystemUsageReport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountIds": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 500,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "day": {
+                    "description": "UTC day, YYYY-MM-DD",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "day",
+                  "accountIds"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemUsageReported"
+                }
+              }
+            },
+            "description": "Which rows were stamped and which were skipped"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Mark accounts' usage day reported (system only)",
         "tags": [
           "System"
         ]

@@ -25,6 +25,8 @@ func newAccountsCmd(a *app) *cobra.Command {
 		newAccountUpdateCmd(a),
 		newAccountTrafficCmd(a),
 		newAccountUsageCmd(a),
+		newAccountDeleteCmd(a),
+		newAccountRestoreCmd(a),
 	)
 	return cmd
 }
@@ -167,10 +169,103 @@ func newAccountGetCmd(a *app) *cobra.Command {
 	}
 }
 
+func newAccountDeleteCmd(a *app) *cobra.Command {
+	var purge bool
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "delete <account-id>",
+		Short: "Delete an account (soft; purged after the grace window)",
+		Long: "Delete a tenant account. This DESTROYS NOTHING immediately: the account is\n" +
+			"fenced (its keys stop working, its mail defers, its sending holds) and every\n" +
+			"byte survives until the grace window elapses. `accounts restore` undoes it.\n\n" +
+			"--purge waives the window and starts the teardown at once. That is\n" +
+			"IRREVERSIBLE and system-only.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			// Confirmation is required for --purge and only for --purge. The
+			// ordinary delete is reversible for a day and prints how to undo it;
+			// making the safe verb noisy trains people to type -y reflexively,
+			// which is exactly what must not happen for the unsafe one.
+			if purge && !yes {
+				return fmt.Errorf(
+					"refusing to purge %s without --yes: this is irreversible and takes effect immediately",
+					args[0])
+			}
+			res, err := client.DeleteAccount(cmd.Context(), args[0], purge)
+			if err != nil {
+				return err
+			}
+			a.out.Emit(res, func(w io.Writer) {
+				if !res.Restorable {
+					a.out.Successf("Purging account %s now — this cannot be undone", res.ID)
+					return
+				}
+				a.out.Successf("Account %s scheduled for deletion", res.ID)
+				printTable(w, a.out, []string{"FIELD", "VALUE"}, [][]string{
+					{"Deleted", fmtEpoch(res.DeletedAt)},
+					{"Purges", fmtEpoch(res.PurgeAt)},
+				})
+				a.out.Msgf("  undo: openemail accounts restore %s", res.ID)
+			})
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&purge, "purge", false, "waive the grace window and purge now (system only, irreversible)")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm --purge")
+	return cmd
+}
+
+func newAccountRestoreCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "restore <account-id>",
+		Short: "Cancel a pending account deletion",
+		Long: "Undo a soft delete, while there is something to undo. Refused once the purge\n" +
+			"has claimed the account (409 purge_in_progress) or finished (410).",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			acc, err := client.RestoreAccount(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			a.out.Emit(acc, func(w io.Writer) {
+				a.out.Successf("Restored account %s", acc.ID)
+				printAccount(w, a.out, acc)
+			})
+			return nil
+		},
+	}
+}
+
+// fmtAccountLifecycle states the deletion state as something an operator can
+// act on. "Live" rather than a blank, because an empty cell in a status table
+// reads as "unknown" — and the difference between a live account and one that
+// vanishes tomorrow is the single most important row here.
+func fmtAccountLifecycle(acc *coreapi.Account) string {
+	if acc.PurgedAt != nil {
+		return fmt.Sprintf("PURGED %s (this row is a tombstone)", fmtEpoch(*acc.PurgedAt))
+	}
+	if acc.DeletedAt != nil {
+		if acc.PurgeAt != nil {
+			return fmt.Sprintf("DELETING — purges %s (restore to cancel)", fmtEpoch(*acc.PurgeAt))
+		}
+		return "DELETING (restore to cancel)"
+	}
+	return "live"
+}
+
 func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 	printTable(w, p, []string{"FIELD", "VALUE"}, [][]string{
 		{"ID", acc.ID},
 		{"Name", acc.Name},
+		{"State", fmtAccountLifecycle(acc)},
 		{"Sending", fmtAccountSendState(acc.SendDisabled, acc.SendPaused)},
 		{"Messages/day", fmtSendCap(acc.SendMsgsPerDay)},
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},

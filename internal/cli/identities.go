@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -32,9 +33,11 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Explicit arg > -m/profile default > the bearer's own identity ("me",
-			// which only a mailbox principal has a referent for).
-			ref := "me"
+			// Explicit arg > -m/profile default > the bearer's own identity, which
+			// only a mailbox principal has. There is no `me` path segment: an app
+			// password learns its ULID from /auth/whoami, which is the one call
+			// that can answer it.
+			var ref string
 			switch {
 			case len(args) == 1:
 				ref = args[0]
@@ -43,6 +46,16 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 				if err != nil {
 					return err
 				}
+			default:
+				principal, rerr := client.Resolve(cmd.Context())
+				if rerr != nil {
+					return rerr
+				}
+				if principal.MailboxID == "" {
+					return usageError(errors.New(
+						"no identity — pass an identityId, or set a default with `openemail mailboxes use <id>`"))
+				}
+				ref = principal.MailboxID
 			}
 			id, err := client.GetIdentity(cmd.Context(), ref)
 			if err != nil {
