@@ -101,6 +101,7 @@ func newRootCmd(a *app) *cobra.Command {
 		newComposeCmd(a),
 		newSendCmd(a),
 		newSuppressionsCmd(a),
+		newListsCmd(a),
 		newWatchCmd(a),
 		newDeliverCmd(a),
 		newAPICmd(a),

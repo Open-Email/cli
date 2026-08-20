@@ -83,7 +83,8 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `prefs` | the opaque client-preferences document: `get`/`put`/`set` with compare-and-swap on its version |
 | `pickups` | POP3 pickup sources: create/list/get/update/delete/`run` |
 | `send` | submit an outbound message (compose or raw MIME) |
-| `suppressions` (alias `do-not-send`) | the account's OWN do-not-send list: `list`/`check`/`add`/`remove` — addresses this account never mails; `remove` also lifts a platform hard-bounce block on the address (the deployment-global evidence list stays under `admin suppressions`) |
+| `do-not-send` (alias `suppressions`) | the account's OWN do-not-send list: `list`/`check`/`add`/`remove` — addresses this account never mails; `remove` also lifts a platform hard-bounce block on the address (the deployment-global evidence list stays under `admin suppressions`). One address list, kept as its own command because it is the combination people want most |
+| `lists` | address lists in full: named allow/block lists at account, domain or mailbox scope, inbound or outbound. `list`/`show`/`create`/`rename`/`delete`, `add`/`remove`/`import` patterns, and `check` — the same evaluator the delivery path runs, naming the pattern that decided |
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
 | `deliver` | `check --to <addr>` (RCPT pre-flight), `inbound` (inject a test message) |
 | `api` | call any route directly (escape hatch) |
@@ -210,9 +211,18 @@ openemail identities get <id>                     # facets: pim bound, no mail s
 openemail routes update hook@example.com --type webhook --webhook-url https://new/hook
 
 # Tenant: never mail this address again (account-scoped; someone unsubscribed).
-openemail suppressions add them@example.net --note "asked to stop, 2026-08-14"
-openemail suppressions list --all
-openemail suppressions remove them@example.net   # also lifts a platform bounce block
+openemail do-not-send add them@example.net --note "asked to stop, 2026-08-14"
+openemail do-not-send list --all
+openemail do-not-send remove them@example.net   # also lifts a platform bounce block
+
+# Tenant: refuse INCOMING mail from a domain, for the whole account.
+openemail lists create "Blocked senders" --direction inbound --verdict block
+openemail lists add <list-id> @spammer.example
+# …and rescue one sender from that block, for one mailbox only. A narrower
+# allow also exempts them from the spam filter.
+openemail lists create "Trusted" --direction inbound --verdict allow --scope mailbox:<id>
+openemail lists add <list-id> partner@spammer.example
+openemail lists check partner@spammer.example --direction inbound --scope-mailbox <id>
 
 # Operator: is an address on the do-not-send list, and why? (system key)
 openemail admin suppressions get bounced@example.com

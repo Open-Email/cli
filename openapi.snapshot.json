@@ -243,60 +243,6 @@
         ],
         "type": "object"
       },
-      "AccountSuppression": {
-        "properties": {
-          "address": {
-            "description": "Normalized (lowercased) recipient address",
-            "type": "string"
-          },
-          "createdAt": {
-            "description": "When the address first went on this account's list",
-            "format": "int64",
-            "type": "integer"
-          },
-          "note": {
-            "description": "Tenant-entered note, display only",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "reason": {
-            "description": "Why the address is listed. `manual` is the tenant-entered default; the other two exist so an imported suppression export keeps what its rows meant",
-            "enum": [
-              "manual",
-              "complaint",
-              "hard_bounce"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "address",
-          "reason",
-          "note",
-          "createdAt"
-        ],
-        "type": "object"
-      },
-      "AccountSuppressionList": {
-        "properties": {
-          "nextCursor": {
-            "description": "Opaque cursor for the next page; absent on the last page",
-            "type": "string"
-          },
-          "suppressions": {
-            "items": {
-              "$ref": "#/components/schemas/AccountSuppression"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "suppressions"
-        ],
-        "type": "object"
-      },
       "AccountTraffic": {
         "properties": {
           "accountId": {
@@ -399,6 +345,187 @@
           "from",
           "to",
           "days"
+        ],
+        "type": "object"
+      },
+      "AddressList": {
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "direction": {
+            "description": "`inbound` judges the SENDER of arriving mail; `outbound` judges the RECIPIENT of mail this tenant sends",
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "entryCount": {
+            "description": "Present on a single-list read only — a listing does not count per row",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "List id (ULID)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Tenant-chosen label; unique per scope, and never an ORDER",
+            "type": "string"
+          },
+          "scopeId": {
+            "description": "Account id, domain name, or mailbox (identity) ULID, per scopeKind",
+            "type": "string"
+          },
+          "scopeKind": {
+            "description": "What the list binds: one account, one domain, one mailbox",
+            "enum": [
+              "account",
+              "domain",
+              "mailbox"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "verdict": {
+            "description": "`block` refuses. `allow` is always an EXEMPTION — from a broader block, and (inbound) from the spam verdict; it never restricts, which is what separates it from `permittedRecipients`",
+            "enum": [
+              "allow",
+              "block"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scopeKind",
+          "scopeId",
+          "name",
+          "direction",
+          "verdict",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "AddressListBatchResult": {
+        "properties": {
+          "added": {
+            "description": "Patterns written (idempotent: a repeat counts, and changes nothing)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "invalid": {
+            "description": "Inputs that are not patterns, reported rather than silently dropped",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "invalid"
+        ],
+        "type": "object"
+      },
+      "AddressListEntry": {
+        "properties": {
+          "createdAt": {
+            "description": "When the pattern FIRST went on this list",
+            "format": "int64",
+            "type": "integer"
+          },
+          "note": {
+            "description": "Tenant-entered note, display only",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pattern": {
+            "description": "Normalized pattern: `jo@acme.example`, `*@acme.example` (what `@acme.example` is stored as), `sales-*@acme.example`, or `*@.acme.example` — the domain AND its subdomains",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern",
+          "note",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "AddressListEntryPage": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/AddressListEntry"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "description": "Opaque cursor for the next page; absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "type": "object"
+      },
+      "AddressListPage": {
+        "properties": {
+          "lists": {
+            "items": {
+              "$ref": "#/components/schemas/AddressList"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "description": "Opaque cursor for the next page; absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lists"
+        ],
+        "type": "object"
+      },
+      "AddressListVerdict": {
+        "properties": {
+          "listId": {
+            "description": "The list that decided; absent when `none`",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "The entry that matched; absent when `none`",
+            "type": "string"
+          },
+          "scopeKind": {
+            "description": "Which scope decided; absent when `none`",
+            "enum": [
+              "account",
+              "domain",
+              "mailbox"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "allow",
+              "block",
+              "none"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict"
         ],
         "type": "object"
       },
@@ -6741,6 +6868,126 @@
         ],
         "type": "object"
       },
+      "ScheduledLegResult": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "deliveryId": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "status",
+          "deliveryId"
+        ],
+        "type": "object"
+      },
+      "ScheduledSend": {
+        "properties": {
+          "attempts": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deferrals": {
+            "type": "integer"
+          },
+          "deliveryId": {
+            "description": "The submission's idempotency key. SPENT by this schedule: a later keyed submission answers this resource rather than sending again",
+            "type": "string"
+          },
+          "error": {
+            "description": "Why it is not pending: draft_moved, draft_gone, missed, sending_disabled, canceled …",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finishedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "messageId": {
+            "description": "The pinned draft. Deleting or moving it out of Drafts cancels the schedule",
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "releaseAt": {
+            "description": "Epoch seconds the server will next act; moves on a deferral",
+            "format": "int64",
+            "type": "integer"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledLegResult"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "scheduleId": {
+            "description": "Opaque id; the path segment for reads and cancel",
+            "type": "string"
+          },
+          "sendAt": {
+            "description": "Epoch seconds the caller asked for; never rewritten",
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "releasing",
+              "sent",
+              "failed",
+              "canceled"
+            ],
+            "type": "string"
+          },
+          "threadId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "scheduleId",
+          "deliveryId",
+          "messageId",
+          "threadId",
+          "sendAt",
+          "releaseAt",
+          "state",
+          "recipients",
+          "attempts",
+          "deferrals",
+          "createdAt",
+          "finishedAt",
+          "result",
+          "error"
+        ],
+        "type": "object"
+      },
       "SendRecipientResult": {
         "properties": {
           "address": {
@@ -9070,6 +9317,972 @@
         ]
       }
     },
+    "/api/v1/accounts/{accountId}/lists": {
+      "get": {
+        "operationId": "get_AddressListIndex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeKind",
+            "required": false,
+            "schema": {
+              "enum": [
+                "account",
+                "domain",
+                "mailbox"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "enum": [
+                "inbound",
+                "outbound"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "enum": [
+                "allow",
+                "block"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListPage"
+                }
+              }
+            },
+            "description": "Address lists page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "List address lists",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "post": {
+        "description": "Scope, direction and verdict are immutable — create another list rather than repurposing one, since entries were written under the old meaning. Names carry no order: lists at one scope are a union.",
+        "operationId": "post_AddressListCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "direction": {
+                    "enum": [
+                      "inbound",
+                      "outbound"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Tenant-chosen label, unique per scope",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scopeId": {
+                    "type": "string"
+                  },
+                  "scopeKind": {
+                    "description": "Required on the /accounts family; ignored on /mailboxes (the path pins it)",
+                    "enum": [
+                      "account",
+                      "domain",
+                      "mailbox"
+                    ],
+                    "type": "string"
+                  },
+                  "verdict": {
+                    "enum": [
+                      "allow",
+                      "block"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "direction",
+                  "verdict"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressList"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_name_taken, or list_limit_reached"
+          }
+        },
+        "summary": "Create an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/lists/evaluate": {
+      "post": {
+        "description": "The debugging verb — 'why was this refused?' — and what a compose client can pre-flight a recipient against. It answers the SAME evaluator the relay and the delivery funnel run, and names the list and pattern that decided. Read-only.",
+        "operationId": "post_AddressListEvaluate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "The sender (inbound) or recipient (outbound)",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "inbound",
+                      "outbound"
+                    ],
+                    "type": "string"
+                  },
+                  "domain": {
+                    "description": "Narrow the chain with a domain scope you own",
+                    "type": "string"
+                  },
+                  "mailboxId": {
+                    "description": "…and/or a mailbox scope you own",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "direction",
+                  "address"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListVerdict"
+                }
+              }
+            },
+            "description": "The verdict, with what decided it"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Explain what the lists decide for one address",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/lists/{listId}": {
+      "delete": {
+        "operationId": "delete_AddressListDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Delete an address list and its entries",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "get": {
+        "operationId": "get_AddressListGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressList"
+                }
+              }
+            },
+            "description": "The list, with its entry count"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Read one address list",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "patch": {
+        "description": "`name` is the only mutable field. Scope, direction and verdict would change what every existing entry MEANS, so they are create-only.",
+        "operationId": "patch_AddressListPatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "description": "Tenant-chosen label, unique per scope",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressList"
+                }
+              }
+            },
+            "description": "Renamed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_name_taken"
+          }
+        },
+        "summary": "Rename an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/lists/{listId}/entries": {
+      "get": {
+        "operationId": "get_AddressListEntryIndex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListEntryPage"
+                }
+              }
+            },
+            "description": "Entries page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "List the patterns on an address list",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "post": {
+        "description": "Idempotent on the NORMALIZED pattern: `@acme.example` and `*@acme.example` are one row, and a repeat refreshes the note while keeping the original createdAt.",
+        "operationId": "post_AddressListEntryCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "note": {
+                    "description": "Display-only note",
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "pattern": {
+                    "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+                    "maxLength": 320,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListEntry"
+                }
+              }
+            },
+            "description": "The entry (created or refreshed)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_full"
+          }
+        },
+        "summary": "Add one pattern to an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/lists/{listId}/entries/batch": {
+      "post": {
+        "description": "Idempotent, like the single add. Unparseable inputs are REPORTED in `invalid` rather than failing the whole import — a suppression export from another provider routinely carries a few rows that are not addresses.",
+        "operationId": "post_AddressListEntryBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "entries": {
+                    "items": {
+                      "properties": {
+                        "note": {
+                          "description": "Display-only note",
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "pattern": {
+                          "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+                          "maxLength": 320,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pattern"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 500,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "entries"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListBatchResult"
+                }
+              }
+            },
+            "description": "What was written and what was refused"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_full"
+          }
+        },
+        "summary": "Add many patterns at once",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/lists/{listId}/entries/{pattern}": {
+      "delete": {
+        "operationId": "delete_AddressListEntryDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+            "in": "path",
+            "name": "pattern",
+            "required": true,
+            "schema": {
+              "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+              "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Removed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Remove one pattern from an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
     "/api/v1/accounts/{accountId}/restore": {
       "post": {
         "operationId": "post_AccountRestore",
@@ -9212,266 +10425,6 @@
         "summary": "Read an account's storage-pool usage",
         "tags": [
           "Accounts"
-        ]
-      }
-    },
-    "/api/v1/accounts/{accountId}/suppressions": {
-      "get": {
-        "operationId": "get_AccountSuppressionListEndpoint",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "accountId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Page size (default 100)",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "description": "Page size (default 100)",
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Opaque page cursor from a previous response",
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "description": "Opaque page cursor from a previous response",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountSuppressionList"
-                }
-              }
-            },
-            "description": "Account suppressions page; nextCursor present when a further page exists"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Account not found or not accessible to this principal"
-          }
-        },
-        "summary": "List an account's own do-not-send addresses",
-        "tags": [
-          "Suppressions"
-        ]
-      },
-      "post": {
-        "description": "Tenant policy, not platform evidence: mail from this account to the address is refused at the relay from now on (550, with a DSN when the submission asked for one). Repeat calls converge on one row — reason and note are refreshed, the original createdAt is kept.",
-        "operationId": "post_AccountSuppressionCreate",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "accountId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "address": {
-                    "description": "Recipient to stop mailing; stored normalized (lowercased)",
-                    "maxLength": 320,
-                    "minLength": 3,
-                    "pattern": "^[^\\s@]+@[^\\s@]+$",
-                    "type": "string"
-                  },
-                  "note": {
-                    "description": "Display-only note",
-                    "maxLength": 500,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "reason": {
-                    "description": "Default `manual` (tenant-entered). `complaint`/`hard_bounce` exist so an imported suppression export keeps what its rows meant",
-                    "enum": [
-                      "manual",
-                      "complaint",
-                      "hard_bounce"
-                    ],
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "address"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountSuppression"
-                }
-              }
-            },
-            "description": "The address is on the list (created or refreshed)"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Account not found or not accessible to this principal"
-          }
-        },
-        "summary": "Add an address to an account's do-not-send list",
-        "tags": [
-          "Suppressions"
-        ]
-      }
-    },
-    "/api/v1/accounts/{accountId}/suppressions/{address}": {
-      "delete": {
-        "description": "Lifts only this account's own policy row. An address the PLATFORM suppressed (a complaint or hard bounce on the global list) stays refused; a hard-bounce row there can be lifted via `DELETE /suppressions/{address}`.",
-        "operationId": "delete_AccountSuppressionDelete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "accountId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Recipient address",
-            "in": "path",
-            "name": "address",
-            "required": true,
-            "schema": {
-              "description": "Recipient address",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeletedResult"
-                }
-              }
-            },
-            "description": "Removed; mail from this account to the address flows again"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "not_found — the account is not accessible, or the address was not listed"
-          }
-        },
-        "summary": "Remove an address from an account's do-not-send list",
-        "tags": [
-          "Suppressions"
-        ]
-      },
-      "get": {
-        "operationId": "get_AccountSuppressionGet",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "accountId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Recipient address",
-            "in": "path",
-            "name": "address",
-            "required": true,
-            "schema": {
-              "description": "Recipient address",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountSuppression"
-                }
-              }
-            },
-            "description": "The address is on this account's list"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "not_found — the account is not accessible, or the address is not listed"
-          }
-        },
-        "summary": "Look up one address on an account's do-not-send list",
-        "tags": [
-          "Suppressions"
         ]
       }
     },
@@ -10408,7 +11361,7 @@
                 }
               }
             },
-            "description": "TWO meanings, split by error code — the MTA must NOT map this status alone. receiving_disabled = a recipient verdict (the address resolves but its domain is disabled or not receiving): reject permanently (550). insufficient_scope = this caller may not check at all (mailbox principals never can): a fault in the CALLER's configuration, not a fact about the recipient — defer (451), or a config typo hard-bounces every message the MTA sees"
+            "description": "THREE meanings, split by error code — the MTA must NOT map this status alone. receiving_disabled = a recipient verdict (the address resolves but its domain is disabled or not receiving): reject permanently (550). sender_blocked = an address list refuses this MAIL FROM for this recipient: reject permanently (550), and note the verdict depends on `from`, so it must not be cached per recipient. insufficient_scope = this caller may not check at all (mailbox principals never can): a fault in the CALLER's configuration, not a fact about the recipient — defer (451), or a config typo hard-bounces every message the MTA sees"
           },
           "404": {
             "content": {
@@ -18525,6 +19478,972 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/lists": {
+      "get": {
+        "operationId": "get_AddressListIndex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeKind",
+            "required": false,
+            "schema": {
+              "enum": [
+                "account",
+                "domain",
+                "mailbox"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "enum": [
+                "inbound",
+                "outbound"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "enum": [
+                "allow",
+                "block"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListPage"
+                }
+              }
+            },
+            "description": "Address lists page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "List address lists",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "post": {
+        "description": "Scope, direction and verdict are immutable — create another list rather than repurposing one, since entries were written under the old meaning. Names carry no order: lists at one scope are a union.",
+        "operationId": "post_AddressListCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "direction": {
+                    "enum": [
+                      "inbound",
+                      "outbound"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Tenant-chosen label, unique per scope",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "scopeId": {
+                    "type": "string"
+                  },
+                  "scopeKind": {
+                    "description": "Required on the /accounts family; ignored on /mailboxes (the path pins it)",
+                    "enum": [
+                      "account",
+                      "domain",
+                      "mailbox"
+                    ],
+                    "type": "string"
+                  },
+                  "verdict": {
+                    "enum": [
+                      "allow",
+                      "block"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "direction",
+                  "verdict"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressList"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_name_taken, or list_limit_reached"
+          }
+        },
+        "summary": "Create an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/lists/evaluate": {
+      "post": {
+        "description": "The debugging verb — 'why was this refused?' — and what a compose client can pre-flight a recipient against. It answers the SAME evaluator the relay and the delivery funnel run, and names the list and pattern that decided. Read-only.",
+        "operationId": "post_AddressListEvaluate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "The sender (inbound) or recipient (outbound)",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "inbound",
+                      "outbound"
+                    ],
+                    "type": "string"
+                  },
+                  "domain": {
+                    "description": "Narrow the chain with a domain scope you own",
+                    "type": "string"
+                  },
+                  "mailboxId": {
+                    "description": "…and/or a mailbox scope you own",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "direction",
+                  "address"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListVerdict"
+                }
+              }
+            },
+            "description": "The verdict, with what decided it"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Explain what the lists decide for one address",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/lists/{listId}": {
+      "delete": {
+        "operationId": "delete_AddressListDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Delete an address list and its entries",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "get": {
+        "operationId": "get_AddressListGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressList"
+                }
+              }
+            },
+            "description": "The list, with its entry count"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Read one address list",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "patch": {
+        "description": "`name` is the only mutable field. Scope, direction and verdict would change what every existing entry MEANS, so they are create-only.",
+        "operationId": "patch_AddressListPatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "description": "Tenant-chosen label, unique per scope",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressList"
+                }
+              }
+            },
+            "description": "Renamed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_name_taken"
+          }
+        },
+        "summary": "Rename an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/lists/{listId}/entries": {
+      "get": {
+        "operationId": "get_AddressListEntryIndex",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListEntryPage"
+                }
+              }
+            },
+            "description": "Entries page; nextCursor present when a further page exists"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "List the patterns on an address list",
+        "tags": [
+          "Address lists"
+        ]
+      },
+      "post": {
+        "description": "Idempotent on the NORMALIZED pattern: `@acme.example` and `*@acme.example` are one row, and a repeat refreshes the note while keeping the original createdAt.",
+        "operationId": "post_AddressListEntryCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "note": {
+                    "description": "Display-only note",
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "pattern": {
+                    "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+                    "maxLength": 320,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListEntry"
+                }
+              }
+            },
+            "description": "The entry (created or refreshed)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_full"
+          }
+        },
+        "summary": "Add one pattern to an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/lists/{listId}/entries/batch": {
+      "post": {
+        "description": "Idempotent, like the single add. Unparseable inputs are REPORTED in `invalid` rather than failing the whole import — a suppression export from another provider routinely carries a few rows that are not addresses.",
+        "operationId": "post_AddressListEntryBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "entries": {
+                    "items": {
+                      "properties": {
+                        "note": {
+                          "description": "Display-only note",
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "pattern": {
+                          "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+                          "maxLength": 320,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pattern"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 500,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "entries"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListBatchResult"
+                }
+              }
+            },
+            "description": "What was written and what was refused"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_full"
+          }
+        },
+        "summary": "Add many patterns at once",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/lists/{listId}/entries/{pattern}": {
+      "delete": {
+        "operationId": "delete_AddressListEntryDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+            "in": "path",
+            "name": "pattern",
+            "required": true,
+            "schema": {
+              "description": "Address pattern: `jo@acme.example`, `@acme.example` (stored `*@acme.example`), `sales-*@acme.example`, or `@.acme.example` for a domain and its subdomains",
+              "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Removed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Remove one pattern from an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/messages": {
       "delete": {
         "operationId": "delete_MessageEmptyTrash",
@@ -22037,6 +23956,278 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/scheduled": {
+      "get": {
+        "description": "A scheduled send is a stored draft plus a release time. Pass `state` to see finished ones: terminal rows are kept for a rolling window so a client can show what happened, and so a replayed `X-Delivery-Id` keeps answering the same resource instead of sending again.",
+        "operationId": "get_ScheduledList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Defaults to `pending`",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "description": "Defaults to `pending`",
+              "enum": [
+                "pending",
+                "releasing",
+                "sent",
+                "failed",
+                "canceled"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    },
+                    "scheduled": {
+                      "items": {
+                        "$ref": "#/components/schemas/ScheduledSend"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "scheduled"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Scheduled sends, newest first"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible"
+          }
+        },
+        "summary": "List this mailbox's scheduled sends (pending by default)",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/scheduled/cancel": {
+      "post": {
+        "operationId": "post_ScheduledCancelAll",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Limit to schedules created by this credential or API key",
+            "in": "query",
+            "name": "actorId",
+            "required": false,
+            "schema": {
+              "description": "Limit to schedules created by this credential or API key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "canceled": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "canceled"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "How many were cancelled"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible"
+          }
+        },
+        "summary": "Cancel every pending scheduled send for this mailbox",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/scheduled/{scheduleId}": {
+      "get": {
+        "operationId": "get_ScheduledGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scheduleId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledSend"
+                }
+              }
+            },
+            "description": "The schedule; `result` and `error` are filled once it is terminal"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or schedule not found"
+          }
+        },
+        "summary": "Read one scheduled send",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/scheduled/{scheduleId}/cancel": {
+      "post": {
+        "description": "Cancelling never deletes anything: the draft returns to being an ordinary draft, editable and re-sendable. Once a release has begun there is nothing to call back — its legs may already be on the wire — so that answers `409 cannot_unsend`.",
+        "operationId": "post_ScheduledCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scheduleId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "canceled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "canceled"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Cancelled (or already cancelled — this is idempotent)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or schedule not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "cannot_unsend (the release has begun or already finished) | schedule_failed (it will not run again)"
+          }
+        },
+        "summary": "Cancel a scheduled send — the message stays as an ordinary draft",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/search": {
       "get": {
         "operationId": "get_MailboxSearch",
@@ -22433,6 +24624,14 @@
                     "maxItems": 10,
                     "type": "array"
                   },
+                  "sendAt": {
+                    "description": "Release time, epoch seconds. In the future ⇒ the message is stored as a draft and sent then (202 + a schedule); at or before now ⇒ sent immediately. Requires the Sent copy (`?save` may not be false).",
+                    "format": "int64",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "subject": {
                     "maxLength": 2000,
                     "type": [
@@ -22473,6 +24672,16 @@
             },
             "description": "Every recipient was accepted (delivered, queued, or filtered)"
           },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledSend"
+                }
+              }
+            },
+            "description": "Scheduled (`sendAt` in the future): the message is stored as a draft and released at that time. The delivery id is SPENT by the schedule — a later submission carrying the same `X-Delivery-Id` answers this same resource rather than sending again, whatever state it has reached (`state` says which), so a retry can never un-cancel or double-send"
+          },
           "207": {
             "content": {
               "application/json": {
@@ -22491,7 +24700,7 @@
                 }
               }
             },
-            "description": "validation_failed, no_recipients, too_many_recipients, a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), or a bad attachment reference: unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`"
+            "description": "validation_failed, no_recipients, too_many_recipients, a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), a bad attachment reference (unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`), or a refused schedule: send_at_too_far, send_at_requires_save, recipient_not_permitted"
           },
           "403": {
             "content": {
@@ -23621,6 +25830,14 @@
                       "null"
                     ]
                   },
+                  "sendAt": {
+                    "description": "Release time, epoch seconds. In the future ⇒ the message is stored as a draft and sent then (202 + a schedule); at or before now ⇒ sent immediately. Requires the Sent copy (`?save` may not be false).",
+                    "format": "int64",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "subject": {
                     "description": "Overrides the derived \"Re: …\" subject",
                     "maxLength": 2000,
@@ -23651,6 +25868,16 @@
               }
             },
             "description": "The reply was accepted for its recipient"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledSend"
+                }
+              }
+            },
+            "description": "Scheduled (`sendAt` in the future): the reply is stored as a draft and released then"
           },
           "207": {
             "content": {

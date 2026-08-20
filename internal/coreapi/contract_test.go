@@ -113,7 +113,12 @@ func contractPairings() []pairing {
 		{val: SendRecipientResult{}, comp: "SendRecipientResult"},
 		// Operator surfaces (system-only).
 		{val: Suppression{}, comp: "Suppression"},
-		{val: AccountSuppression{}, comp: "AccountSuppression"},
+		// The tenant tier: address lists (core 0040) replaced the per-account
+		// suppression table.
+		{val: AddressList{}, comp: "AddressList"},
+		{val: AddressListEntry{}, comp: "AddressListEntry"},
+		{val: AddressListBatchResult{}, comp: "AddressListBatchResult"},
+		{val: AddressListVerdict{}, comp: "AddressListVerdict"},
 		{val: DkimStatus{}, comp: "DkimStatus"},
 		{val: DkimKey{}, comp: "DkimKey"},
 		{val: DkimCname{}, comp: "DkimCname"},
