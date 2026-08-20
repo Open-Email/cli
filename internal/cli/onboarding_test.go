@@ -76,6 +76,27 @@ func TestPrintDNSRecordsDistinguishesUnknownFromAbsent(t *testing.T) {
 	}
 }
 
+// Core scores a record against value ∪ accept, so a domain with a vanity DAV
+// hostname is LIVE while still publishing the platform target. Printing only
+// the preferred target next to that verdict reads as a contradiction and sends
+// the customer to "fix" a record that is already correct.
+func TestPrintDNSRecordsShowsAcceptedAlternates(t *testing.T) {
+	out := renderRecords(t, []coreapi.DNSRecordCheck{
+		{DNSRecord: coreapi.DNSRecord{
+			Kind: "dav", Type: "SRV", Name: "_caldavs._tcp.a.test", Value: "dav.a.test",
+			Accept: []string{"dav.open.email"}, Priority: ptrInt32(0), Weight: ptrInt32(1),
+			Port: ptrInt32(443), Required: false,
+		}, OK: ptrBool(true)},
+	}, true)
+
+	if !strings.Contains(out, "dav.a.test") {
+		t.Fatalf("preferred target missing:\n%s", out)
+	}
+	if !strings.Contains(out, "dav.open.email") {
+		t.Fatalf("accepted alternate not rendered:\n%s", out)
+	}
+}
+
 func TestBoolYNUnknown(t *testing.T) {
 	if got := boolYNUnknown(nil); got != "?" {
 		t.Fatalf("nil rendered %q", got)

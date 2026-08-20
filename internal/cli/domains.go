@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
@@ -512,6 +513,14 @@ func printDNSRecords(w io.Writer, p *Printer, records []coreapi.DNSRecordCheck, 
 		}
 		if r.Port != nil {
 			value = fmt.Sprintf("%s (port %d)", value, *r.Port)
+		}
+		// Core scores this record against value ∪ accept, so an alternate is not
+		// trivia: a domain that claimed a vanity DAV hostname but still publishes
+		// the platform target is LIVE while the VALUE column names a host it has
+		// never published. Printing only the preferred target would have the
+		// customer "fix" a working record.
+		if len(r.Accept) > 0 {
+			value = fmt.Sprintf("%s [or %s]", value, strings.Join(r.Accept, ", "))
 		}
 		row := []string{r.Kind, r.Type, r.Name, value, boolYN(r.Required)}
 		if withLiveness {

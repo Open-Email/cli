@@ -85,6 +85,14 @@ func newAdminVerifyLoginCmd(a *app) *cobra.Command {
 					{"Kind", res.Kind},
 					{"Can send", boolYN(res.CanSend)},
 				}
+				// Present only when Can send is no, and it is the field this
+				// command exists for: "I can't send" has two answers that look
+				// identical to the user and could not be more different to whoever
+				// is debugging it — an abuse freeze the sender's MTA bounces off,
+				// and a billing hold their MTA is politely queueing behind.
+				if res.SendHold != "" {
+					rows = append(rows, []string{"Send hold", sendHoldLabel(res.SendHold)})
+				}
 				if len(res.Facets) > 0 {
 					rows = append(rows, []string{"Facets", joinStrings(res.Facets)})
 				}
@@ -190,6 +198,28 @@ func newAdminPickupReportCmd(a *app) *cobra.Command {
 	cmd.Flags().Int64Var(&deleted, "deleted", 0, "messages deleted (not persisted)")
 	cmd.Flags().Int64Var(&faild, "failed", 0, "messages failed (not persisted)")
 	return cmd
+}
+
+// sendHoldLabel names core's two send-hold modes in the terms an operator acts
+// on — what the sending MTA is told, and what happens to mail already queued.
+// An unrecognized mode is passed through verbatim rather than dropped: a third
+// mode core adds later must still be visible here.
+//
+// "disabled" is deliberately not called an abuse freeze. Core computes it as a
+// UNION (src/endpoints/credentials.ts): this mailbox's send_disabled, OR a
+// permanent hold on its domain or account, OR the sending domain not being
+// enabled, OR the address not resolving to this mailbox at all. Several of
+// those are ordinary configuration an operator can undo in a minute, so the
+// label describes the EFFECT — which is identical across all of them — and
+// leaves the cause to `openemail admin domain`/`account`.
+func sendHoldLabel(hold string) string {
+	switch hold {
+	case "disabled":
+		return "disabled (permanent stop — 550 at the MTA, queued mail bounces; cause may be the mailbox, its domain or its account)"
+	case "paused":
+		return "paused (reversible hold — 451 + Retry-After; queued mail waits)"
+	}
+	return hold
 }
 
 func joinStrings(ss []string) string {

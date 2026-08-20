@@ -105,8 +105,14 @@ func (c *Client) DeliverInbound(ctx context.Context, opts InboundOptions, getBod
 	return &out, raw, nil
 }
 
-// CheckRecipient runs the RCPT pre-flight. Returns true on 200 accepted; a
-// rejection surfaces as an APIError (404 unknown_address / 403 receiving_disabled).
+// CheckRecipient runs the RCPT pre-flight. Returns true on 200 accepted; every
+// other outcome surfaces as an APIError, and callers must split them by ERROR
+// CODE rather than status. Recipient/sender verdicts: 404 unknown_address, 403
+// receiving_disabled, 403 sender_blocked (an address-list rule refused `from`,
+// so this one is only reachable when the caller supplies it) and the TEMPORARY
+// 429 receiving_paused (an account mid-deletion — defer, never bounce). 403
+// insufficient_scope is not a verdict at all: it means this bearer is not a
+// system key and the gate never ran.
 func (c *Client) CheckRecipient(ctx context.Context, to, from, ip, ptr, helo string) (bool, error) {
 	q := url.Values{}
 	q.Set("to", to)

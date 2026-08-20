@@ -100,6 +100,13 @@ type DNSRecord struct {
 	Port     *int32 `json:"port,omitempty"`
 	Purpose  string `json:"purpose"`
 	Required bool   `json:"required"`
+	// Accept lists other values core also counts as live for this record — it
+	// appears where either of two of OUR hosts is correct (a domain that claimed
+	// a vanity DAV hostname keeps the platform SRV target acceptable while it
+	// migrates). Core scores liveness against value ∪ accept, so a client that
+	// prints only Value shows a target the customer has NOT published beside a
+	// LIVE verdict, which reads as the check lying.
+	Accept []string `json:"accept,omitempty"`
 }
 
 // DNSRecordCheck is a DNSRecord plus what the resolver actually returned. OK is

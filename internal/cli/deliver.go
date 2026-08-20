@@ -24,7 +24,7 @@ func newDeliverCheckCmd(a *app) *cobra.Command {
 	var to, from, ip, ptr, helo string
 	cmd := &cobra.Command{
 		Use:   "check --to <address>",
-		Short: "RCPT-time recipient pre-flight (200 accepted / 404 unknown / 403 receiving_disabled)",
+		Short: "RCPT-time recipient pre-flight (200 accepted / 404 unknown / 403 receiving_disabled|sender_blocked)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := a.authedClient()
@@ -36,8 +36,22 @@ func newDeliverCheckCmd(a *app) *cobra.Command {
 			}
 			accepted, err := client.CheckRecipient(cmd.Context(), to, from, ip, ptr, helo)
 			if err != nil {
+				// 403 carries two unrelated meanings and core's own contract says
+				// to split them by ERROR CODE, never by status: insufficient_scope
+				// is a refusal to answer at all (this credential may not ask), not
+				// a fact about anyone's mailbox. Rendering it as accepted:false
+				// would report a refusal nobody ever pronounced — the same mistake
+				// that makes an MTA 550 mail for its own misconfiguration.
+				if coreapi.IsInsufficientScope(err) {
+					a.out.Warnf("%s", insufficientScopeHint())
+					return err
+				}
 				// A rejection is a normal outcome; render it and exit non-zero.
-				if code := coreapi.Code(err); code == "unknown_address" || code == "receiving_disabled" {
+				// sender_blocked is the third meaning of 403 (an address-list rule
+				// refused this MAIL FROM, so the verdict depends on --from) and is
+				// as much a verdict as the other two.
+				switch code := coreapi.Code(err); code {
+				case "unknown_address", "receiving_disabled", "sender_blocked":
 					a.out.Emit(map[string]any{"accepted": false, "reason": code}, func(w io.Writer) {
 						a.out.Warnf("recipient %s rejected: %s", to, code)
 					})
@@ -52,7 +66,7 @@ func newDeliverCheckCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&to, "to", "", "recipient address to check (required)")
-	cmd.Flags().StringVar(&from, "from", "", "SMTP MAIL FROM (advisory; currently unused by core)")
+	cmd.Flags().StringVar(&from, "from", "", "SMTP MAIL FROM — without it core cannot run the address-list sender gate (sender_blocked)")
 	cmd.Flags().StringVar(&ip, "ip", "", "connecting client IP (advisory)")
 	cmd.Flags().StringVar(&ptr, "ptr", "", "client reverse-DNS (advisory)")
 	cmd.Flags().StringVar(&helo, "helo", "", "client HELO/EHLO hostname (advisory)")
@@ -97,4 +111,23 @@ func newDeliverInboundCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&meta, "meta", "", "X-Delivery-Meta JSON object (≤8KB)")
 	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID)")
 	return cmd
+}
+
+// insufficientScopeHint says which credential to reach for when core refuses to
+// run the RCPT gate at all.
+//
+// The wording is load-bearing, which is why it is a function with a test rather
+// than a string literal inside the handler. Core refuses ONLY mailbox
+// principals here — `DeliverCheck.handle` returns insufficient_scope for
+// `principal.type === "mailbox"` and nothing else, and `checkRecipient` is
+// typed to exclude that one type. An ACCOUNT key runs the gate fine, scoped to
+// its own domains: a recipient outside them collapses to 404 rather than 403.
+//
+// So the obvious phrasing — "needs a system key" — is wrong in the expensive
+// direction. It sends an operator after the one credential most of them cannot
+// get, to fix a problem their existing account key already solves, and it
+// quietly teaches that the RCPT gate is operator-only when it is not.
+func insufficientScopeHint() string {
+	return "this credential may not run the RCPT gate — a mailbox app password cannot; " +
+		"use an account or system key. No recipient verdict was reached"
 }

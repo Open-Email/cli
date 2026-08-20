@@ -43,6 +43,13 @@ func contractPairings() []pairing {
 		// Directory / control plane.
 		{val: Domain{}, comp: "Domain"},
 		{val: DNSStatus{}, comp: "DnsStatus"},
+		// The onboarding/health records. Pinned because their fields are the ones
+		// a customer copy-pastes into a zone: a field core adds and this client
+		// drops (as `accept` was) prints instructions that disagree with the
+		// liveness verdict beside them.
+		{val: DNSRecord{}, comp: "DnsRecord"},
+		{val: DNSRecordCheck{}, comp: "DnsRecordCheck"},
+		{val: DomainDNSCheck{}, comp: "DomainDnsCheck"},
 		{val: Route{}, comp: "Route"},
 		{val: RouteMember{}, comp: "RouteMember"},
 		{val: RouteMemberBatchResult{}, comp: "RouteMemberBatchResult"},
