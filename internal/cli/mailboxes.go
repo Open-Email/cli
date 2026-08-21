@@ -28,6 +28,8 @@ func newMailboxesCmd(a *app) *cobra.Command {
 		newMailboxPurgeCmd(a),
 		newMailboxUseCmd(a),
 		newMailboxSendUsageCmd(a),
+		newMailboxSharesCmd(a),
+		newSharedMailboxesCmd(a),
 	)
 	return cmd
 }

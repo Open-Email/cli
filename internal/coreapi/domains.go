@@ -47,7 +47,14 @@ type Domain struct {
 	DAV bool `json:"dav"`
 	// ITIP: inbound iTIP auto-apply (core migration 0015) — arriving
 	// text/calendar invitations are filed into recipients' calendars.
-	ITIP         bool       `json:"itip"`
+	ITIP bool `json:"itip"`
+	// SRS: this domain's SRS0=/SRS1= local-part NAMESPACE is the platform's
+	// forwarding bounce-return path (core migration 0043). System-managed and
+	// shape-gated — every local part outside the namespace routes normally, so
+	// this is not an fbl-style whole-domain swallow. Decoded rather than
+	// ignored because a client that drops it renders an incomplete picture of
+	// what a domain is doing with mail addressed to it.
+	SRS          bool       `json:"srs"`
 	DNSStatus    *DNSStatus `json:"dnsStatus"`
 	DNSCheckedAt *int64     `json:"dnsCheckedAt"`
 	AccountID    *string    `json:"accountId"`

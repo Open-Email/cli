@@ -54,6 +54,12 @@ func contractPairings() []pairing {
 		{val: RouteMember{}, comp: "RouteMember"},
 		{val: RouteMemberBatchResult{}, comp: "RouteMemberBatchResult"},
 		{val: Pattern{}, comp: "Pattern"},
+		// Mailbox sharing, both directions. Pinned because `labelScope` is the one
+		// field whose ABSENCE means something different from its emptiness (whole
+		// mailbox vs a grant that sees nothing), so a client that silently stopped
+		// decoding it would report every folder-scoped grant as unrestricted.
+		{val: MailShare{}, comp: "MailShare"},
+		{val: SharedMailbox{}, comp: "SharedMailbox"},
 		{val: Account{}, comp: "Account"},
 		{val: APIKey{}, comp: "ApiKey"},
 		{val: CreatedAPIKey{}, comp: "ApiKeyCreated"},

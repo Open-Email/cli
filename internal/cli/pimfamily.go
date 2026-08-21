@@ -902,7 +902,13 @@ func newPimShareListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			a.out.Emit(map[string]any{"shares": shares}, func(w io.Writer) {
 				rows := make([][]string, 0, len(shares))
 				for _, sh := range shares {
-					rows = append(rows, []string{sh.ShareeMailboxID, sh.Permission, fmtEpoch(sh.CreatedAt)})
+					// The address when core knows one, the ULID otherwise — an
+					// address-less identity is a real state here, not an error.
+					rows = append(rows, []string{
+						granteeLabel(sh.ShareeAddress, sh.ShareeMailboxID),
+						sh.Permission,
+						fmtEpoch(sh.CreatedAt),
+					})
 				}
 				printTable(w, a.out, []string{"SHAREE", "PERMISSION", "GRANTED"}, rows)
 			})
@@ -939,7 +945,7 @@ func newPimShareSetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 				return err
 			}
 			a.out.Emit(sh, func(w io.Writer) {
-				a.out.Successf("Granted %s to %s", sh.Permission, sh.ShareeMailboxID)
+				a.out.Successf("Granted %s to %s", sh.Permission, granteeLabel(sh.ShareeAddress, sh.ShareeMailboxID))
 				a.out.Msgf("the grant opens nothing by itself — the %s's visibility must also be shared or public", f.noun)
 			})
 			return nil

@@ -59,9 +59,12 @@ func newPimSharedCmd(a *app) *cobra.Command {
 			a.out.Emit(map[string]any{"shared": shared}, func(w io.Writer) {
 				rows := make([][]string, 0, len(shared))
 				for _, sh := range shared {
+					// OWNER carries the address when core knows one. The
+					// collection id stays a column of its own because it is what
+					// the follow-up command takes; the owner column is for reading.
 					rows = append(rows, []string{
 						sh.Kind, sh.Name, strOr(sh.DisplayName, "—"), sh.CollectionID,
-						sh.OwnerMailboxID, sh.Permission,
+						granteeLabel(sh.OwnerAddress, sh.OwnerMailboxID), sh.Permission,
 					})
 				}
 				printTable(w, a.out, []string{"KIND", "NAME", "DISPLAY", "COLLECTION", "OWNER", "PERMISSION"}, rows)

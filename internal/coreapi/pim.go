@@ -211,22 +211,30 @@ type PimCollectionDeleted struct {
 // PimShare is one sharing grant on a collection.
 type PimShare struct {
 	ShareeMailboxID string `json:"shareeMailboxId"`
-	Permission      string `json:"permission"` // read | read-write
-	CreatedAt       int64  `json:"createdAt"`
+	// ShareeAddress is the sharee's primary address, or null for an
+	// address-less identity (a calendar-only user, which the PIM surface
+	// supports by design). Carried so a listing names a person rather than a
+	// ULID; fall back to the id when absent.
+	ShareeAddress *string `json:"shareeAddress"`
+	Permission    string  `json:"permission"` // read | read-write
+	CreatedAt     int64   `json:"createdAt"`
 }
 
 // PimSharedWithMe is one collection another mailbox shared with this one.
 type PimSharedWithMe struct {
-	OwnerMailboxID string  `json:"ownerMailboxId"`
-	CollectionID   string  `json:"collectionId"`
-	Permission     string  `json:"permission"`
-	Kind           string  `json:"kind"`
-	Name           string  `json:"name"`
-	DisplayName    *string `json:"displayName"`
-	Color          *string `json:"color"`
-	Description    *string `json:"description"`
-	SyncToken      string  `json:"syncToken"`
-	CreatedAt      int64   `json:"createdAt"`
+	OwnerMailboxID string `json:"ownerMailboxId"`
+	// OwnerAddress is the owner's primary address, or null when they have none.
+	// Carried so a listing names a person rather than a ULID.
+	OwnerAddress *string `json:"ownerAddress"`
+	CollectionID string  `json:"collectionId"`
+	Permission   string  `json:"permission"`
+	Kind         string  `json:"kind"`
+	Name         string  `json:"name"`
+	DisplayName  *string `json:"displayName"`
+	Color        *string `json:"color"`
+	Description  *string `json:"description"`
+	SyncToken    string  `json:"syncToken"`
+	CreatedAt    int64   `json:"createdAt"`
 }
 
 // PimPublicCollection is one entry of the account-scoped public directory. ID
