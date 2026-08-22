@@ -93,10 +93,12 @@ func (c *Client) ListMailShares(ctx context.Context, mailboxID string) ([]MailSh
 // PutMailShare grants — or re-grants, which is how a grant is widened or
 // narrowed — an identity's access to a mailbox.
 //
-// A FOLDER-SCOPED grant may carry only `lrs` (read, plus the viewer's own
-// read/unread marks); core answers `rights_not_allowed_on_folder_share` for
-// anything that writes. That is deliberate and not worth pre-empting here: the
-// server names the offending letters, which this client cannot.
+// A FOLDER-SCOPED grant may carry up to `lrswit` — read, the viewer's own
+// read/unread marks, flags, filing in, and moving to trash. Core answers
+// `rights_not_allowed_on_folder_share` for `e` (permanent delete) and `a`
+// (folder management), so `full` is not available with a scope. That is not
+// worth pre-empting here: the server names the offending letters, which this
+// client cannot.
 func (c *Client) PutMailShare(ctx context.Context, mailboxID, granteeIdentityID string, in MailShareInput) (*MailShare, error) {
 	// A map, not a struct, for the reason UpdateMailbox uses one: an omitted key
 	// and an explicit null are different requests here, and `omitempty` cannot

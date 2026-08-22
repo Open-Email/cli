@@ -116,9 +116,10 @@ func newMailShareSetCmd(a *app) *cobra.Command {
 			"access is widened or narrowed as well as how it is created.\n\n" +
 			"--rights takes a preset (read_only = lrs, read_write = lrswit, full = lrswitea) " +
 			"or a literal letter set. Pass --folder to confine the grant to named folders; " +
-			"repeat it for several. A folder-scoped grant is read-only — core refuses any " +
-			"writing letter on one — and it follows a folder through a RENAME, because the " +
-			"names are resolved to ids at the time of the grant.\n\n" +
+			"repeat it for several. A folder-scoped grant may go up to read_write (lrswit); " +
+			"core refuses `e` (permanent delete) and `a` (folder management) on one, so " +
+			"full is not available with --folder. It follows a folder through a RENAME, " +
+			"because the names are resolved to ids at the time of the grant.\n\n" +
 			"With neither --folder nor --keep-folders the grant covers the WHOLE mailbox, " +
 			"widening a folder-scoped grant if one exists. Pass --keep-folders to change " +
 			"only the rights and leave the folder scope alone.\n\n" +
@@ -197,7 +198,7 @@ func newMailShareSetCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&rights, "rights", "read_only",
 		"read_only (lrs) | read_write (lrswit) | full (lrswitea), or a literal letter set")
 	cmd.Flags().StringArrayVar(&folders, "folder", nil,
-		"confine the grant to this folder (repeatable); a folder-scoped grant is read-only")
+		"confine the grant to this folder (repeatable); a folder share allows at most read_write")
 	cmd.Flags().BoolVar(&keepFolders, "keep-folders", false,
 		"change only the rights, leaving the grant's existing folder scope untouched")
 	cmd.Flags().StringVarP(&mailbox, "mailbox", "m", "",
