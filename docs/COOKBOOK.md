@@ -513,6 +513,86 @@ An id that is missing, already live, or already purged is reported `not_found` o
 its own row without stopping the others, and the command exits non-zero so a
 script notices without parsing the table.
 
+## Receive events on your laptop
+
+The event webhook POSTs signed, fact-only batches — ids, states, an actor and
+a sequence, never content — to one URL per mailbox or per domain. To see them
+locally, put a tunnel in front of a local receiver and point the hook at it:
+
+```sh
+# any tunnel that gives you a public HTTPS host works; e.g. cloudflared
+cloudflared tunnel --url http://localhost:8787 &
+openemail domains webhook set acme.example --url https://<tunnel-host>/events --secret "$(openssl rand -hex 32)"
+openemail domains webhook test acme.example     # queues one webhook.test batch
+openemail domains webhook get acme.example      # last delivered / last failure
+```
+
+The secret is stored write-only — keep your copy. `set` again with `--url`
+alone keeps it; `--secret` rotates it (the next attempt signs with the new
+one); `--clear-secret` removes it. A hook failing for 24h is auto-disabled
+and any `set` re-enables it.
+
+## Verify a batch
+
+Two steps, in this order, and the order is the whole point: verify the HMAC
+over the RAW body bytes first, THEN parse and check `sentAt` against your
+tolerance. The mistake every framework invites is hashing a re-serialised
+object — key order, whitespace and number formatting all change the bytes.
+Read the raw buffer.
+
+```js
+// Node (express with a raw body)
+import { createHmac, timingSafeEqual } from "node:crypto";
+app.post("/events", express.raw({ type: "application/json" }), (req, res) => {
+  const expected = "sha256=" + createHmac("sha256", SECRET).update(req.body).digest("hex");
+  const got = req.get("X-OpenEmail-Signature") ?? "";
+  if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) return res.sendStatus(401);
+  const batch = JSON.parse(req.body);
+  if (Math.abs(Date.now() - batch.sentAt) > 5 * 60_000) return res.sendStatus(401);
+  // dedupe on batch.id, order by batch.sequence, reconcile on events.gap
+  res.sendStatus(200);
+});
+```
+
+```go
+// Go
+raw, _ := io.ReadAll(r.Body)
+mac := hmac.New(sha256.New, secret); mac.Write(raw)
+want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+if !hmac.Equal([]byte(r.Header.Get("X-OpenEmail-Signature")), []byte(want)) { w.WriteHeader(401); return }
+var batch struct{ ID string; SentAt int64 `json:"sentAt"` }
+_ = json.Unmarshal(raw, &batch)
+```
+
+```python
+# Python
+raw = request.get_data()                       # bytes, before any parse
+want = "sha256=" + hmac.new(SECRET, raw, hashlib.sha256).hexdigest()
+if not hmac.compare_digest(request.headers.get("X-OpenEmail-Signature", ""), want): abort(401)
+batch = json.loads(raw)
+```
+
+Answer 2xx as soon as the batch is durably yours — a 30s handler is a failed
+attempt, and every non-2xx (3xx included) retries for ~3 days.
+
+## Start from a baseline, resync after a gap
+
+A domain `set` arms every mailbox on the domain in the background — the
+response is not a promise about mutations already in flight. Take a baseline
+right after it returns, and reconcile from that state whenever a batch's
+`sequence` has a hole or carries an `events.gap`:
+
+```sh
+openemail domains webhook set acme.example --url https://…
+# The changes feed is REST (`GET /mailboxes/:id/messages/changes`); the CLI
+# has no wrapper for it yet, so call it with your key:
+for id in $(openemail mailboxes list --json | jq -r '.mailboxes[].id'); do
+  curl -s -H "Authorization: Bearer $OE_KEY" \
+    "$OE_BASE/api/v1/mailboxes/$id/messages/changes" | jq -r '.state'   # keep per mailbox
+done
+# later, on a gap: …/messages/changes?since=$saved_state
+```
+
 ## Scripting with a system key (operator)
 
 ```sh

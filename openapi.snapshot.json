@@ -33,6 +33,20 @@
             "description": "Account name",
             "type": "string"
           },
+          "noticeMailboxId": {
+            "description": "Mailbox that receives limit notices as local postmaster mail (null = console-only)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plan": {
+            "description": "The service-class label last applied via POST /accounts/:accountId/plan (display/billing only — enforcement reads the limit columns; null = no plan recorded)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "purgeAt": {
             "description": "Scheduled permanent purge timestamp in epoch seconds, or null",
             "format": "int64",
@@ -43,6 +57,22 @@
           },
           "purgedAt": {
             "description": "Permanent purge completion timestamp in epoch seconds, or null",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "recvBytesPerDay": {
+            "description": "Daily inbound byte allowance across the account (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "recvMsgsPerDay": {
+            "description": "Daily inbound message allowance across the account (null = platform default, 0 = unlimited); a backstop — over it inbound is deferred, never bounced",
             "format": "int64",
             "type": [
               "integer",
@@ -61,12 +91,28 @@
               "null"
             ]
           },
+          "sendMsgsPerHour": {
+            "description": "Hourly (burst) outbound message limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "sendPaused": {
             "description": "True if outbound sending is temporarily paused for all mailboxes in this account",
             "type": "boolean"
           },
           "sendRcptsPerDay": {
             "description": "Daily outbound recipient limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sendRcptsPerHour": {
+            "description": "Hourly (burst) outbound recipient limit (null = platform default, 0 = unlimited)",
             "format": "int64",
             "type": [
               "integer",
@@ -102,6 +148,12 @@
           "sendPaused",
           "sendMsgsPerDay",
           "sendRcptsPerDay",
+          "sendMsgsPerHour",
+          "sendRcptsPerHour",
+          "recvMsgsPerDay",
+          "recvBytesPerDay",
+          "noticeMailboxId",
+          "plan",
           "storageLimitBytes",
           "vanityHosts",
           "createdAt",
@@ -145,11 +197,136 @@
         ],
         "type": "object"
       },
+      "AccountPlanResult": {
+        "properties": {
+          "accountId": {
+            "description": "Account ULID",
+            "type": "string"
+          },
+          "applied": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "The columns stamped",
+            "type": "object"
+          },
+          "plan": {
+            "description": "The plan label now on the account",
+            "type": "string"
+          },
+          "presetHash": {
+            "description": "sha256 of the canonical preset definition (name + sorted limits) — recorded on the audit row, compare against today's definition to detect drift",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "plan",
+          "presetHash",
+          "applied"
+        ],
+        "type": "object"
+      },
+      "AccountReceiveUsage": {
+        "properties": {
+          "accountId": {
+            "description": "Account ULID",
+            "type": "string"
+          },
+          "bytes": {
+            "description": "Bytes stored in the window, from the staged message sizes",
+            "format": "int64",
+            "type": "integer"
+          },
+          "bytesPerDay": {
+            "description": "Receive allowance in force on the bytes axis (null = unenforced)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailboxShare": {
+            "description": "Fraction of each allowance one mailbox may draw alone (RECV_MAILBOX_SHARE); 1 = no per-mailbox level",
+            "type": "number"
+          },
+          "messages": {
+            "description": "Messages STORED for this account's mailboxes in the rolling 24-hour window (only stored mail charges — refused, aborted and duplicate deliveries do not)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "msgsPerDay": {
+            "description": "Receive allowance in force on the message axis (null = unenforced)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "topMailboxes": {
+            "description": "The window's heaviest receivers, most messages first — the list that answers 'which address is being bombed' without a per-mailbox fan-out",
+            "items": {
+              "properties": {
+                "bytes": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "mailboxId": {
+                  "type": "string"
+                },
+                "messages": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "mailboxId",
+                "messages",
+                "bytes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "windowSeconds": {
+            "description": "Duration of the window in seconds (86400)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "messages",
+          "bytes",
+          "msgsPerDay",
+          "bytesPerDay",
+          "mailboxShare",
+          "windowSeconds",
+          "topMailboxes"
+        ],
+        "type": "object"
+      },
       "AccountSendUsage": {
         "properties": {
           "accountId": {
             "description": "Account ULID",
             "type": "string"
+          },
+          "burstWindowSeconds": {
+            "description": "Width of one burst bucket in seconds (3600); the burst figures cover two of them",
+            "format": "int64",
+            "type": "integer"
           },
           "creates": {
             "properties": {
@@ -188,8 +365,21 @@
                 "format": "int64",
                 "type": "integer"
               },
+              "messagesHour": {
+                "description": "Distinct messages in the BURST window (current + previous hourly bucket), summed across the account's ledger shards",
+                "format": "int64",
+                "type": "integer"
+              },
               "msgsPerDay": {
                 "description": "Configured daily message limit (null = unenforced)",
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "msgsPerHour": {
+                "description": "Configured hourly (burst) message limit (null = unenforced)",
                 "format": "int64",
                 "type": [
                   "integer",
@@ -204,8 +394,21 @@
                   "null"
                 ]
               },
+              "rcptsPerHour": {
+                "description": "Configured hourly (burst) recipient limit (null = unenforced)",
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "recipients": {
                 "description": "Total recipients sent to in the rolling 24-hour window",
+                "format": "int64",
+                "type": "integer"
+              },
+              "recipientsHour": {
+                "description": "Recipients in the BURST window (current + previous hourly bucket)",
                 "format": "int64",
                 "type": "integer"
               }
@@ -214,7 +417,11 @@
               "messages",
               "recipients",
               "msgsPerDay",
-              "rcptsPerDay"
+              "rcptsPerDay",
+              "messagesHour",
+              "recipientsHour",
+              "msgsPerHour",
+              "rcptsPerHour"
             ],
             "type": "object"
           },
@@ -230,7 +437,8 @@
           "paused",
           "send",
           "creates",
-          "windowSeconds"
+          "windowSeconds",
+          "burstWindowSeconds"
         ],
         "type": "object"
       },
@@ -628,6 +836,10 @@
             "description": "Descriptive name for the API key",
             "type": "string"
           },
+          "requireActing": {
+            "description": "System keys only (migration 0046): when true, mailbox-scoped requests made with this key must declare `X-Acting-Mailbox` or are refused `403 acting_required`. Set it on an INGRESS credential (a gateway or BFF acting for a logged-in user); never on an autonomous one (smtp-in, pop3-fetch, automation), which has no acting user.",
+            "type": "boolean"
+          },
           "revokedAt": {
             "description": "Timestamp when key was revoked in epoch seconds, or null",
             "format": "int64",
@@ -650,7 +862,8 @@
           "managed",
           "createdAt",
           "lastUsedAt",
-          "revokedAt"
+          "revokedAt",
+          "requireActing"
         ],
         "type": "object"
       },
@@ -4181,6 +4394,96 @@
         ],
         "type": "object"
       },
+      "LimitIncident": {
+        "properties": {
+          "accountId": {
+            "description": "The account the limit belongs to",
+            "type": "string"
+          },
+          "axis": {
+            "description": "The axis that refused (e.g. msgs_per_day, msgs_per_hour, bytes_day, mailbox_creates_day)",
+            "type": "string"
+          },
+          "direction": {
+            "description": "The limit family",
+            "enum": [
+              "send",
+              "recv",
+              "forward",
+              "storage",
+              "mint"
+            ],
+            "type": "string"
+          },
+          "firstAt": {
+            "description": "When the episode opened (ms since epoch)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Incident ULID",
+            "type": "string"
+          },
+          "limit": {
+            "description": "The number in force when it fired",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "notifiedAt": {
+            "description": "When the tenant notice was delivered (null = not noticed: shadow, no notice mailbox, or inside the per-axis daily floor)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "resolvedAt": {
+            "description": "Best-effort: when a later check passed (null = unknown or still at the limit)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scope": {
+            "description": "Which scope's limit fired",
+            "enum": [
+              "mailbox",
+              "account",
+              "domain"
+            ],
+            "type": "string"
+          },
+          "scopeId": {
+            "description": "Mailbox ULID or domain when narrower than the account",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shadow": {
+            "description": "True for a would-refuse under a LOG_ONLY flag (operator-facing only)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "scope",
+          "scopeId",
+          "direction",
+          "axis",
+          "limit",
+          "shadow",
+          "firstAt",
+          "resolvedAt",
+          "notifiedAt"
+        ],
+        "type": "object"
+      },
       "MailAddress": {
         "properties": {
           "email": {
@@ -4295,12 +4598,28 @@
               "null"
             ]
           },
+          "sendMsgsPerHour": {
+            "description": "Hourly (burst) outbound message limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "sendPaused": {
             "description": "True if outbound sending is temporarily paused",
             "type": "boolean"
           },
           "sendRcptsPerDay": {
             "description": "Daily outbound recipient limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sendRcptsPerHour": {
+            "description": "Hourly (burst) outbound recipient limit (null = platform default, 0 = unlimited)",
             "format": "int64",
             "type": [
               "integer",
@@ -4317,7 +4636,9 @@
           "sendDisabled",
           "sendPaused",
           "sendMsgsPerDay",
-          "sendRcptsPerDay"
+          "sendRcptsPerDay",
+          "sendMsgsPerHour",
+          "sendRcptsPerHour"
         ],
         "type": "object"
       },
@@ -5611,6 +5932,15 @@
             ],
             "type": "string"
           },
+          "myPermission": {
+            "description": "What the CALLING identity may do with this collection: 'owner' for its own, otherwise the granted level.",
+            "enum": [
+              "owner",
+              "read",
+              "read-write"
+            ],
+            "type": "string"
+          },
           "name": {
             "description": "URL path segment slug (e.g. 'work-calendar')",
             "type": "string"
@@ -5619,6 +5949,17 @@
             "description": "Total number of events, tasks, or contacts in this collection",
             "format": "int64",
             "type": "integer"
+          },
+          "ownerAddress": {
+            "description": "Primary address of the owning mailbox, or null when it has none",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerMailboxId": {
+            "description": "Identity ULID of the mailbox that owns this collection",
+            "type": "string"
           },
           "role": {
             "description": "Special role ('default', 'tasks'), or null",
@@ -5652,7 +5993,10 @@
           "role",
           "syncToken",
           "createdAt",
-          "objectCount"
+          "objectCount",
+          "myPermission",
+          "ownerMailboxId",
+          "ownerAddress"
         ],
         "type": "object"
       },
@@ -8010,6 +8354,11 @@
       },
       "SendUsage": {
         "properties": {
+          "burstWindowSeconds": {
+            "description": "Width of one burst bucket in seconds (3600); the burst figures cover two of them",
+            "format": "int64",
+            "type": "integer"
+          },
           "disabled": {
             "description": "True if outbound sending is permanently disabled",
             "type": "boolean"
@@ -8019,8 +8368,21 @@
             "format": "int64",
             "type": "integer"
           },
+          "messagesHour": {
+            "description": "Distinct messages in the BURST window — the current hourly bucket plus the previous one, so a burst stays visible for up to an hour after it ended",
+            "format": "int64",
+            "type": "integer"
+          },
           "msgsPerDay": {
             "description": "Configured daily message limit (null = unlimited or unenforced)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "msgsPerHour": {
+            "description": "Configured hourly (burst) message limit (null = unlimited or unenforced)",
             "format": "int64",
             "type": [
               "integer",
@@ -8039,8 +8401,21 @@
               "null"
             ]
           },
+          "rcptsPerHour": {
+            "description": "Configured hourly (burst) recipient limit (null = unlimited or unenforced)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "recipients": {
             "description": "Total recipient count sent to in the rolling 24-hour window",
+            "format": "int64",
+            "type": "integer"
+          },
+          "recipientsHour": {
+            "description": "Recipients in the BURST window (current + previous hourly bucket)",
             "format": "int64",
             "type": "integer"
           },
@@ -8055,9 +8430,14 @@
           "recipients",
           "msgsPerDay",
           "rcptsPerDay",
+          "messagesHour",
+          "recipientsHour",
+          "msgsPerHour",
+          "rcptsPerHour",
           "disabled",
           "paused",
-          "windowSeconds"
+          "windowSeconds",
+          "burstWindowSeconds"
         ],
         "type": "object"
       },
@@ -10394,6 +10774,30 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "noticeMailboxId": {
+                    "description": "Where limit notices are delivered: a mailbox this account owns, which receives a postmaster message (local mail, one per limit episode, at most one per limit per day) when a send or receive allowance fires. null = no mail; incidents stay readable at GET /accounts/:accountId/limit-incidents",
+                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "recvBytesPerDay": {
+                    "description": "The RECEIVE allowance's bytes axis: message bytes this ACCOUNT may receive per rolling 24h (declared size at the verdict, stored size at the debit). null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "recvMsgsPerDay": {
+                    "description": "The RECEIVE allowance (a platform backstop, not a plan axis): messages this ACCOUNT may receive per rolling 24h across every mailbox it owns. Over it, inbound mail is DEFERRED (429 receiving_rate_limited → 451 at the MX; the sending MTA queues), never bounced; one mailbox may draw at most RECV_MAILBOX_SHARE of it. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "sendDisabled": {
                     "description": "STOP (true) or release (false) all outbound mail for this account. Refusals answer 403 sending_disabled — permanent, so SMTP submission gets a 550 rather than a queue-and-retry, and the queued relay backlog is bounced. The abuse response",
                     "type": "boolean"
@@ -10406,12 +10810,28 @@
                       "null"
                     ]
                   },
+                  "sendMsgsPerHour": {
+                    "description": "The BURST window: distinct messages this ACCOUNT may send per hour across every mailbox it owns (measured over the current and previous hourly bucket). null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "sendPaused": {
                     "description": "HOLD (true) or resume (false) all outbound mail for this account — the reversible form, for non-payment or an investigation you intend to conclude. Refusals answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sending MTA queues the mail; the queued relay backlog is DEFERRED rather than bounced. `sendDisabled` wins if both are set. Egress only: a paused account still receives",
                     "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "Envelope recipients this ACCOUNT may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sendRcptsPerHour": {
+                    "description": "The BURST window: envelope recipients this ACCOUNT may send to per hour. null = the platform default; 0 = unlimited",
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -10603,6 +11023,104 @@
           }
         },
         "summary": "List account audit trail",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/limit-incidents": {
+      "get": {
+        "description": "The account's own limit episodes (enforced refusals only — shadow would-refuses are operator-facing), newest first: which limit fired, at what scope, when, and whether a notice was delivered to the account's notice mailbox.",
+        "operationId": "get_AccountLimitIncidentsGet",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only episodes that opened at or after this instant (ms since epoch). Default: the last 7 days",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "Only episodes that opened at or after this instant (ms since epoch). Default: the last 7 days",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Narrow to one limit family",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "description": "Narrow to one limit family",
+              "enum": [
+                "send",
+                "recv",
+                "forward",
+                "storage",
+                "mint"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100, max 500)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100, max 500)",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "incidents": {
+                      "items": {
+                        "$ref": "#/components/schemas/LimitIncident"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "incidents"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Incidents, newest first"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "List an account's limit incidents",
         "tags": [
           "Accounts"
         ]
@@ -11532,6 +12050,211 @@
         ]
       }
     },
+    "/api/v1/accounts/{accountId}/plan": {
+      "post": {
+        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. The audit trail records the preset name, its content hash and the prior values — drift between accounts and a plan's current definition is a query over that trail. Presets are owned by operator tooling; this verb applies what it is given.",
+        "operationId": "post_AccountPlanApply",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "limits": {
+                    "additionalProperties": false,
+                    "description": "The preset's column set; at least one field. Unknown fields are refused",
+                    "properties": {
+                      "maxMailboxes": {
+                        "description": "Mailbox ceiling (null = unlimited)",
+                        "exclusiveMinimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "recvBytesPerDay": {
+                        "description": "Receive allowance, bytes per day",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "recvMsgsPerDay": {
+                        "description": "Receive allowance, messages per day",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "sendMsgsPerDay": {
+                        "description": "Account daily message cap (null = platform default, 0 = unlimited)",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "sendMsgsPerHour": {
+                        "description": "Account hourly (burst) message cap",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "sendRcptsPerDay": {
+                        "description": "Account daily recipient cap",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "sendRcptsPerHour": {
+                        "description": "Account hourly (burst) recipient cap",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "storageLimitBytes": {
+                        "description": "Storage pool in bytes (null = platform default, 0 = unlimited)",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "vanityHosts": {
+                        "description": "The vanity-hostname feature gate",
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "plan": {
+                    "description": "The preset's name, recorded as the account's plan label",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[a-z0-9][a-z0-9_-]*$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "plan",
+                  "limits"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPlanResult"
+                }
+              }
+            },
+            "description": "Applied"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or empty_preset"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          }
+        },
+        "summary": "Apply a service-class preset to an account (system only)",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/receive-usage": {
+      "get": {
+        "description": "Returns the inbound receive allowance's consumption (messages and bytes STORED in the rolling 24-hour window, across every mailbox the account owns), the allowance in force, the per-mailbox fair-share fraction, and the window's heaviest receivers. The allowance is a platform backstop: over it, inbound mail is deferred (429 receiving_rate_limited), never bounced.",
+        "operationId": "get_AccountReceiveUsageGet",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountReceiveUsage"
+                }
+              }
+            },
+            "description": "Current window receive usage and the allowance in force"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get account receive allowance usage",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/v1/accounts/{accountId}/restore": {
       "post": {
         "description": "Cancels a pending account deletion during the grace period and restores access.",
@@ -12062,6 +12785,76 @@
           }
         },
         "summary": "Revoke an API key",
+        "tags": [
+          "Directory"
+        ]
+      },
+      "patch": {
+        "description": "Sets or clears `requireActing` on a SYSTEM API key. When true, mailbox-scoped requests made with the key must declare `X-Acting-Mailbox` or are refused `403 acting_required`. Intended for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry it.",
+        "operationId": "patch_ApiKeyPatch",
+        "parameters": [
+          {
+            "description": "API key ULID identifier",
+            "in": "path",
+            "name": "apiKeyId",
+            "required": true,
+            "schema": {
+              "description": "API key ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "requireActing": {
+                    "description": "Require `X-Acting-Mailbox` on mailbox-scoped requests with this key",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "requireActing"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKey"
+                }
+              }
+            },
+            "description": "Updated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such system API key"
+          }
+        },
+        "summary": "Update an API key (system only)",
         "tags": [
           "Directory"
         ]
@@ -14302,12 +15095,12 @@
             }
           },
           {
-            "description": "Set to 'true' to bypass DNS cache and re-query live nameservers",
+            "description": "Set to 'true' to bypass the cached verdict and re-query live nameservers. A live check is a dozen DNS questions, so forced checks are rate limited per account; a refused one answers 429. An unforced poll is bounded by the verdict cache instead and is never refused",
             "in": "query",
             "name": "force",
             "required": false,
             "schema": {
-              "description": "Set to 'true' to bypass DNS cache and re-query live nameservers",
+              "description": "Set to 'true' to bypass the cached verdict and re-query live nameservers. A live check is a dozen DNS questions, so forced checks are rate limited per account; a refused one answers 429. An unforced poll is bounded by the verdict cache instead and is never refused",
               "enum": [
                 "true",
                 "false"
@@ -14346,6 +15139,16 @@
               }
             },
             "description": "Domain not found or not accessible to this principal"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited — too many FORCED checks for this account. Only `force=true` is counted; an ordinary client polling through propagation is bounded by the verdict cache and never sees this"
           }
         },
         "summary": "Check domain DNS records",
@@ -15957,12 +16760,28 @@
                       "null"
                     ]
                   },
+                  "sendMsgsPerHour": {
+                    "description": "System callers only. The BURST window: distinct messages this mailbox may send per hour (measured over the current and previous hourly bucket, so a refusal can hold for up to ~2h after a burst). null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "sendPaused": {
                     "description": "System callers only. HOLD outbound sending for this mailbox — the reversible form of sendDisabled, for a suspension you intend to lift (non-payment, an investigation). Submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. `sendDisabled` wins if both are set. Does not affect receiving or reading",
                     "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sendRcptsPerHour": {
+                    "description": "System callers only. The BURST window: envelope recipients this mailbox may send to per hour. null = the platform default; 0 = unlimited",
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -16199,12 +17018,28 @@
                       "null"
                     ]
                   },
+                  "sendMsgsPerHour": {
+                    "description": "System callers only. The BURST window: distinct messages this mailbox may send per hour (measured over the current and previous hourly bucket, so a refusal can hold for up to ~2h after a burst). null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "sendPaused": {
                     "description": "System callers only. HOLD outbound sending for this mailbox — the reversible form of sendDisabled, for a suspension you intend to lift (non-payment, an investigation). Submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. `sendDisabled` wins if both are set. Does not affect receiving or reading",
                     "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sendRcptsPerHour": {
+                    "description": "System callers only. The BURST window: envelope recipients this mailbox may send to per hour. null = the platform default; 0 = unlimited",
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -19792,6 +20627,13 @@
                         "DECLINED",
                         "TENTATIVE",
                         "NEEDS-ACTION"
+                      ],
+                      "type": "string"
+                    },
+                    "refusal": {
+                      "description": "Present when the answer was recorded but the organizer could not be told: a sharee answered on the calendar owner's behalf and the organizer is remote, so a reply would have been sent as the owner. The RSVP itself succeeded.",
+                      "enum": [
+                        "delegate"
                       ],
                       "type": "string"
                     },
@@ -31201,6 +32043,118 @@
           }
         },
         "summary": "Feed verified vanity hostnames",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/limit-incidents": {
+      "get": {
+        "description": "The instrumentation feed for platform limits: one row per saturation EPISODE of any limit (send caps and burst, the receive allowance, forwarding, storage, mint velocity), newest first. A row with no resolvedAt is an account at that limit now. Shadow episodes (would-refuse under a LOG_ONLY flag) are included when `shadow=true`; they are what the numbers are calibrated against and are never noticed to tenants.",
+        "operationId": "get_SystemLimitIncidentsGet",
+        "parameters": [
+          {
+            "description": "Only episodes that opened at or after this instant (ms since epoch). Default: the last 7 days",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "Only episodes that opened at or after this instant (ms since epoch). Default: the last 7 days",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Narrow to one limit family",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "description": "Narrow to one limit family",
+              "enum": [
+                "send",
+                "recv",
+                "forward",
+                "storage",
+                "mint"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100, max 500)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100, max 500)",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`true` = shadow episodes only; `false` (default) = enforced only; omit for enforced",
+            "in": "query",
+            "name": "shadow",
+            "required": false,
+            "schema": {
+              "description": "`true` = shadow episodes only; `false` (default) = enforced only; omit for enforced",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Narrow to one account",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "Narrow to one account",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "incidents": {
+                      "items": {
+                        "$ref": "#/components/schemas/LimitIncident"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "incidents"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Incidents, newest first"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "List limit incidents across the deployment (system only)",
         "tags": [
           "System"
         ]

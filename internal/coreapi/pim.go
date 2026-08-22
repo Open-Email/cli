@@ -49,6 +49,11 @@ type PimCollection struct {
 	SyncToken   string `json:"syncToken"`
 	CreatedAt   int64  `json:"createdAt"`
 	ObjectCount int64  `json:"objectCount"`
+	// Sharing (core migration 0045): who owns this collection and what the
+	// caller may do with it, for a collection reached through a grant.
+	OwnerMailboxID *string `json:"ownerMailboxId,omitempty"`
+	OwnerAddress   *string `json:"ownerAddress,omitempty"`
+	MyPermission   *string `json:"myPermission,omitempty"`
 }
 
 // PimAttendee is one parsed ATTENDEE of a calendar object.

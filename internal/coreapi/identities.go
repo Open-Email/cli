@@ -20,11 +20,13 @@ type Identity struct {
 	// the Mailbox schema).
 	// Pointers for the reason Mailbox's copies are: null = the platform default
 	// applies, 0 = explicitly unlimited.
-	SendDisabled    bool           `json:"sendDisabled"`
-	SendPaused      bool           `json:"sendPaused"`
-	SendMsgsPerDay  *int64         `json:"sendMsgsPerDay"`
-	SendRcptsPerDay *int64         `json:"sendRcptsPerDay"`
-	Facets          IdentityFacets `json:"facets"`
+	SendDisabled     bool           `json:"sendDisabled"`
+	SendPaused       bool           `json:"sendPaused"`
+	SendMsgsPerDay   *int64         `json:"sendMsgsPerDay"`
+	SendRcptsPerDay  *int64         `json:"sendRcptsPerDay"`
+	SendMsgsPerHour  *int64         `json:"sendMsgsPerHour"`
+	SendRcptsPerHour *int64         `json:"sendRcptsPerHour"`
+	Facets           IdentityFacets `json:"facets"`
 }
 
 // IdentityFacets maps each bound store to its usage. A key is present iff a

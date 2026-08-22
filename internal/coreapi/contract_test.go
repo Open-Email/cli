@@ -120,6 +120,9 @@ func contractPairings() []pairing {
 		{val: SieveCheckResult{}, comp: "SieveCheckResult"},
 		{val: SieveCapabilities{}, comp: "SieveCapabilities"},
 		{val: Vacation{}, comp: "Vacation"},
+		// Event webhooks (docs/events-design.md §XIV).
+		{val: EventWebhook{}, comp: "EventWebhook"},
+		{val: EventWebhookTestResult{}, comp: "EventWebhookTestResult"},
 		// Staged uploads + the structured send.
 		{val: UploadResult{}, comp: "UploadResult"},
 		{val: SendResult{}, comp: "SendResult"},

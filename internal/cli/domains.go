@@ -30,6 +30,7 @@ func newDomainsCmd(a *app) *cobra.Command {
 		newDomainDmarcCmd(a),
 		newDomainDmarcSourcesCmd(a),
 		newDomainDmarcReportsCmd(a),
+		newEventWebhookCmd(a, eventWebhookDomain),
 	)
 	return cmd
 }

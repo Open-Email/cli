@@ -18,6 +18,9 @@ type APIKey struct {
 	// key). Account-scoped listings exclude them, so account callers only ever
 	// see false.
 	Managed bool `json:"managed"`
+	// RequireActing (core migration 0046): a system key that must name an
+	// acting mailbox on every call.
+	RequireActing bool `json:"requireActing"`
 }
 
 // CreatedAPIKey is POST /api-keys — the only place the plaintext token appears.
@@ -57,6 +60,20 @@ type Account struct {
 	// collapsing them inverts the meaning in the direction that removes a bound.
 	SendMsgsPerDay  *int64 `json:"sendMsgsPerDay"`
 	SendRcptsPerDay *int64 `json:"sendRcptsPerDay"`
+	// The BURST window (core migration 0047): the same two axes over one hour,
+	// same nil/0 spelling.
+	SendMsgsPerHour  *int64 `json:"sendMsgsPerHour"`
+	SendRcptsPerHour *int64 `json:"sendRcptsPerHour"`
+	// The inbound RECEIVE allowance (core migration 0048) — a platform
+	// backstop, not a plan axis: over it inbound is DEFERRED, never bounced.
+	RecvMsgsPerDay  *int64 `json:"recvMsgsPerDay"`
+	RecvBytesPerDay *int64 `json:"recvBytesPerDay"`
+	// NoticeMailboxID is where limit notices land as local postmaster mail
+	// (core migration 0049); nil = console-only.
+	NoticeMailboxID *string `json:"noticeMailboxId"`
+	// Plan is the service-class LABEL last applied (core migration 0050) —
+	// display and billing only; enforcement reads the stamped columns.
+	Plan *string `json:"plan"`
 	// StorageLimitBytes is the account storage pool: NIL = platform default,
 	// 0 = explicitly unlimited/metered.
 	StorageLimitBytes *int64 `json:"storageLimitBytes"`
@@ -116,12 +133,19 @@ type AccountSendUsage struct {
 		Recipients  int64  `json:"recipients"`
 		MsgsPerDay  *int64 `json:"msgsPerDay"`
 		RcptsPerDay *int64 `json:"rcptsPerDay"`
+		// The burst window's consumption and limits (current + previous hourly
+		// bucket, summed across the account's ledger shards).
+		MessagesHour   int64  `json:"messagesHour"`
+		RecipientsHour int64  `json:"recipientsHour"`
+		MsgsPerHour    *int64 `json:"msgsPerHour"`
+		RcptsPerHour   *int64 `json:"rcptsPerHour"`
 	} `json:"send"`
 	Creates struct {
 		Mailboxes int64  `json:"mailboxes"`
 		PerDay    *int64 `json:"perDay"`
 	} `json:"creates"`
-	WindowSeconds int64 `json:"windowSeconds"`
+	WindowSeconds      int64 `json:"windowSeconds"`
+	BurstWindowSeconds int64 `json:"burstWindowSeconds"`
 }
 
 // Mailbox is a live mailbox row; the stats fields are populated only by
@@ -140,9 +164,11 @@ type Mailbox struct {
 	SendDisabled bool `json:"sendDisabled"`
 	// SendPaused is the mailbox-scope reversible hold: 429 sending_paused at
 	// submission, DEFER in the relay. Independent of SendDisabled, which wins.
-	SendPaused      bool   `json:"sendPaused"`
-	SendMsgsPerDay  *int64 `json:"sendMsgsPerDay"`
-	SendRcptsPerDay *int64 `json:"sendRcptsPerDay"`
+	SendPaused       bool   `json:"sendPaused"`
+	SendMsgsPerDay   *int64 `json:"sendMsgsPerDay"`
+	SendRcptsPerDay  *int64 `json:"sendRcptsPerDay"`
+	SendMsgsPerHour  *int64 `json:"sendMsgsPerHour"`
+	SendRcptsPerHour *int64 `json:"sendRcptsPerHour"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`
@@ -170,11 +196,17 @@ type SendUsage struct {
 	// platform default. Null means that axis is not enforced at all.
 	MsgsPerDay  *int64 `json:"msgsPerDay"`
 	RcptsPerDay *int64 `json:"rcptsPerDay"`
+	// The burst window (current + previous hourly bucket) and its limits.
+	MessagesHour   int64  `json:"messagesHour"`
+	RecipientsHour int64  `json:"recipientsHour"`
+	MsgsPerHour    *int64 `json:"msgsPerHour"`
+	RcptsPerHour   *int64 `json:"rcptsPerHour"`
 	// Sending DISABLED: every submission is refused regardless of usage.
 	Disabled bool `json:"disabled"`
 	// Sending HELD: refused temporarily (429) rather than permanently.
-	Paused        bool  `json:"paused"`
-	WindowSeconds int64 `json:"windowSeconds"`
+	Paused             bool  `json:"paused"`
+	WindowSeconds      int64 `json:"windowSeconds"`
+	BurstWindowSeconds int64 `json:"burstWindowSeconds"`
 }
 
 // DeletedMailbox is a restorable tombstone (GET /mailboxes?state=deleted).
