@@ -21,6 +21,17 @@ type APIKey struct {
 	// RequireActing (core migration 0046): a system key that must name an
 	// acting mailbox on every call.
 	RequireActing bool `json:"requireActing"`
+	// Kind (core migration 0051) is what the key IS — "cli" for one the browser
+	// login minted, null otherwise. Display metadata: the minting caller sets
+	// it, so nothing may authorize on it.
+	Kind *string `json:"kind"`
+	// IdleTTLS is the configured seconds of disuse before the key stops
+	// working; null for a key that never lapses, which is every key minted
+	// before core 0051 and every key created outside the browser login.
+	IdleTTLS *int64 `json:"idleTtlS"`
+	// IdleExpiresAt is when that lapse falls, derived from IdleTTLS and the last
+	// use (or creation, for a key never presented). Null when it never lapses.
+	IdleExpiresAt *int64 `json:"idleExpiresAt"`
 }
 
 // CreatedAPIKey is POST /api-keys — the only place the plaintext token appears.
@@ -31,6 +42,14 @@ type CreatedAPIKey struct {
 	AccountID *string `json:"accountId"`
 	Token     string  `json:"token"`
 	Managed   bool    `json:"managed"`
+	// Echoed back from the mint (core migration 0051) so a caller knows what it
+	// got without re-reading the key: see APIKey.Kind and APIKey.IdleTTLS.
+	Kind     *string `json:"kind"`
+	IdleTTLS *int64  `json:"idleTtlS"`
+	// When the key would lapse if never used. Computed by core from the TTL it
+	// just recorded, so a caller shows the date without doing the arithmetic
+	// against a clock that is not the one enforcing the lapse.
+	IdleExpiresAt *int64 `json:"idleExpiresAt"`
 }
 
 // Account is an accounts row.

@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"fmt"
 	"io"
+	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
@@ -51,6 +53,21 @@ func newWhoamiCmd(a *app) *cobra.Command {
 				"keyName":      keyName,
 				"keyStorage":   keyStore,
 				"tokenSource":  a.tokenSource,
+				// Absent, not empty: core says nothing about most keys' kind, and a
+				// consumer must not have to tell "" from a kind core deliberately
+				// recorded as blank — the same reason idleExpiresAt below is null.
+				"keyKind": func() any {
+					if id.Kind == "" {
+						return nil
+					}
+					return id.Kind
+				}(),
+				"idleExpiresAt": func() any {
+					if id.IdleExpiresAt == 0 {
+						return nil
+					}
+					return time.Unix(id.IdleExpiresAt, 0).UTC().Format(time.RFC3339)
+				}(),
 				// Named for what it does, not for the column: this is the domain
 				// claim value, never a credential.
 				"domainVerificationToken": verifyToken,
@@ -87,6 +104,27 @@ func (a *app) printIdentity(w io.Writer, id coreapi.Principal, verifyToken strin
 	}
 	if a.profile.DefaultMailbox != "" {
 		rows = append(rows, []string{"Default mailbox", a.profile.DefaultMailbox})
+	}
+	// When this key stops working if left alone. Shown as a date AND a
+	// countdown: the date is what somebody acts on, the countdown is what makes
+	// them read it. Absent for every key that does not lapse, which is most.
+	if id.IdleExpiresAt > 0 {
+		when := time.Unix(id.IdleExpiresAt, 0)
+		days := int(time.Until(when).Hours() / 24)
+		lapse := when.Format("2006-01-02")
+		// Whether it has lapsed comes from the instant, never from the day count:
+		// integer division truncates toward zero, so a key that died three hours
+		// ago is "0 days" out and would be announced as lapsing today — a dead
+		// key described as one that still works.
+		switch {
+		case when.Before(time.Now()):
+			lapse += " (lapsed)"
+		case days == 0:
+			lapse += " (today)"
+		default:
+			lapse += fmt.Sprintf(" (in %d days, unless used)", days)
+		}
+		rows = append(rows, []string{"Lapses", lapse})
 	}
 	src := a.tokenSource
 	if src == "" {

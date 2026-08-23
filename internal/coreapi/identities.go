@@ -79,6 +79,14 @@ type WhoamiResult struct {
 	AccountID    *string `json:"accountId"`
 	MailboxID    *string `json:"mailboxId"`
 	CredentialID *string `json:"credentialId"`
+	// Kind is display metadata core records at mint ("cli" for a key the browser
+	// login produced), or nil. Never an authorization signal — the minting
+	// caller chooses it.
+	Kind *string `json:"kind"`
+	// IdleExpiresAt is when this credential stops working from disuse (epoch
+	// seconds), or nil when it never does. Present so the CLI can warn while the
+	// key still works, rather than letting a 401 be the first news of it.
+	IdleExpiresAt *int64 `json:"idleExpiresAt"`
 }
 
 // Whoami introspects the current bearer.

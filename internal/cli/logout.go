@@ -37,13 +37,22 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	// secret from this laptop is not revocation, and a user who believes it is
 	// will not go and revoke it.
 	revoked := false
+	restricted := false
 	if !keepKey && a.profile.Role == coreapi.PrincipalAccount && a.profile.KeyID != "" && a.token != "" {
 		client, err := a.client()
 		if err == nil {
-			if rerr := client.RevokeAPIKey(ctx, a.profile.KeyID); rerr != nil && !coreapi.IsNotFound(rerr) {
-				a.out.Warnf("could not revoke key %s on the server: %v", a.profile.KeyID, rerr)
-			} else {
+			rerr := client.RevokeAPIKey(ctx, a.profile.KeyID)
+			switch {
+			case rerr == nil, coreapi.IsNotFound(rerr):
 				revoked = true
+			// A restricted key cannot revoke anything, itself included — the
+			// /api-keys surface is account-tier. Not a warning: it is what the
+			// key is, and the honest thing is to say the credential outlives
+			// this logout rather than to report a failure the user cannot fix.
+			case coreapi.IsAccountCredentialsRequired(rerr):
+				restricted = true
+			default:
+				a.out.Warnf("could not revoke key %s on the server: %v", a.profile.KeyID, rerr)
 			}
 		}
 	}
@@ -51,6 +60,8 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	switch {
 	case keepKey:
 		stillLive = "the key is still valid on the server (--keep-key)"
+	case restricted:
+		stillLive = "this key is restricted and cannot revoke itself — revoke it from the console"
 	case revoked:
 	case a.profile.Role == coreapi.PrincipalMailbox:
 		stillLive = "the app password is still valid — revoke it with `openemail credentials revoke <mailboxId> <credentialId>`"

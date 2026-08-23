@@ -1,9 +1,9 @@
 # openemail
 
 The command-line client for the [OpenEmail](https://open.email) platform — in the
-style of the Stripe CLI and wrangler. Authenticate once; the CLI mints its own
-dedicated account API key, stores it in your OS keychain, and uses it for every
-command. It covers the **entire** core API: the directory plane (accounts,
+style of the Stripe CLI and wrangler. Authenticate once in your browser; the CLI
+gets a dedicated per-device API key, stores it in your OS keychain, and uses it
+for every command. It covers the **entire** core API: the directory plane (accounts,
 domains, routes, patterns, credentials, identities), the mailbox data plane
 (messages, labels, threads, search, rules, sieve, pickups), calendars and contacts
 (`calendars`, `addressbooks`, `pim` — raw iCalendar/vCard objects, sharing,
@@ -38,12 +38,18 @@ installed automatically by brew/apt/dnf. Generate them yourself with
 ## Quick start
 
 ```sh
-# Log in — paste an account key (oek_…). The CLI mints its own per-device key,
-# stores it in the OS keychain, records the profile, and discards the pasted key.
+# Log in — opens a browser, you approve in the console, and the key it mints
+# lands in your OS keychain. Nothing is pasted anywhere.
 openemail login
+
+# No browser (SSH, a container)? A short code you can approve from any machine.
+openemail login --device
 
 # Non-interactive / CI:
 OPENEMAIL_API_KEY=oek_… openemail login --api-key oek_…
+
+# Or paste a key you already hold:
+openemail login --paste
 
 openemail whoami         # who this key resolves to (+ your domain-verification TXT)
 openemail status         # health + auth probe

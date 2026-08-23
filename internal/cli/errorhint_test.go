@@ -29,6 +29,23 @@ func TestErrorHint(t *testing.T) {
 			want: "routes create alias@x.test --type mailbox",
 		},
 		{
+			// The end of a key's life, and the one failure the platform
+			// manufactures on its own schedule: a CLI key that lapses from disuse
+			// answers exactly like a revoked or mistyped one, so the hint has to
+			// name the remedy rather than the cause.
+			name: "401 points at login rather than leaving a dead key unexplained",
+			ae:   &coreapi.APIError{Status: 401, Code: "unauthorized"},
+			want: "openemail login",
+		},
+		{
+			// Keyed on the status: core's word for a 401 is not the CLI's to
+			// pick, and a deployment that answers a different code must not lose
+			// the only hint that says the key needs replacing.
+			name: "401 under another code still hints",
+			ae:   &coreapi.APIError{Status: 401, Code: "invalid_token"},
+			want: "openemail login",
+		},
+		{
 			name: "unrelated code gets no hint",
 			ae:   &coreapi.APIError{Status: 400, Code: "validation_failed"},
 			want: "",

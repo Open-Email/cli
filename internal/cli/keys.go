@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
@@ -86,16 +87,17 @@ func newKeysListCmd(a *app) *cobra.Command {
 			a.out.Emit(map[string]any{"apiKeys": items, "nextCursor": next}, func(w io.Writer) {
 				rows := make([][]string, 0, len(items))
 				for _, k := range items {
-					status := "active"
-					if k.RevokedAt != nil {
-						status = "revoked"
+					status := keyStatus(k)
+					kind := "—"
+					if k.Kind != nil && *k.Kind != "" {
+						kind = *k.Kind
 					}
 					rows = append(rows, []string{
-						k.ID, k.Name, k.Role, strOr(k.AccountName, strOr(k.AccountID, "—")),
+						k.ID, k.Name, kind, k.Role, strOr(k.AccountName, strOr(k.AccountID, "—")),
 						fmtEpoch(k.CreatedAt), fmtEpochPtr(k.LastUsedAt), status,
 					})
 				}
-				printTable(w, a.out, []string{"ID", "NAME", "ROLE", "ACCOUNT", "CREATED", "LAST USED", "STATUS"}, rows)
+				printTable(w, a.out, []string{"ID", "NAME", "KIND", "ROLE", "ACCOUNT", "CREATED", "LAST USED", "STATUS"}, rows)
 				if next != "" {
 					a.out.Msgf("more results — pass --cursor %s (or --all)", next)
 				}
@@ -107,6 +109,29 @@ func newKeysListCmd(a *app) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–200)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous page")
 	return cmd
+}
+
+// keyStatus is the STATUS column: does this key still work, and if it is on its
+// way out, when. The lapse shares the column with the revocation because both
+// answer that one question, and a column each would be empty on almost every
+// row. A key already revoked never mentions a lapse: it is dead by the more
+// definite of the two. A lapse in the PAST has already happened — "lapses <last
+// tuesday>" puts a key that stopped working in the future tense, which reads as
+// a key still worth keeping.
+//
+// It sits outside the row builder because it is the only judgement in a line of
+// facts: everything else in the row is printed as core sent it, and this one
+// thing is decided here, against a clock.
+func keyStatus(k coreapi.APIKey) string {
+	switch {
+	case k.RevokedAt != nil:
+		return "revoked"
+	case k.IdleExpiresAt != nil && *k.IdleExpiresAt <= time.Now().Unix():
+		return "lapsed"
+	case k.IdleExpiresAt != nil:
+		return "lapses " + fmtEpochPtr(k.IdleExpiresAt)
+	}
+	return "active"
 }
 
 func newKeysRevokeCmd(a *app) *cobra.Command {

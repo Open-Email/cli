@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Open-Email/cli/internal/config"
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -13,12 +16,38 @@ import (
 
 // Execute runs the CLI and returns the process exit code.
 func Execute() int {
+	// Ctrl-C must UNWIND rather than kill. `login` mints a key on the server a
+	// moment before it has anywhere to store it, and a process that dies in that
+	// window leaves a live credential nothing on this machine knows about — no
+	// rollback, no message, nothing to revoke it by. Cancelling the context takes
+	// every command out through its own error path, so the deferred cleanups run.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// And a SECOND Ctrl-C must still kill: once the first has been delivered the
+	// handler is unregistered, so an operation that ignores cancellation cannot
+	// trap the person who wants out of it.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+
 	a := &app{}
 	root := newRootCmd(a)
-	err := root.Execute()
+	err := root.ExecuteContext(ctx)
 	if err == nil {
 		a.maybeNotifyUpdate()
 		return 0
+	}
+
+	// An interrupt is not a failure that needs explaining: the person at the
+	// keyboard asked for it, and "error: context canceled" reads as the CLI
+	// blaming its own plumbing for what they just did. Anything that mattered on
+	// the way out — a rolled back key, a warning — has already been printed by
+	// the defers the cancellation released. 130 is what a shell reports for a
+	// process ended by SIGINT; the update check is skipped because nobody
+	// interrupts a command to be told about a new version.
+	if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+		return 130
 	}
 
 	code := 1
@@ -53,6 +82,7 @@ func newRootCmd(a *app) *cobra.Command {
 	pf := root.PersistentFlags()
 	pf.StringVar(&a.flagProfile, "profile", "", "config profile to use (env: OPENEMAIL_PROFILE)")
 	pf.StringVar(&a.flagAPIURL, "api-url", "", "override the API base URL (env: OPENEMAIL_API_URL)")
+	pf.StringVar(&a.flagConsoleURL, "console-url", "", "console origin that authorizes `login` (env: OPENEMAIL_CONSOLE_URL)")
 	pf.StringVar(&a.flagAPIKey, "api-key", "", "use this bearer token for one invocation (env: OPENEMAIL_API_KEY)")
 	pf.BoolVar(&a.flagJSON, "json", false, "output machine-readable JSON")
 	pf.BoolVar(&a.flagNoColor, "no-color", false, "disable color output")
@@ -131,9 +161,18 @@ func newVersionCmd(a *app) *cobra.Command {
 	}
 }
 
-// errorHint returns a one-line remedy for the error codes whose bare name
-// doesn't tell a user what to do next. Empty when the code speaks for itself.
+// errorHint returns a one-line remedy for the errors whose bare name doesn't
+// tell a user what to do next. Empty when the code speaks for itself.
 func errorHint(ae *coreapi.APIError) string {
+	// The one hint keyed on the STATUS rather than the code: a 401 is the end of
+	// a credential's life whatever core called it, and one of the ways it ends is
+	// a CLI key lapsing from disuse — a death the platform schedules by itself,
+	// which nothing else would ever tell the user about. Named as a possibility
+	// rather than a diagnosis, because a mistyped or revoked key answers exactly
+	// the same way and all three have the same fix.
+	if ae.Status == 401 {
+		return "this key is no longer valid — it may have been revoked, or it may have lapsed from disuse; run openemail login to get a new one"
+	}
 	addr, _ := ae.Extra["address"].(string)
 	switch ae.Code {
 	case "address_taken":
@@ -159,6 +198,11 @@ func errorHint(ae *coreapi.APIError) string {
 		// The caller proved control, so core told them the truth rather than
 		// hiding behind the anti-enumeration 409. There is no self-service move.
 		return "you control this domain's DNS, but another account holds it here — contact support to have it transferred"
+	case "account_credentials_required":
+		// A domain-restricted key on an account-tier surface. Most directory
+		// commands work with one, which is exactly why the few that do not read
+		// as a bug rather than as the restriction doing its job.
+		return "this key is restricted to specific domains — account-wide commands (accounts, audit, keys) need an unrestricted key"
 	case "verification_unavailable":
 		// A resolver outage, not the customer's DNS. Retrying is the whole fix.
 		return "DNS could not be queried just now — nothing was changed; try again shortly"

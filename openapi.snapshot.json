@@ -22,7 +22,7 @@
             "type": "string"
           },
           "maxMailboxes": {
-            "description": "Maximum allowed mailboxes (null = unlimited)",
+            "description": "Maximum allowed mailboxes (null = the platform default, MAX_MAILBOXES_DEFAULT)",
             "format": "int64",
             "type": [
               "integer",
@@ -820,6 +820,29 @@
             "description": "Unique API key identifier",
             "type": "string"
           },
+          "idleExpiresAt": {
+            "description": "When this key lapses from disuse, in epoch seconds — null when it never does. Computed from idleTtlS and lastUsedAt/createdAt, so a client can warn before the credential stops working rather than discovering it as a 401.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "idleTtlS": {
+            "description": "Seconds of disuse after which this key stops authenticating (migration 0051), or null for a key that never lapses. Measured from lastUsedAt, or from createdAt while the key has never been used.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "kind": {
+            "description": "What this key is ('cli' for one the browser login minted), or null. Display metadata only — the caller sets it at mint, so nothing authorizes on it; it lets a keys list identify a row without matching on a name the owner can change.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lastUsedAt": {
             "description": "Timestamp when key was last authenticated in epoch seconds, or null",
             "format": "int64",
@@ -863,7 +886,10 @@
           "createdAt",
           "lastUsedAt",
           "revokedAt",
-          "requireActing"
+          "requireActing",
+          "kind",
+          "idleTtlS",
+          "idleExpiresAt"
         ],
         "type": "object"
       },
@@ -879,6 +905,29 @@
           "id": {
             "description": "Unique API key identifier",
             "type": "string"
+          },
+          "idleExpiresAt": {
+            "description": "When this key would lapse if never used, in epoch seconds — null when it never lapses. Present so a client can show the date without doing calendar arithmetic against its own clock, which may not be the server's.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "idleTtlS": {
+            "description": "Seconds of disuse after which this key stops authenticating, or null for never",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "kind": {
+            "description": "Display metadata for what this key is, or null (see ApiKey.kind)",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "managed": {
             "description": "True if this key is managed by platform infrastructure",
@@ -903,7 +952,10 @@
           "role",
           "accountId",
           "managed",
-          "token"
+          "token",
+          "kind",
+          "idleTtlS",
+          "idleExpiresAt"
         ],
         "type": "object"
       },
@@ -1150,10 +1202,11 @@
             "type": "integer"
           },
           "status": {
-            "description": "Deletion outcome (expunged = soft deleted to trash, purged = permanently removed)",
+            "description": "Deletion outcome. `expunged` = soft-deleted to trash; `purged` = permanently removed; `gone` = a folder-scoped grantee's delete, which detaches the message from the folders they were granted rather than expunging it — the message survives in the owner's own folders, or in Trash if it was in none.",
             "enum": [
               "expunged",
               "purged",
+              "gone",
               "not_found"
             ],
             "type": "string"
@@ -3379,7 +3432,7 @@
       },
       "EmailSearchFilter": {
         "additionalProperties": {},
-        "description": "An RFC 8621 §4.4 FilterCondition or a boolean tree ({operator: AND|OR|NOT, conditions: [...]}) over them. Supported keys: inMailbox, inMailboxOtherThan, before, after, minSize, maxSize, hasKeyword, notKeyword, allInThreadHaveKeyword, someInThreadHaveKeyword, noneInThreadHaveKeyword, hasAttachment, from, to, cc, text, subject, body, header. At most one full-text condition (text/subject/body), never under OR/NOT. Mailbox ids are label ids as L<n>. Bounded, and refused (never truncated) past the bound: a full-text condition is at most 512 characters and 64 words, a substring needle (from/to/cc/header) at most 50 bytes as a LIKE pattern, the tree at most 32 levels deep and 512 nodes, and at most 64 bound values in total (an inMailboxOtherThan element costs one each).",
+        "description": "An RFC 8621 §4.4 FilterCondition or a boolean tree ({operator: AND|OR|NOT, conditions: [...]}) over them. Supported keys: inMailbox, inMailboxOtherThan, before, after, minSize, maxSize, hasKeyword, notKeyword, allInThreadHaveKeyword, someInThreadHaveKeyword, noneInThreadHaveKeyword, hasAttachment, from, to, cc, bcc, text, subject, body, header. At most one full-text condition (text/subject/body), never under OR/NOT. Mailbox ids are label ids as L<n>. Bounded, and refused (never truncated) past the bound: a full-text condition is at most 512 characters and 64 words, a substring needle (from/to/cc/bcc/header) at most 50 bytes as a LIKE pattern, the tree at most 32 levels deep and 512 nodes, and at most 64 bound values in total (an inMailboxOtherThan element costs one each).",
         "type": "object"
       },
       "EmailSearchRequest": {
@@ -4307,6 +4360,26 @@
         ],
         "type": "object"
       },
+      "LabelListPage": {
+        "properties": {
+          "labels": {
+            "description": "All labels visible to this caller",
+            "items": {
+              "$ref": "#/components/schemas/LabelInfo"
+            },
+            "type": "array"
+          },
+          "scheduledPending": {
+            "description": "Number of sends scheduled and not yet released. Present only for the owner identity; absent (not zero) for a shared-mailbox viewer.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "labels"
+        ],
+        "type": "object"
+      },
       "LabelUidEntry": {
         "properties": {
           "blobHash": {
@@ -4433,7 +4506,7 @@
             ]
           },
           "notifiedAt": {
-            "description": "When the tenant notice was delivered (null = not noticed: shadow, no notice mailbox, or inside the per-axis daily floor)",
+            "description": "When the tenant notice was CLAIMED for delivery into the notice mailbox — stamped before the local delivery, so a delivery cut short between the two leaves a stamp with no mail in rare cases (null = not noticed: shadow, no notice mailbox, inside the per-axis-per-scope daily floor, or a delivery that failed outright — which releases the stamp)",
             "format": "int64",
             "type": [
               "integer",
@@ -4441,7 +4514,7 @@
             ]
           },
           "resolvedAt": {
-            "description": "Best-effort: when a later check passed (null = unknown or still at the limit)",
+            "description": "When the episode ENDED: the instant a check last passed, stamped once the refusing store's reopen floor (one hour) has elapsed without another refusal — written on that store's next wake point, so it lags a quiet account by however long it stays quiet. null = still at the limit, or no wake point has settled it yet",
             "format": "int64",
             "type": [
               "integer",
@@ -4458,7 +4531,7 @@
             "type": "string"
           },
           "scopeId": {
-            "description": "Mailbox ULID or domain when narrower than the account",
+            "description": "The scope's identity when narrower than the account: a mailbox ULID, or — for the receive allowance's door-charged subjects — `list:<address>` (a group judged at the weight of its fan-out) or `wh:<address>` (a webhook route); a domain for the forwarding family. A console must not assume a `mailbox` scope links to /mailboxes/:id",
             "type": [
               "string",
               "null"
@@ -4525,7 +4598,7 @@
             "type": "string"
           },
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may only carry `lrs` — read, and private read/unread marks. Anything that writes is rejected, naming the letters, because a folder scope makes those operations ambiguous (does trashing remove the message from the folder, or from the mailbox?).\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP and the REST API; not over JMAP in this version.\n\nNull means the whole mailbox is shared.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nNull means the whole mailbox is shared.",
             "items": {
               "type": "string"
             },
@@ -7175,7 +7248,7 @@
       "PutMailShareBody": {
         "properties": {
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may only carry `lrs` — read, and private read/unread marks. Anything that writes is rejected, naming the letters, because a folder scope makes those operations ambiguous (does trashing remove the message from the folder, or from the mailbox?).\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP and the REST API; not over JMAP in this version.\n\nAt most 32 folders may be named in one grant.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAt most 32 folders may be named in one grant.",
             "items": {
               "type": "string"
             },
@@ -8453,7 +8526,7 @@
             "type": "string"
           },
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may only carry `lrs` — read, and private read/unread marks. Anything that writes is rejected, naming the letters, because a folder scope makes those operations ambiguous (does trashing remove the message from the folder, or from the mailbox?).\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP and the REST API; not over JMAP in this version.\n\nAbsent when the request passed `labelScope=false`.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAbsent when the request passed `labelScope=false`.",
             "items": {
               "type": "string"
             },
@@ -10382,8 +10455,23 @@
               "null"
             ]
           },
+          "idleExpiresAt": {
+            "description": "When this credential lapses from disuse, in epoch seconds, or null when it never does. Here so a client can say 'this key stops working on <date> unless you use it' rather than letting the holder discover it as a 401.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "keyId": {
             "description": "API key ID for system or account bearers, or null for mailbox app passwords",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "description": "What this key is ('cli' for one the browser login minted), or null — including for every mailbox app password, which has no key row. Display metadata; nothing authorizes on it.",
             "type": [
               "string",
               "null"
@@ -10411,7 +10499,9 @@
           "keyId",
           "accountId",
           "mailboxId",
-          "credentialId"
+          "credentialId",
+          "kind",
+          "idleExpiresAt"
         ],
         "type": "object"
       }
@@ -10540,8 +10630,9 @@
               "schema": {
                 "properties": {
                   "maxMailboxes": {
-                    "description": "Maximum number of mailboxes allowed in this account (null = unlimited)",
+                    "description": "Maximum number of mailboxes allowed in this account (null = the platform default, MAX_MAILBOXES_DEFAULT)",
                     "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
                     "type": [
                       "integer",
                       "null"
@@ -10764,6 +10855,7 @@
                 "properties": {
                   "maxMailboxes": {
                     "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
                     "type": [
                       "integer",
                       "null"
@@ -10784,6 +10876,7 @@
                   },
                   "recvBytesPerDay": {
                     "description": "The RECEIVE allowance's bytes axis: message bytes this ACCOUNT may receive per rolling 24h (declared size at the verdict, stored size at the debit). null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -10792,6 +10885,7 @@
                   },
                   "recvMsgsPerDay": {
                     "description": "The RECEIVE allowance (a platform backstop, not a plan axis): messages this ACCOUNT may receive per rolling 24h across every mailbox it owns. Over it, inbound mail is DEFERRED (429 receiving_rate_limited → 451 at the MX; the sending MTA queues), never bounced; one mailbox may draw at most RECV_MAILBOX_SHARE of it. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -10804,6 +10898,7 @@
                   },
                   "sendMsgsPerDay": {
                     "description": "Distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns. null = the platform default; 0 = unlimited. Over it, submissions answer 429 rate_limited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -10812,6 +10907,7 @@
                   },
                   "sendMsgsPerHour": {
                     "description": "The BURST window: distinct messages this ACCOUNT may send per hour across every mailbox it owns (measured over the current and previous hourly bucket). null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -10824,6 +10920,7 @@
                   },
                   "sendRcptsPerDay": {
                     "description": "Envelope recipients this ACCOUNT may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -10832,6 +10929,7 @@
                   },
                   "sendRcptsPerHour": {
                     "description": "The BURST window: envelope recipients this ACCOUNT may send to per hour. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -10840,6 +10938,7 @@
                   },
                   "storageLimitBytes": {
                     "description": "Account-level storage POOL in bytes, across every mailbox the account owns — the number a plan tier is written in. null = the platform default (ACCOUNT_STORAGE_LIMIT_BYTES); 0 = explicitly unlimited (a metered account: overage is billed, never refused). Over it, storing NEW mail answers 507 account_over_quota (temporary at smtp-in, so senders queue); egress is untouched — a full account still sends",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -11055,6 +11154,17 @@
                 "integer",
                 "null"
               ]
+            }
+          },
+          {
+            "description": "Only episodes that opened BEFORE this instant (ms since epoch, exclusive) — the paging cursor: pass the last row's firstAt to read the next (older) page. The feed is newest-first, so without it a busy week is visible only down to `limit`",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "description": "Only episodes that opened BEFORE this instant (ms since epoch, exclusive) — the paging cursor: pass the last row's firstAt to read the next (older) page. The feed is newest-first, so without it a busy week is visible only down to `limit`",
+              "exclusiveMinimum": 0,
+              "type": "integer"
             }
           },
           {
@@ -12052,7 +12162,7 @@
     },
     "/api/v1/accounts/{accountId}/plan": {
       "post": {
-        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. The audit trail records the preset name, its content hash and the prior values — drift between accounts and a plan's current definition is a query over that trail. Presets are owned by operator tooling; this verb applies what it is given.",
+        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` with every key present, sorted, omitted numbers as null and the gate as false — so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Presets are owned by operator tooling; this verb applies what it is given.",
         "operationId": "post_AccountPlanApply",
         "parameters": [
           {
@@ -12073,18 +12183,20 @@
                 "properties": {
                   "limits": {
                     "additionalProperties": false,
-                    "description": "The preset's column set; at least one field. Unknown fields are refused",
+                    "description": "The preset's column set. EVERY plan column is stamped: a key the preset omits is set to its neutral value (null = the platform default for a number; the vanity-host gate off), never left at the previous plan's value. Unknown fields are refused",
                     "properties": {
                       "maxMailboxes": {
-                        "description": "Mailbox ceiling (null = unlimited)",
+                        "description": "Mailbox ceiling (null = the platform default, MAX_MAILBOXES_DEFAULT)",
                         "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
                         "type": [
                           "integer",
                           "null"
                         ]
                       },
                       "recvBytesPerDay": {
-                        "description": "Receive allowance, bytes per day",
+                        "description": "Receive allowance, bytes per day (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
                           "integer",
@@ -12092,7 +12204,8 @@
                         ]
                       },
                       "recvMsgsPerDay": {
-                        "description": "Receive allowance, messages per day",
+                        "description": "Receive allowance, messages per day (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
                           "integer",
@@ -12100,7 +12213,8 @@
                         ]
                       },
                       "sendMsgsPerDay": {
-                        "description": "Account daily message cap (null = platform default, 0 = unlimited)",
+                        "description": "Account daily message cap (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
                           "integer",
@@ -12108,7 +12222,8 @@
                         ]
                       },
                       "sendMsgsPerHour": {
-                        "description": "Account hourly (burst) message cap",
+                        "description": "Account hourly (burst) message cap (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
                           "integer",
@@ -12116,7 +12231,8 @@
                         ]
                       },
                       "sendRcptsPerDay": {
-                        "description": "Account daily recipient cap",
+                        "description": "Account daily recipient cap (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
                           "integer",
@@ -12124,7 +12240,8 @@
                         ]
                       },
                       "sendRcptsPerHour": {
-                        "description": "Account hourly (burst) recipient cap",
+                        "description": "Account hourly (burst) recipient cap (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
                           "integer",
@@ -12132,7 +12249,8 @@
                         ]
                       },
                       "storageLimitBytes": {
-                        "description": "Storage pool in bytes (null = platform default, 0 = unlimited)",
+                        "description": "Storage pool in bytes (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
                           "integer",
@@ -12140,7 +12258,7 @@
                         ]
                       },
                       "vanityHosts": {
-                        "description": "The vanity-hostname feature gate",
+                        "description": "The vanity-hostname feature gate (omitted = off)",
                         "type": "boolean"
                       }
                     },
@@ -12182,7 +12300,7 @@
                 }
               }
             },
-            "description": "validation_failed, or empty_preset"
+            "description": "validation_failed"
           },
           "403": {
             "content": {
@@ -12203,6 +12321,16 @@
               }
             },
             "description": "Account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_deleted — the account is inside its deletion window; restore it first"
           }
         },
         "summary": "Apply a service-class preset to an account (system only)",
@@ -12669,6 +12797,17 @@
                     "description": "Account ULID to associate key with (required for account role)",
                     "type": "string"
                   },
+                  "idleTtlS": {
+                    "description": "Seconds of disuse after which this key stops authenticating, measured from last use (or from creation while it has never been used). Omit for a key that never lapses, which is the default and what every key had before. Refused on system keys.",
+                    "maximum": 31622400,
+                    "minimum": 86400,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "description": "Display metadata for what this key is ('cli' for one the browser login minted). NEVER an authorization input — the caller sets it, so nothing may branch on it; it exists so a keys list can identify a row without matching on a name the owner can change.",
+                    "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                    "type": "string"
+                  },
                   "managed": {
                     "description": "System callers only: an infrastructure-held key, hidden from the owning account",
                     "type": "boolean"
@@ -12727,7 +12866,7 @@
                 }
               }
             },
-            "description": "validation_failed, account_id_required, or unknown_account"
+            "description": "validation_failed, account_id_required, unknown_account, or system_key_unexpirable"
           },
           "403": {
             "content": {
@@ -16743,6 +16882,7 @@
                   },
                   "quotaBytes": {
                     "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
                     "type": [
                       "integer",
                       "null"
@@ -16754,6 +16894,7 @@
                   },
                   "sendMsgsPerDay": {
                     "description": "System callers only. Distinct messages this mailbox may send per rolling 24h. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -16762,6 +16903,7 @@
                   },
                   "sendMsgsPerHour": {
                     "description": "System callers only. The BURST window: distinct messages this mailbox may send per hour (measured over the current and previous hourly bucket, so a refusal can hold for up to ~2h after a burst). null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -16774,6 +16916,7 @@
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -16782,6 +16925,7 @@
                   },
                   "sendRcptsPerHour": {
                     "description": "System callers only. The BURST window: envelope recipients this mailbox may send to per hour. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -17001,6 +17145,7 @@
                   },
                   "quotaBytes": {
                     "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
                     "type": [
                       "integer",
                       "null"
@@ -17012,6 +17157,7 @@
                   },
                   "sendMsgsPerDay": {
                     "description": "System callers only. Distinct messages this mailbox may send per rolling 24h. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -17020,6 +17166,7 @@
                   },
                   "sendMsgsPerHour": {
                     "description": "System callers only. The BURST window: distinct messages this mailbox may send per hour (measured over the current and previous hourly bucket, so a refusal can hold for up to ~2h after a burst). null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -17032,6 +17179,7 @@
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -17040,6 +17188,7 @@
                   },
                   "sendRcptsPerHour": {
                     "description": "System callers only. The BURST window: envelope recipients this mailbox may send to per hour. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
                       "integer",
@@ -21627,7 +21776,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/labels": {
       "get": {
-        "description": "Returns all system and custom labels with message counts, unread counts, UID validity, and next UID sequence numbers.",
+        "description": "Returns all system and custom labels with message counts, unread counts, UID validity, and next UID sequence numbers. For the owner identity it also reports how many sends are scheduled and not yet released, so a client can decide whether to offer a Scheduled view without a second request.",
         "operationId": "get_LabelList",
         "parameters": [
           {
@@ -21646,18 +21795,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "properties": {
-                    "labels": {
-                      "items": {
-                        "$ref": "#/components/schemas/LabelInfo"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "labels"
-                  ],
-                  "type": "object"
+                  "$ref": "#/components/schemas/LabelListPage"
                 }
               }
             },
@@ -27049,6 +27187,97 @@
         "tags": [
           "Delivery"
         ]
+      },
+      "patch": {
+        "description": "Moves WHEN a pending scheduled send fires. The message itself is untouched — same draft, same delivery id, same recipients — so this is not the draft-replacing 'edit in place' the design rules out; editing the MESSAGE remains cancel + resubmit. Pending sends only: once a release has started its legs may already be on the wire, and moving the time would neither recall them nor stop it.",
+        "operationId": "patch_ScheduledReschedule",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scheduled send ULID identifier",
+            "in": "path",
+            "name": "scheduleId",
+            "required": true,
+            "schema": {
+              "description": "Scheduled send ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "sendAt": {
+                    "description": "New release time, epoch seconds. Must be in the future and within the same horizon a schedule may be created at.",
+                    "format": "int64",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "sendAt"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledSend"
+                }
+              }
+            },
+            "description": "The schedule, with its new time"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "send_at_in_past or send_at_too_far"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or schedule not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "cannot_unsend (release already started), schedule_failed, or already_canceled"
+          }
+        },
+        "summary": "Change a scheduled send's release time",
+        "tags": [
+          "Delivery"
+        ]
       }
     },
     "/api/v1/mailboxes/{mailboxId}/scheduled/{scheduleId}/cancel": {
@@ -31389,6 +31618,92 @@
         ]
       }
     },
+    "/api/v1/system/accounts/{accountId}/receive-usage/reset": {
+      "post": {
+        "description": "Clears the rolling 24-hour inbound receive allowance counters for an account, every shard included, so mail deferred with 429 receiving_rate_limited flows again immediately (system callers only). Policy is untouched.",
+        "operationId": "post_AccountReceiveUsageReset",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "previousUsage": {
+                      "properties": {
+                        "bytes": {
+                          "type": "number"
+                        },
+                        "messages": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "messages",
+                        "bytes"
+                      ],
+                      "type": "object"
+                    },
+                    "resetAt": {
+                      "type": "number"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "accountId",
+                    "resetAt",
+                    "previousUsage"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Account receive usage successfully reset"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          }
+        },
+        "summary": "Reset account receive allowance usage",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/v1/system/accounts/{accountId}/send-usage/reset": {
       "post": {
         "description": "Resets the rolling 24-hour outbound send rate limit counters for an account (system callers only).",
@@ -32050,7 +32365,7 @@
     },
     "/api/v1/system/limit-incidents": {
       "get": {
-        "description": "The instrumentation feed for platform limits: one row per saturation EPISODE of any limit (send caps and burst, the receive allowance, forwarding, storage, mint velocity), newest first. A row with no resolvedAt is an account at that limit now. Shadow episodes (would-refuse under a LOG_ONLY flag) are included when `shadow=true`; they are what the numbers are calibrated against and are never noticed to tenants.",
+        "description": "The instrumentation feed for platform limits: one row per saturation EPISODE of any limit (send caps and burst, the receive allowance, forwarding, storage, mint velocity), newest first. A row with no resolvedAt is an episode that has not been seen to end: the store stamps resolvedAt once a check has passed and an hour has gone by without another refusal, on its next wake point — so a row may stay open a little longer than the flood did, never shorter. Shadow episodes (would-refuse under a LOG_ONLY flag) are included when `shadow=true`; they are what the numbers are calibrated against and are never noticed to tenants.",
         "operationId": "get_SystemLimitIncidentsGet",
         "parameters": [
           {
@@ -32065,6 +32380,17 @@
                 "integer",
                 "null"
               ]
+            }
+          },
+          {
+            "description": "Only episodes that opened BEFORE this instant (ms since epoch, exclusive) — the paging cursor: pass the last row's firstAt to read the next (older) page. The feed is newest-first, so without it a busy week is visible only down to `limit`",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "description": "Only episodes that opened BEFORE this instant (ms since epoch, exclusive) — the paging cursor: pass the last row's firstAt to read the next (older) page. The feed is newest-first, so without it a busy week is visible only down to `limit`",
+              "exclusiveMinimum": 0,
+              "type": "integer"
             }
           },
           {
@@ -33163,6 +33489,9 @@
       "name": "Domains"
     },
     {
+      "name": "DKIM"
+    },
+    {
       "name": "Routing"
     },
     {
@@ -33200,6 +33529,9 @@
     },
     {
       "name": "PIM"
+    },
+    {
+      "name": "Maintenance"
     },
     {
       "name": "System"

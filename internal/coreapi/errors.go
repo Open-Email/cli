@@ -124,6 +124,20 @@ func IsInsufficientScope(err error) bool { return Code(err) == "insufficient_sco
 // IsSystemCredentialsRequired reports a non-system principal on a system-only route.
 func IsSystemCredentialsRequired(err error) bool { return Code(err) == "system_credentials_required" }
 
+// IsAccountCredentialsRequired reports a RESTRICTED account key on a surface
+// that needs unrestricted account authority — the account's own record, its
+// audit trail, and the whole /api-keys surface (so such a key can neither mint
+// nor revoke, itself included).
+//
+// One rung below system_credentials_required and the same shape: it names the
+// credential CLASS the surface wants, which is what a delegated integration
+// hitting the wrong endpoint needs to learn. Callers here mostly treat it as a
+// benign refusal rather than a failure — `login` stores the key it was given
+// instead of minting, and `logout` stops promising a revocation it cannot make.
+func IsAccountCredentialsRequired(err error) bool {
+	return Code(err) == "account_credentials_required"
+}
+
 // decodeAPIError parses core's error envelope, preserving unknown fields in Extra.
 func decodeAPIError(status int, body []byte) *APIError {
 	ae := &APIError{Status: status, Body: body}

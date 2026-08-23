@@ -37,9 +37,10 @@ func visibleWidth(s string) int {
 // isCtl reports whether r is a C0/DEL/C1 control code point.
 func isCtl(r rune) bool { return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) }
 
-// sanitizeCell neutralizes untrusted control data in a table cell so a value
-// such as a decoded Subject/From from inbound mail cannot inject terminal escape
-// sequences or desync column widths. It strips ANSI/VT escape sequences and every
+// sanitizeCell neutralizes untrusted control data before it reaches a terminal —
+// a table cell holding a decoded Subject/From from inbound mail, or any other
+// string this CLI did not write (the login console's key name, its one-time
+// code) — so it cannot inject escape sequences or desync column widths. It strips ANSI/VT escape sequences and every
 // C0/DEL/C1 control rune (including tab/newline, which would break the layout).
 // Table cells never legitimately carry ANSI — styling is applied by the renderer
 // — so this is loss-free for well-formed data.

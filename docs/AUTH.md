@@ -2,26 +2,83 @@
 
 ## The login model
 
-There is no account password and no OAuth device flow in core today. Instead the
-CLI uses **paste-then-self-mint**:
+`openemail login` **opens a browser**. You approve the request in the console,
+which mints a key for the organization you choose and hands it back over a
+channel the CLI opened itself. Nothing is pasted, and no account-wide credential
+passes through a clipboard.
 
-1. `openemail login` prompts for an API key (or takes `--api-key` /
-   `OPENEMAIL_API_KEY`).
-2. If it's an **account** key (`oek_…`, role account), the CLI immediately calls
-   `POST /api-keys` with the pasted key to mint its **own** per-device key
-   (named `openemail-cli @ <hostname>`), stores that in the OS keychain, records
-   the profile, and **discards the pasted key**. Per-device named keys make
-   `openemail keys list` legible and revocation surgical.
-3. If it's a **system** key, it's stored as-is (minting another system key would
-   itself require system role) and the profile is marked `role = system`, which
-   unlocks the `admin` group.
-4. `openemail logout` revokes the CLI's own key (`DELETE /api-keys/:id`) and
-   deletes the stored secret.
+```
+openemail login              # browser (or a device code where there is no browser)
+openemail login --device     # force the device code
+openemail login --paste      # the old way: paste a key you already hold
+OPENEMAIL_API_KEY=oek_… openemail login    # CI, unattended
+```
+
+Two flows, chosen automatically:
+
+- **Loopback redirect** (RFC 8252 §7.3 + PKCE). The CLI binds an ephemeral port
+  on `127.0.0.1`, opens `<console>/cli?…` — and prints the URL too, since a
+  browser opened on the wrong machine is no use — and waits. Approval redirects
+  back to that port with a one-time code, which the CLI exchanges for the key.
+  The `state` parameter binds the answer to this process; PKCE means an
+  intercepted code is worthless without the verifier this process kept.
+- **Device code** (RFC 8628), used automatically over SSH or with no desktop,
+  and forced by `--device` / `--no-browser`. The CLI prints a short code, you
+  open the console on any machine and type it in, and the CLI polls until you
+  approve. The code is deliberately **not** prefilled into a link (`gh` works
+  the same way): carrying it from the terminal to the browser is what proves
+  you are the one who started the login, and a prefilled link would only ever
+  help on the machine where the loopback flow already works.
+
+**This is not OAuth**, deliberately: no client registration, no access/refresh
+pair, no scope inside a token. What comes back is the same `oek_…` account key
+core has always issued — the browser is how it is *delivered*, not a new kind of
+credential. The wire format is the specs' so a real authorization server could
+land behind it later without changing this CLI.
+
+The key is named `openemail-cli @ <hostname>` and **belongs to this machine**:
+re-logging in revokes the one it replaces, and `openemail logout` revokes it
+(`DELETE /api-keys/:id`) before deleting the stored secret. Per-device named
+keys make `openemail keys list` legible and revocation surgical.
+
+The other paths still exist and behave as they always did:
+
+- **A pasted or piped account key** (`--paste`, `--api-key`, `OPENEMAIL_API_KEY`)
+  is used once to mint the CLI's own per-device key, which is stored; the
+  supplied key is discarded. `--no-mint` stores it as-is instead.
+- **A system key** is stored as-is (minting another system key would itself
+  require system role) and marks the profile `role = system`, unlocking `admin`.
+- **A restricted key** — one scoped to particular domains — *would* be stored as
+  provided with a warning saying so, because such a key cannot mint or revoke
+  anything (the `/api-keys` surface is account-tier); logout would then remove it
+  locally without pretending to have revoked it. **Not live yet:** domain scoping
+  is unbuilt in core, which emits `account_credentials_required` nowhere today
+  (see core's `docs/api-key-scoping-design.md`), so nothing can currently produce
+  such a key. The branches exist as a forward-tolerance — the day core starts
+  issuing scoped keys, this CLI already explains itself instead of reporting the
+  restriction as a failure.
 
 `whoami` shows the resolved principal, account, key, default mailbox, and where
-the key is stored. Identity is discovered by probing (`GET /api-keys` reveals the
-tenant; `GET /accounts` distinguishes system from account) — core has no
-`whoami` endpoint yet.
+the key is stored; the classification comes from core's `GET /auth/whoami`,
+never from what the console said, so role and account are always core's own
+facts about the bearer.
+
+### Where the browser goes
+
+The console is a different host from the API (`app.open.email` vs
+`api.open.email`), so it cannot be derived from `--api-url`. Resolution is
+`--console-url` → `OPENEMAIL_CONSOLE_URL` → the profile's `console_url` → the
+production console, **but only when the API URL is the production one too**. A
+custom `--api-url` with no console URL is an error naming the flag, never a
+silent authorization against production. Passing `--console-url` once records it
+on the profile.
+
+The pairing is verified, not assumed: the console advertises which core API it
+fronts (`GET /api/config`), and `login` refuses a mismatch with `--api-url`
+before a browser ever opens — nothing minted, nothing to clean up. Should a key
+be minted anyway (a console too old to advertise up front), the redemption
+response names the key's deployment and the CLI revokes it there, against the
+one API that accepts the revocation, before reporting the mismatch.
 
 ### Mailbox app-passwords
 

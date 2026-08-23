@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 
@@ -18,10 +19,11 @@ var Version = "0.1.0-dev"
 
 // Environment variable names (flag > env > profile precedence).
 const (
-	envAPIKey    = "OPENEMAIL_API_KEY"
-	envAPIURL    = "OPENEMAIL_API_URL"
-	envProfile   = "OPENEMAIL_PROFILE"
-	envNoKeyring = "OPENEMAIL_NO_KEYRING"
+	envAPIKey     = "OPENEMAIL_API_KEY"
+	envAPIURL     = "OPENEMAIL_API_URL"
+	envConsoleURL = "OPENEMAIL_CONSOLE_URL"
+	envProfile    = "OPENEMAIL_PROFILE"
+	envNoKeyring  = "OPENEMAIL_NO_KEYRING"
 )
 
 // ExitError carries a specific process exit code. 0 ok, 1 error, 2 usage,
@@ -53,14 +55,15 @@ type app struct {
 	stdout io.Writer // raw stdout sink (JSON lines from `watch`); defaults to os.Stdout
 
 	// persistent flags
-	flagProfile   string
-	flagAPIURL    string
-	flagAPIKey    string
-	flagJSON      bool
-	flagNoColor   bool
-	flagDebug     bool
-	flagNoKeyring bool
-	flagMailbox   string // -m/--mailbox on mailbox-scoped groups
+	flagProfile    string
+	flagAPIURL     string
+	flagConsoleURL string
+	flagAPIKey     string
+	flagJSON       bool
+	flagNoColor    bool
+	flagDebug      bool
+	flagNoKeyring  bool
+	flagMailbox    string // -m/--mailbox on mailbox-scoped groups
 
 	// resolved after preRun
 	profileName string
@@ -88,8 +91,13 @@ func (a *app) preRun() error {
 	a.profileName = cfg.ResolveProfileName(firstNonEmpty(a.flagProfile, os.Getenv(envProfile)))
 	a.profile, _ = cfg.Profile(a.profileName)
 
-	// API URL: flag > env > profile > default.
-	a.apiURL = firstNonEmpty(a.flagAPIURL, os.Getenv(envAPIURL), a.profile.APIURL, config.DefaultAPIURL)
+	// API URL: flag > env > profile > default. Normalized here, once, because
+	// everything downstream compares it as a STRING — against the stored
+	// profile's URL, and against DefaultAPIURL to decide whether this is our
+	// production deployment. `--api-url https://api.open.email/` is the same
+	// deployment as the default, and a trailing slash used to make it a custom
+	// one that `login` then refused to find a console for.
+	a.apiURL = strings.TrimRight(firstNonEmpty(a.flagAPIURL, os.Getenv(envAPIURL), a.profile.APIURL, config.DefaultAPIURL), "/")
 
 	// Token: flag > env > stored profile secret.
 	switch {
@@ -172,6 +180,50 @@ func (a *app) authedClient() (*coreapi.Client, error) {
 		a.out.Warnf("sending a stored key over plain HTTP to %s", a.apiURL)
 	}
 	return a.client()
+}
+
+// resolveConsoleURL answers where `login` should open a browser.
+//
+// The console is a DIFFERENT host from the API (app.open.email vs
+// api.open.email), so it cannot be derived from --api-url — and guessing is the
+// one thing that must not happen here. A custom API URL with no console URL is
+// an error naming the flag, never a silent fall back to our production console:
+// that would send somebody's authorization for a staging or self-hosted
+// deployment to a login screen belonging to a different platform.
+func (a *app) resolveConsoleURL() (string, error) {
+	explicit := firstNonEmpty(a.flagConsoleURL, os.Getenv(envConsoleURL), a.profile.ConsoleURL)
+	if explicit == "" {
+		if a.apiURL != config.DefaultAPIURL {
+			return "", usageError(fmt.Errorf(
+				"no console URL for %s — pass --console-url (or set %s) for the deployment this API belongs to,\n"+
+					"or use --api-key for a key you already hold", a.apiURL, envConsoleURL))
+		}
+		explicit = config.DefaultConsoleURL
+	}
+	trimmed := strings.TrimRight(strings.TrimSpace(explicit), "/")
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return "", usageError(fmt.Errorf("console URL %q is not an http(s) URL", explicit))
+	}
+	// A minted key comes back over this connection. Plain HTTP is allowed only
+	// where it cannot leave the machine, which is how `wrangler dev` is used.
+	if parsed.Scheme == "http" && !isLoopbackHost(parsed.Hostname()) {
+		return "", usageError(fmt.Errorf(
+			"refusing to authorize over plain HTTP to %s — a minted key would travel unencrypted", trimmed))
+	}
+	return trimmed, nil
+}
+
+// isLoopbackHost reports whether a host can only be reached from this machine.
+// Case-insensitive because DNS names are, and `http://LOCALHOST:8788` is a
+// `wrangler dev` console that works — refusing it would be this CLI disagreeing
+// with the resolver about what one name means.
+func isLoopbackHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 // noKeyring reports whether the OS keychain should be bypassed for the file

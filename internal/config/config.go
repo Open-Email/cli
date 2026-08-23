@@ -15,13 +15,25 @@ import (
 // DefaultAPIURL is the production deployment root.
 const DefaultAPIURL = "https://api.open.email"
 
+// DefaultConsoleURL is the production console, which hosts the browser login
+// flow. Paired with DefaultAPIURL and only ever used alongside it: pointing at
+// another API with no console of its own is an error, not an invitation to
+// authorize against ours (see cli.resolveConsoleURL).
+const DefaultConsoleURL = "https://app.open.email"
+
 // DefaultProfileName is used when no profile is selected.
 const DefaultProfileName = "default"
 
 // Profile is one named login. The key material itself is in the secret store;
 // KeyStorage records which backend holds it ("keychain" or "file").
 type Profile struct {
-	APIURL         string `toml:"api_url"`
+	APIURL string `toml:"api_url"`
+	// ConsoleURL is where `login` opens a browser to be authorized — the
+	// console origin, which is a DIFFERENT host from the API (app.open.email vs
+	// api.open.email). Recorded per profile because a staging or self-hosted
+	// deployment varies both together, and a login must never be sent to the
+	// production console just because this one was left unset.
+	ConsoleURL     string `toml:"console_url,omitempty"`
 	AccountID      string `toml:"account_id,omitempty"`
 	Role           string `toml:"role,omitempty"` // account | system | mailbox
 	KeyStorage     string `toml:"key_storage,omitempty"`
