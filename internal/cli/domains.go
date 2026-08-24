@@ -180,8 +180,11 @@ func newDomainDNSCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dns <domain>",
 		Short: "Show the DNS records a domain needs and whether each is live",
-		Long: "Show the DNS records this domain needs (MX, SPF, both DKIM CNAMEs, a recommended DMARC, " +
-			"and the JMAP SRV record where enabled) and whether each resolves.\n\n" +
+		Long: "Show the DNS records this domain needs (MX for receiving; the oe-bounce CNAME and both " +
+			"DKIM CNAMEs for sending; a recommended DMARC; and the JMAP/DAV SRV records where enabled) " +
+			"and whether each resolves.\n\n" +
+			"The \"spf\" kind is that oe-bounce CNAME, not a TXT record at your apex: outbound mail " +
+			"carries a return path inside the subdomain, so SPF is evaluated — and aligned — there.\n\n" +
 			"Liveness is a resolver view, so it can lag your DNS provider by a few minutes. A verdict is " +
 			"cached briefly; --force re-queries now. When DNS cannot be queried at all the records are " +
 			"still listed with liveness shown as \"?\" — unknown, not missing.\n\n" +
