@@ -114,6 +114,16 @@ func loginFixture(t *testing.T, apiURL string, profile config.Profile) *app {
 	// hang CI — the file backend writes under the temp config dir above.
 	t.Setenv("OPENEMAIL_NO_KEYRING", "1")
 	t.Setenv("OPENEMAIL_API_KEY", "")
+	// Which FLOW a bare `login` picks is otherwise decided by the machine the
+	// test runs on: `browserLikelyAvailable` short-circuits to true on macOS and
+	// Windows, but on Linux it reads DISPLAY/WAYLAND_DISPLAY, so the same test
+	// takes the loopback path on a developer's laptop and the device path on a
+	// headless runner — and a fixture wired for one answers nothing the other
+	// asks for. Pinning the environment here makes the default path the same
+	// everywhere; a test that wants the device flow says so with a flag.
+	t.Setenv("SSH_CONNECTION", "")
+	t.Setenv("SSH_TTY", "")
+	t.Setenv("DISPLAY", ":0")
 
 	cfg, err := config.Load()
 	if err != nil {
