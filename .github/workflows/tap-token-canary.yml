@@ -1,0 +1,59 @@
+name: tap-token-canary
+
+# Releases are rare; the token that publishes them expires on its own schedule.
+#
+# TAP_GITHUB_TOKEN is a PAT with write access to Open-Email/homebrew-tap, and
+# fine-grained PATs expire after 30 days unless told otherwise. Nothing observes
+# that until the next release tries to push a formula — which is how v0.1.1
+# shipped a GitHub release with a stale tap behind it. This checks weekly, so an
+# expired token is a failed cron on a Monday morning rather than a half-finished
+# release.
+#
+# A failure here publishes nothing and breaks nothing. It means: regenerate the
+# token before you next tag.
+
+on:
+  schedule:
+    # Mondays, 08:00 UTC — before the week's work, not during a release.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: can the tap token still write?
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "::error::TAP_GITHUB_TOKEN is not set — the next release will not update Homebrew."
+            exit 1
+          fi
+
+          # Does it authenticate at all? An expired or revoked token answers 401
+          # here, which is a different fix from a token that works but was never
+          # granted the tap.
+          code=$(curl -sS -o /tmp/who.json -w '%{http_code}' \
+                   -H "Authorization: Bearer $TAP_GITHUB_TOKEN" https://api.github.com/user)
+          if [ "$code" != "200" ]; then
+            echo "::error::TAP_GITHUB_TOKEN does not authenticate (HTTP $code: $(jq -r '.message // "?"' /tmp/who.json)). It has most likely expired — regenerate it."
+            exit 1
+          fi
+
+          # The tap is public, so a token with no grant still gets 200 and the
+          # whole repo object; only `permissions` is missing. Absence is the
+          # signal, not the status code.
+          push=$(curl -sS -H "Authorization: Bearer $TAP_GITHUB_TOKEN" \
+                   https://api.github.com/repos/Open-Email/homebrew-tap \
+                 | jq -r '.permissions.push // "absent"')
+          if [ "$push" != "true" ]; then
+            echo "::error::TAP_GITHUB_TOKEN authenticates but cannot write Open-Email/homebrew-tap (permissions.push=$push)."
+            echo "::error::Regenerate with resource owner Open-Email, homebrew-tap among the selected repositories, and Contents: Read and write."
+            exit 1
+          fi
+
+          echo "tap token is valid and can write Open-Email/homebrew-tap"

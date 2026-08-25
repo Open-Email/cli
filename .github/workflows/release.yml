@@ -12,6 +12,35 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
+      # Fail before anything is published, not after.
+      #
+      # goreleaser pushes the Homebrew formula LAST, so a token that cannot write
+      # the tap produces the worst possible outcome: the GitHub release and every
+      # artifact go out, the formula stays on the previous version, and the run
+      # ends red with users silently stuck on the old release. That is exactly
+      # what v0.1.1 did, and the formula had to be published by hand.
+      #
+      # The tap is a PUBLIC repo, so an unauthorised token still gets 200 and the
+      # full repo JSON back — only the `permissions` block is missing. Absence is
+      # therefore the signal, and `.permissions.push` is the thing to assert.
+      - name: verify the tap token can still write
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "::error::TAP_GITHUB_TOKEN is not set on this repository."
+            exit 1
+          fi
+          push=$(curl -sS -H "Authorization: Bearer $TAP_GITHUB_TOKEN" \
+                   https://api.github.com/repos/Open-Email/homebrew-tap \
+                 | jq -r '.permissions.push // "absent"')
+          if [ "$push" != "true" ]; then
+            echo "::error::TAP_GITHUB_TOKEN cannot write Open-Email/homebrew-tap (permissions.push=$push)."
+            echo "::error::Fine-grained PATs expire (30 days by default). Regenerate with resource owner Open-Email, homebrew-tap selected, Contents: Read and write."
+            exit 1
+          fi
+          echo "tap token verified writable"
+
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
