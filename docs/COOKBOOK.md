@@ -12,8 +12,9 @@ openemail mailboxes use alice@example.com
 ```sh
 # 1. The domain. It only exists once you PROVE you control it: publish the TXT
 #    record `openemail whoami` shows, then run create. Re-running create is the
-#    onboarding loop — it re-checks DNS and activates sending once SPF and both
-#    DKIM CNAMEs resolve. (Receiving needs nothing but your MX pointing at us.)
+#    onboarding loop — it re-checks DNS and activates sending once the
+#    oe-bounce CNAME and both DKIM CNAMEs resolve. (Receiving needs nothing
+#    but your MX pointing at us.)
 openemail whoami                        # shows _openemail.<domain> TXT to publish
 openemail domains create example.com    # refuses with the record until it is live
 openemail domains dns example.com       # what is still missing, and what resolves

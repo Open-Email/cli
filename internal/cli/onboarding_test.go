@@ -53,7 +53,7 @@ func TestPrintDNSRecordsIsCopyPasteable(t *testing.T) {
 // that is already correct.
 func TestPrintDNSRecordsDistinguishesUnknownFromAbsent(t *testing.T) {
 	out := renderRecords(t, []coreapi.DNSRecordCheck{
-		{DNSRecord: coreapi.DNSRecord{Kind: "spf", Type: "TXT", Name: "a.test", Value: "v=spf1", Required: true}, OK: ptrBool(true)},
+		{DNSRecord: coreapi.DNSRecord{Kind: "spf", Type: "CNAME", Name: "oe-bounce.a.test", Value: "oe-bounce.open.email", Required: true}, OK: ptrBool(true)},
 		{DNSRecord: coreapi.DNSRecord{Kind: "dkim", Type: "CNAME", Name: "oe1._domainkey.a.test", Value: "oe1.root", Required: true}, OK: ptrBool(false)},
 		{DNSRecord: coreapi.DNSRecord{Kind: "dmarc", Type: "TXT", Name: "_dmarc.a.test", Value: "v=DMARC1", Required: false}}, // OK nil
 	}, true)
@@ -129,14 +129,14 @@ func renderNext(t *testing.T, d *coreapi.Domain, records []coreapi.DNSRecordChec
 func TestPrintOnboardingNextListsOnlyPendingRecords(t *testing.T) {
 	out := renderNext(t, &coreapi.Domain{Domain: "a.test", Sending: false}, []coreapi.DNSRecordCheck{
 		{DNSRecord: coreapi.DNSRecord{Kind: "mx", Type: "MX", Name: "a.test", Value: "mx.open.email"}, OK: ptrBool(true)},
-		{DNSRecord: coreapi.DNSRecord{Kind: "spf", Type: "TXT", Name: "a.test", Value: "v=spf1 include:x"}, OK: ptrBool(false)},
+		{DNSRecord: coreapi.DNSRecord{Kind: "spf", Type: "CNAME", Name: "oe-bounce.a.test", Value: "oe-bounce.x.test"}, OK: ptrBool(false)},
 		{DNSRecord: coreapi.DNSRecord{Kind: "dkim", Type: "CNAME", Name: "oe1._domainkey.a.test", Value: "oe1.root"}}, // unknown
 	})
 
 	if strings.Contains(out, "mx.open.email") {
 		t.Fatalf("a live record was listed as pending:\n%s", out)
 	}
-	if !strings.Contains(out, "v=spf1 include:x") {
+	if !strings.Contains(out, "oe-bounce.x.test") {
 		t.Fatalf("missing record not listed:\n%s", out)
 	}
 	// Unknown is not "done": omitting it would tell a customer they are finished

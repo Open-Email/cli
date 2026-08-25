@@ -193,7 +193,10 @@ func errorHint(ae *coreapi.APIError) string {
 		return "system keys must choose ownership: pass --account <id>, or --platform for a domain owned by no account"
 	case "sending_not_writable":
 		// Sending is earned from DNS, not set. Point at the loop that grants it.
-		return "sending is activated by DNS, not by a flag: publish the SPF and both DKIM records (openemail domains dns <domain>), then re-run openemail domains create <domain>"
+		// "bounce record", not "SPF record": the spf KIND is the oe-bounce
+		// CNAME now, and naming SPF here sends people hunting for an apex TXT
+		// that is not in their instructions.
+		return "sending is activated by DNS, not by a flag: publish the bounce record and both DKIM records (openemail domains dns <domain>), then re-run openemail domains create <domain>"
 	case "domain_claimed_elsewhere":
 		// The caller proved control, so core told them the truth rather than
 		// hiding behind the anti-enumeration 409. There is no self-service move.

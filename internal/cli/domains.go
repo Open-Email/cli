@@ -536,8 +536,9 @@ func printDNSRecords(w io.Writer, p *Printer, records []coreapi.DNSRecordCheck, 
 }
 
 // printOnboardingNext tells the customer what is left. Sending is EARNED by
-// publishing SPF + both DKIM CNAMEs and re-running create — it is not a flag
-// they can set, so pointing at the records is the only honest next step.
+// publishing the oe-bounce CNAME + both DKIM CNAMEs and re-running create — it
+// is not a flag they can set, so pointing at the records is the only honest
+// next step.
 func printOnboardingNext(w io.Writer, p *Printer, d *coreapi.Domain, records []coreapi.DNSRecordCheck) {
 	if d.Sending || len(records) == 0 {
 		return

@@ -30,8 +30,8 @@ func TestCreateDomainReturnsDomainAndRecords(t *testing.T) {
 			"records":[
 				{"kind":"mx","type":"MX","name":"a.test","value":"mx.open.email","priority":10,
 				 "purpose":"Receive mail","required":true,"ok":true,"found":["mx.open.email"]},
-				{"kind":"spf","type":"TXT","name":"a.test","value":"v=spf1 include:spf.open.email ~all",
-				 "purpose":"Authorize sending","required":true,"ok":false,"found":[]}
+				{"kind":"spf","type":"CNAME","name":"oe-bounce.a.test","value":"oe-bounce.open.email",
+				 "purpose":"Bounce domain","required":true,"ok":false,"found":[]}
 			]}`))
 	}))
 	defer srv.Close()
