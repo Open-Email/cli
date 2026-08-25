@@ -39,6 +39,10 @@ clean: ## Remove build artifacts
 snapshot: ## Dry-run a full goreleaser build (needs goreleaser installed)
 	goreleaser release --snapshot --clean
 
+release: ## Cut a release: make release VERSION=v0.2.1 [MESSAGE="..."]
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=vX.Y.Z [MESSAGE=\"...\"]"; exit 1; }
+	./scripts/release.sh $(VERSION) $(if $(MESSAGE),-m "$(MESSAGE)")
+
 sync-spec: ## Refresh the vendored openapi.snapshot.json from core ($(CORE_DIR); run `npm run spec` there first)
 	@test -f $(CORE_DIR)/openapi.snapshot.json || { echo "not found: $(CORE_DIR)/openapi.snapshot.json (set CORE_DIR or run 'npm run spec' in core)"; exit 1; }
 	cp $(CORE_DIR)/openapi.snapshot.json ./openapi.snapshot.json
