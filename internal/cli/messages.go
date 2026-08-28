@@ -520,25 +520,32 @@ func newMessageComposeCmd(a *app) *cobra.Command {
 // separate commands rather than `learn --class`, because the two directions are
 // what a user actually means and a mistyped class silently trains backwards.
 func newMessageLearnCmd(a *app, use, class string) *cobra.Command {
-	short := "Report this message as junk (trains this mailbox's spam filter)"
-	long := "Teach the filter that this message is spam. The sample trains THIS mailbox's\n" +
-		"personal overlay, so your idea of junk never becomes anyone else's.\n\n" +
-		"This is training only — it does not move, flag or delete the message. Pair it\n" +
-		"with `openemail messages move` if you also want it out of the inbox."
+	short := "Report messages as junk (trains this mailbox's spam filter)"
+	long := "Teach the filter that one or more messages are spam. The samples train THIS\n" +
+		"mailbox's personal overlay, so your idea of junk never becomes anyone else's.\n\n" +
+		"This is training only: it does not move, flag or delete the messages. Pair it\n" +
+		"with `openemail messages move` if you also want them out of the inbox."
 	if class == "ham" {
-		short = "Report this message as NOT junk (trains this mailbox's spam filter)"
-		long = "Teach the filter that this message is legitimate — the correction for something\n" +
-			"that was wrongly classified as spam. The sample trains THIS mailbox's personal\n" +
-			"overlay.\n\n" +
-			"This is training only — it does not move or unflag the message."
+		short = "Report messages as NOT junk (trains this mailbox's spam filter)"
+		long = "Teach the filter that one or more messages are legitimate: the correction for\n" +
+			"something that was wrongly classified as spam. The samples train THIS\n" +
+			"mailbox's personal overlay.\n\n" +
+			"This is training only: it does not move or unflag the messages."
 	}
 	return &cobra.Command{
-		Use:   use + " <messageId>",
+		Use:   use + " <messageId> [messageId...]",
 		Short: short,
 		Long: long + "\n\nAccepted fire-and-forget: a success means the sample was submitted to the\n" +
 			"filter, not that it has already been learned. Repeated calls on the same\n" +
-			"message dedupe filter-side, so re-running is harmless.",
-		Args: cobra.ExactArgs(1),
+			"message dedupe filter-side, so re-running is harmless.\n\n" +
+			"Several ids are ONE call: core resolves them in a single read and submits\n" +
+			"the samples under one background budget. Up to 200 at a time. Past that,\n" +
+			"send several batches, because core trains a prefix and reports a truncation\n" +
+			"rather than stretching one budget to fit.\n\n" +
+			"An id that is not in the live tier is reported `not_found` on its own row\n" +
+			"and does not stop the others; the command exits non-zero so a script\n" +
+			"notices without parsing the table.",
+		Args: cobra.RangeArgs(1, 200),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -547,6 +554,9 @@ func newMessageLearnCmd(a *app, use, class string) *cobra.Command {
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
 				return err
+			}
+			if len(args) > 1 {
+				return a.learnBatch(cmd, client, mbx, args, class)
 			}
 			status, err := client.LearnMessage(cmd.Context(), mbx, args[0], class)
 			if err != nil {
@@ -567,6 +577,59 @@ func newMessageLearnCmd(a *app, use, class string) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// learnBatch is the many-ids half of the two spam-training verbs. Split out of
+// the command body rather than inlined because both verbs share it, and because
+// the single-id path deliberately stays on the per-message route so its --json
+// shape ({status, class}) keeps meaning what it always has.
+func (a *app) learnBatch(cmd *cobra.Command, client *coreapi.Client, mbx string, ids []string, class string) error {
+	verb := "junk"
+	if class == "ham" {
+		verb = "not junk"
+	}
+	res, err := client.LearnMessages(cmd.Context(), mbx, ids, class)
+	if err != nil {
+		// The feature being unconfigured is a property of the deployment, not a
+		// mistake the user made. Core answers it before resolving any id, so the
+		// whole batch is untrained and there is nothing partial to report.
+		if ae, ok := coreapi.AsAPIError(err); ok && ae.Code == "learning_unavailable" {
+			a.out.Warnf("this deployment has no spam filter configured — nothing to train")
+		}
+		return err
+	}
+	byID := make(map[string]coreapi.BatchLearnEntry, len(res.Results))
+	for _, e := range res.Results {
+		byID[e.ID] = e
+	}
+	a.out.Emit(res, func(w io.Writer) {
+		// Ranged over the REQUEST, not the response, so an id the server said
+		// nothing about still gets a row rather than vanishing.
+		rows := make([][]string, 0, len(ids))
+		for _, id := range ids {
+			e, ok := byID[id]
+			if !ok {
+				rows = append(rows, []string{id, "no answer"})
+				continue
+			}
+			rows = append(rows, []string{id, e.Status})
+		}
+		printTable(w, a.out, []string{"MESSAGE", "STATUS"}, rows)
+	})
+	accepted, missing := 0, 0
+	for _, id := range ids {
+		if e, ok := byID[id]; ok && e.Status == "accepted" {
+			accepted++
+			continue
+		}
+		missing++
+	}
+	if missing == 0 {
+		a.out.Successf("Reported %d message(s) as %s in one call", accepted, verb)
+		return nil
+	}
+	a.out.Warnf("Reported %d of %d as %s; %d could not be found in the live tier", accepted, len(ids), verb, missing)
+	return silentExit(1)
 }
 
 func newMessageFlagCmd(a *app) *cobra.Command {

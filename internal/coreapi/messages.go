@@ -313,6 +313,47 @@ func (c *Client) LearnMessage(ctx context.Context, mailboxID, messageID, class s
 	return out.Status, err
 }
 
+// BatchLearnEntry is one message's outcome in a batch training call, in REQUEST
+// order so a caller can pair the rows with the ids it sent. "not_found" is per
+// message and does not refuse the others: the id is not in the live tier, which
+// is the same tier the single form reads, so a trashed message is unresolvable
+// here exactly as it is there.
+type BatchLearnEntry struct {
+	ID     string `json:"id"`
+	Status string `json:"status"` // accepted | not_found
+}
+
+// BatchLearnResult carries the per-message outcomes of one batch training call.
+type BatchLearnResult struct {
+	Results []BatchLearnEntry `json:"results"`
+}
+
+// LearnMessages teaches the spam filter from up to 200 messages in ONE call.
+//
+// The saving is core-side and larger than "one request instead of N": the batch
+// route resolves every id in a single read against the mailbox, then submits the
+// samples under ONE background budget. That budget is also the reason to prefer
+// this over a loop only up to the documented ceiling — core trains a prefix and
+// logs a truncation if the whole batch cannot be submitted in time, so a caller
+// that wants certainty for a huge set should send several batches rather than
+// one oversized one.
+//
+// Fire-and-forget like the single form: 202 means the samples were accepted for
+// submission, not learned, and duplicate ids collapse to one sample while still
+// getting their own result row. 503 learning_unavailable when the deployment has
+// no spam filter configured at all, answered before any id is resolved.
+func (c *Client) LearnMessages(ctx context.Context, mailboxID string, ids []string, class string) (*BatchLearnResult, error) {
+	var out BatchLearnResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost, path: c.messagesPath(mailboxID) + "/learn",
+		body: mustJSON(map[string]any{"ids": ids, "class": class}), contentType: "application/json",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // BatchRestoreEntry is one message's outcome in a batch restore. Message is
 // present iff Status is "restored" (and carries the FRESH label UIDs the
 // restore minted, as IMAP requires). An id that is missing, already live, or

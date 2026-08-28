@@ -75,7 +75,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's login credentials (app-passwords; `--expires-in` for session-scoped ones, @-free usernames for mail-less identities) |
 | `identities` | `get [id]` — the durable identity and its bound stores (mail + PIM facets with usage); a calendar-only identity shows no mail facet |
-| `messages` | list/get/`raw`/`append`/`compose` (file from fields without sending — drafts, imports)/`junk`/`not-junk` (train this mailbox's spam filter)/`flag`/`label`/`move`/`delete`/`restore` (many ids restore in one atomic call)/`trash empty`/`mime` |
+| `messages` | list/get/`raw`/`append`/`compose` (file from fields without sending — drafts, imports)/`junk`/`not-junk` (train this mailbox's spam filter; many ids train in one call)/`flag`/`label`/`move`/`delete`/`restore` (many ids restore in one atomic call)/`trash empty`/`mime` |
 | `labels` | list/create/rename/delete/`messages`/`expunge` |
 | `threads` | list, get (with reply context), `reply` — the server derives recipient, subject and threading headers from the conversation |
 | `search [query]` | full-text search, or a structured filter search when any of `--from/--to/--before/--after/--unread/--has-attachment/--sort/…` is passed (`--snippet` for highlighted excerpts, `--total` for the match count) |
@@ -169,8 +169,9 @@ openemail messages compose --from me@example.com --to you@example.com \
   --subject "Half written" --text "…" --draft        # flags draft,seen into Drafts
 
 # Teach this mailbox's spam filter. Training only: nothing is moved or flagged.
-openemail messages junk <id>
-openemail messages not-junk <id>
+# Several ids are one call (up to 200).
+openemail messages junk <id> [id...]
+openemail messages not-junk <id> [id...]
 
 # Manage Sieve filters.
 openemail sieve check -f filter.sieve            # dry-run compile (exit 1 if invalid)

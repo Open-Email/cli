@@ -184,6 +184,48 @@ func TestLearnMessage(t *testing.T) {
 	}
 }
 
+// The batch form hits the COLLECTION route, not the per-message one. Pinned
+// because the single-message path is the obvious thing to reach for here and
+// core routes the two separately: posting a body of ids to
+// /messages/{id}/learn would train one message and silently drop the rest.
+func TestLearnMessagesUsesBatchRoute(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(202)
+		w.Write([]byte(`{"results":[{"id":"A","status":"accepted"},{"id":"B","status":"not_found"}]}`))
+	}))
+	defer srv.Close()
+	res, err := m3Client(t, srv.URL).LearnMessages(context.Background(), "01M", []string{"A", "B"}, "spam")
+	if err != nil {
+		t.Fatalf("LearnMessages: %v", err)
+	}
+	if gotPath != "/api/v1/mailboxes/01M/messages/learn" {
+		t.Errorf("path = %q, want the collection route", gotPath)
+	}
+	ids, _ := gotBody["ids"].([]any)
+	if len(ids) != 2 || ids[0] != "A" || ids[1] != "B" {
+		t.Errorf("body ids = %v", gotBody["ids"])
+	}
+	if gotBody["class"] != "spam" {
+		t.Errorf("body class = %v", gotBody["class"])
+	}
+	// Per-message outcomes, in request order, and a missing id does not refuse
+	// the others: the batch is feedback, not a transaction.
+	if len(res.Results) != 2 {
+		t.Fatalf("results = %+v", res.Results)
+	}
+	if res.Results[0].ID != "A" || res.Results[0].Status != "accepted" {
+		t.Errorf("first entry = %+v", res.Results[0])
+	}
+	if res.Results[1].ID != "B" || res.Results[1].Status != "not_found" {
+		t.Errorf("second entry = %+v", res.Results[1])
+	}
+}
+
 func TestSuppressionRoundTrip(t *testing.T) {
 	var gotPath, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -111,6 +111,11 @@ fields. An explicit `--label` wins over `--draft`'s default.
 ```sh
 openemail messages junk 01MSGID…       # this is spam
 openemail messages not-junk 01MSGID…   # this was wrongly classified
+
+# Several ids are ONE call: core resolves them in a single read and submits the
+# samples under one background budget. Up to 200 at a time. An id that is not in
+# the live tier is reported not_found on its own row and exits non-zero.
+openemail messages junk 01A 01B 01C
 ```
 
 The sample trains **this mailbox's** personal overlay, so one person's idea of
