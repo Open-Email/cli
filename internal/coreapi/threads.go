@@ -13,6 +13,22 @@ type ThreadListItem struct {
 	UnseenCount    int64       `json:"unseenCount"`
 	LastReceivedAt int64       `json:"lastReceivedAt"`
 	Exemplar       MessageMeta `json:"exemplar"`
+	// Participants are the distinct senders in the conversation, oldest first,
+	// deduplicated by address — the "Carol, Alice, Bob" line a conversation row
+	// shows. Conversation-wide, which is why the exemplar alone cannot supply
+	// it: the exemplar is one message and this describes all of them.
+	Participants []ThreadParticipant `json:"participants"`
+}
+
+// ThreadParticipant is one distinct sender in a conversation.
+//
+// Name is a POINTER because the wire contract makes it required AND nullable:
+// the address is always known, the display name often is not, and null is how
+// core says so. A plain string would decode a null to "" and lose the
+// distinction between "no name" and "named empty".
+type ThreadParticipant struct {
+	Email string  `json:"email"`
+	Name  *string `json:"name"`
 }
 
 // ReplyContext is the pre-computed reply scaffolding for a thread.

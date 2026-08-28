@@ -135,7 +135,12 @@ func (c *Client) UpdateAccount(ctx context.Context, accountID string, patch map[
 // the account holds more domains than one query covers — a silently partial
 // total reads as reassurance.
 type AccountTraffic struct {
-	AccountID        string   `json:"accountId"`
+	AccountID string `json:"accountId"`
+	// MailboxID is present only when the aggregate was NARROWED to one mailbox;
+	// absent means the figures cover every domain the account owns. Optional in
+	// the wire contract, hence omitempty rather than a pointer: "" and absent
+	// mean the same thing here, which is not true of the nullable fields above.
+	MailboxID        string   `json:"mailboxId,omitempty"`
 	Range            string   `json:"range"`
 	Domains          []string `json:"domains"`
 	DomainsTruncated bool     `json:"domainsTruncated"`

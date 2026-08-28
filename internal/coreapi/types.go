@@ -101,8 +101,14 @@ type Account struct {
 	// Off by default: each one costs a certificate order and a persistent key on
 	// our own fleets, or a billable Cloudflare custom hostname. It gates CLAIMING
 	// only — clearing it never revokes hostnames already serving clients.
-	VanityHosts bool  `json:"vanityHosts"`
-	CreatedAt   int64 `json:"createdAt"`
+	VanityHosts bool `json:"vanityHosts"`
+	// RecoverySelfService is whether mailbox users in this account may recover
+	// their OWN password, via recovery codes. False is the admin_only policy,
+	// under which existing codes and addresses are KEPT rather than destroyed:
+	// the flag gates the self-service PATH, so flipping it back restores what
+	// was already issued instead of forcing every user to re-enrol.
+	RecoverySelfService bool  `json:"recoverySelfService"`
+	CreatedAt           int64 `json:"createdAt"`
 	// Deletion lifecycle (core migration 0038). All three are epoch SECONDS and
 	// all three are nil on a live account.
 	//

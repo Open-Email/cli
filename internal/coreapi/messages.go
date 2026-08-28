@@ -49,6 +49,18 @@ type MessageMeta struct {
 	BlobHash        string           `json:"blobHash"`
 	BlobGen         string           `json:"blobGen"`
 	DeliveryMeta    json.RawMessage  `json:"deliveryMeta"`
+	// DeliveryState is what became of a message this mailbox SENT: "queued"
+	// (handed to the relay), "relayed" (the receiving system accepted it, which
+	// is NOT "read"), "delivered", and the failure states. NIL for received
+	// mail, which is most of it — the field describes egress, so a message that
+	// arrived has no state to report and null is not "unknown".
+	DeliveryState *string `json:"deliveryState"`
+	// RestoresTo is where a recovery would file this message, as label names.
+	// Present only while the message is RECOVERABLE: carrying the Trash label
+	// (POST /messages/untrash) or sitting on the expunged tier
+	// (POST /messages/recover). Nil on an ordinary live message, so its
+	// presence is the "this can be undone" signal rather than a separate probe.
+	RestoresTo []string `json:"restoresTo"`
 	// HasAttachment follows the RFC 8621 §4.1.4 rule (the same computation
 	// GET /content's attachment list uses). Nil = not yet known: the flag is
 	// stamped at delivery and backfilled lazily on first read of an older

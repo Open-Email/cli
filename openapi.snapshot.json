@@ -63,6 +63,10 @@
               "null"
             ]
           },
+          "recoverySelfService": {
+            "description": "True if mailbox users in this account may recover their own password (recovery codes, and the recovery address once it ships). False is the admin_only policy: existing addresses and codes are KEPT and refused, and resets come from an admin. Written by the tenant via PUT /accounts/:accountId/recovery-policy",
+            "type": "boolean"
+          },
           "recvBytesPerDay": {
             "description": "Daily inbound byte allowance across the account (null = platform default, 0 = unlimited)",
             "format": "int64",
@@ -156,6 +160,7 @@
           "plan",
           "storageLimitBytes",
           "vanityHosts",
+          "recoverySelfService",
           "createdAt",
           "deletedAt",
           "purgeAt",
@@ -194,6 +199,53 @@
           "deletedAt",
           "purgeAt",
           "restorable"
+        ],
+        "type": "object"
+      },
+      "AccountEvents": {
+        "properties": {
+          "accountId": {
+            "description": "Account ID",
+            "type": "string"
+          },
+          "domains": {
+            "description": "Domain names the query was scoped to",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "domainsTruncated": {
+            "description": "True if the account owns more domains than the query limit",
+            "type": "boolean"
+          },
+          "estimated": {
+            "description": "True if numbers are estimated (false for authoritative logs)",
+            "type": "boolean"
+          },
+          "events": {
+            "description": "List of authoritative traffic events across the account's domains",
+            "items": {
+              "$ref": "#/components/schemas/AccountTrafficEvent"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "description": "Pagination cursor for next page of events",
+            "type": "string"
+          },
+          "range": {
+            "description": "Time range queried (e.g. '24h', '7d')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "range",
+          "domains",
+          "domainsTruncated",
+          "events",
+          "estimated"
         ],
         "type": "object"
       },
@@ -448,10 +500,17 @@
             "description": "Account ULID",
             "type": "string"
           },
+          "complete": {
+            "description": "True when `usedBytes` is a full sum computed by this request. False for an account large enough that the walk is paged across passes: this request advanced the sweep by one pass and `usedBytes` is the last completed sweep's cached figure (null if none has finished yet). Poll until true.",
+            "type": "boolean"
+          },
           "computedAt": {
-            "description": "Timestamp when usage was calculated in epoch seconds",
+            "description": "Timestamp when usage was calculated in epoch seconds, or null when no sum has ever been computed for this account. When `complete` is false this is the cached gauge's stamp, not this request's.",
             "format": "int64",
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "limitBytes": {
             "description": "Effective storage limit in bytes (null = unlimited)",
@@ -475,9 +534,12 @@
             ]
           },
           "usedBytes": {
-            "description": "Total storage used across all mailboxes in bytes including trash",
+            "description": "Total storage used across all mailboxes in bytes including trash. NULL when `complete` is false and no full sweep has ever finished for this account: the sum is deliberately withheld rather than reported short, because a partial total would under-report storage.",
             "format": "int64",
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -486,7 +548,8 @@
           "mailboxCount",
           "limitBytes",
           "storageLimitBytes",
-          "computedAt"
+          "computedAt",
+          "complete"
         ],
         "type": "object"
       },
@@ -518,6 +581,10 @@
           "estimated": {
             "description": "True if metrics are sampled estimates",
             "type": "boolean"
+          },
+          "mailboxId": {
+            "description": "Present when the aggregate was narrowed to one mailbox",
+            "type": "string"
           },
           "range": {
             "description": "Time range of statistics",
@@ -573,6 +640,28 @@
           "retentionDays"
         ],
         "type": "object"
+      },
+      "AccountTrafficEvent": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TrafficEvent"
+          },
+          {
+            "properties": {
+              "domain": {
+                "description": "The domain this event is attributed to, or null",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "domain"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "AccountUsage": {
         "properties": {
@@ -1188,7 +1277,7 @@
             "type": "boolean"
           },
           "expungedAt": {
-            "description": "Trash timestamp in epoch seconds (when soft-deleted)",
+            "description": "Expunge timestamp in epoch seconds (when expunged)",
             "format": "int64",
             "type": "integer"
           },
@@ -1197,12 +1286,12 @@
             "type": "string"
           },
           "purgeAfter": {
-            "description": "Purge deadline timestamp in epoch seconds (when soft-deleted)",
+            "description": "Purge deadline timestamp in epoch seconds (when expunged)",
             "format": "int64",
             "type": "integer"
           },
           "status": {
-            "description": "Deletion outcome. `expunged` = soft-deleted to trash; `purged` = permanently removed; `gone` = a folder-scoped grantee's delete, which detaches the message from the folders they were granted rather than expunging it — the message survives in the owner's own folders, or in Trash if it was in none.",
+            "description": "Deletion outcome. `expunged` = moved to the Recently-deleted tier, restorable until purgeAfter; `purged` = permanently removed; `gone` = a folder-scoped grantee's delete, which detaches the message from the folders they were granted rather than expunging it — the message survives in the owner's own folders, or in Trash if it was in none.",
             "enum": [
               "expunged",
               "purged",
@@ -1315,6 +1404,53 @@
         ],
         "type": "object"
       },
+      "BatchUntrashEntry": {
+        "properties": {
+          "id": {
+            "description": "Message ULID",
+            "type": "string"
+          },
+          "message": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageMeta"
+              },
+              {
+                "description": "Untrashed message metadata (when status=untrashed)"
+              }
+            ]
+          },
+          "status": {
+            "description": "Untrash outcome for this message. not_trashed: the message exists and is readable but does not carry the Trash label, so there is nothing to undo — deliberately distinct from not_found, which means no such live message (an EXPUNGED id is not_found here; use POST /messages/restore for that tier).",
+            "enum": [
+              "untrashed",
+              "not_trashed",
+              "not_found"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchUntrashResult": {
+        "properties": {
+          "results": {
+            "description": "List of untrash outcomes for each requested message",
+            "items": {
+              "$ref": "#/components/schemas/BatchUntrashEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
       "BatchUpdateEntry": {
         "properties": {
           "currentModseq": {
@@ -1323,7 +1459,7 @@
             "type": "integer"
           },
           "expungedAt": {
-            "description": "Trash timestamp in epoch seconds (when status=expunged)",
+            "description": "Expunge timestamp in epoch seconds (when status=expunged)",
             "format": "int64",
             "type": "integer"
           },
@@ -3685,11 +3821,11 @@
       "ExpungeNotice": {
         "properties": {
           "expunged": {
-            "description": "True if the message was moved to trash",
+            "description": "True if the message was expunged (Recently deleted tier)",
             "type": "boolean"
           },
           "expungedAt": {
-            "description": "Timestamp when moved to trash in epoch seconds",
+            "description": "Timestamp when the message was expunged, in epoch seconds",
             "format": "int64",
             "type": "integer"
           },
@@ -3735,12 +3871,12 @@
           {
             "properties": {
               "expungedAt": {
-                "description": "Timestamp when message was moved to trash in epoch seconds",
+                "description": "Timestamp when the message was expunged, in epoch seconds",
                 "format": "int64",
                 "type": "integer"
               },
               "expungedLabels": {
-                "description": "Labels the message belonged to before being moved to trash",
+                "description": "The labels this row literally held at the moment it was expunged. For a message deleted the ordinary way that is [\"Trash\"], because the delete moved it there first. To show or act on where it will actually go, read restoresTo.",
                 "items": {
                   "type": "string"
                 },
@@ -4598,7 +4734,7 @@
             "type": "string"
           },
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nNull means the whole mailbox is shared.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nNull means the whole mailbox is shared.",
             "items": {
               "type": "string"
             },
@@ -4944,7 +5080,7 @@
             "type": "array"
           },
           "destroyed": {
-            "description": "Message IDs that were deleted, moved to trash, or purged",
+            "description": "Message IDs that were deleted, expunged, or purged",
             "items": {
               "type": "string"
             },
@@ -4990,11 +5126,11 @@
             "type": "boolean"
           },
           "expunged": {
-            "description": "True if message was moved to trash",
+            "description": "True if the message was expunged (Recently deleted tier)",
             "type": "boolean"
           },
           "expungedAt": {
-            "description": "Timestamp when moved to trash in epoch seconds",
+            "description": "Timestamp when the message was expunged, in epoch seconds",
             "format": "int64",
             "type": "integer"
           },
@@ -5012,6 +5148,85 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "MessageDeliveryList": {
+        "properties": {
+          "deliveries": {
+            "description": "List of delivery statuses",
+            "items": {
+              "$ref": "#/components/schemas/MessageDeliveryStatus"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deliveries"
+        ],
+        "type": "object"
+      },
+      "MessageDeliveryStatus": {
+        "properties": {
+          "createdAt": {
+            "description": "Submission creation timestamp in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "deliveryId": {
+            "description": "The delivery id this submission was sent with, as returned by /send",
+            "type": "string"
+          },
+          "messageId": {
+            "description": "ULID of the Sent copy this submission produced, or null when no Sent copy was kept",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recipients": {
+            "description": "Per-recipient delivery status",
+            "items": {
+              "$ref": "#/components/schemas/RecipientDeliveryStatus"
+            },
+            "type": "array"
+          },
+          "sendAt": {
+            "description": "UTC timestamp when message was sent or scheduled",
+            "type": "string"
+          },
+          "status": {
+            "description": "Overall delivery status across all recipients. 'relayed' means the receiving mail system accepted the message; 'mixed' means at least one recipient failed while another did not",
+            "enum": [
+              "queued",
+              "relayed",
+              "delivered",
+              "failed",
+              "mixed"
+            ],
+            "type": "string"
+          },
+          "submissionId": {
+            "description": "Submission identifier (the JMAP EmailSubmission id)",
+            "type": "string"
+          },
+          "threadId": {
+            "description": "Conversation thread identifier",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "deliveryId",
+          "submissionId",
+          "messageId",
+          "threadId",
+          "sendAt",
+          "status",
+          "recipients",
+          "createdAt"
+        ],
         "type": "object"
       },
       "MessageInvitation": {
@@ -5233,6 +5448,20 @@
               "null"
             ]
           },
+          "deliveryState": {
+            "description": "What became of this message after it was SENT, for a message this mailbox sent: 'queued' (handed to the relay), 'relayed' (the receiving mail system accepted it — never 'read'), 'delivered' (committed to a local mailbox), 'failed', or 'mixed' (some recipients failed, others did not). Null for received mail, and for sent mail whose delivery record has aged out — render null as no indicator, never as a state. Per-recipient detail and the SMTP reply behind a failure are at /messages/{messageId}/delivery.",
+            "enum": [
+              "queued",
+              "relayed",
+              "delivered",
+              "failed",
+              "mixed"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "envelopeFrom": {
             "description": "SMTP envelope sender address",
             "type": "string"
@@ -5314,6 +5543,16 @@
             },
             "type": "array"
           },
+          "restoresTo": {
+            "description": "Where a recovery would file this message, as label names. Present only when the message is recoverable: one carrying the Trash label (POST /messages/untrash) or one on the expunged tier (POST /messages/restore). Null otherwise, meaning the message is filed rather than recoverable. This is the effective destination including the Inbox fallback, not a raw snapshot, so a client can name it on a Put back control without reimplementing the rule.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "sentAt": {
             "description": "Sent timestamp from Date header in epoch seconds, or null",
             "format": "int64",
@@ -5387,7 +5626,8 @@
           "hasAttachment",
           "blobHash",
           "blobGen",
-          "deliveryMeta"
+          "deliveryMeta",
+          "deliveryState"
         ],
         "type": "object"
       },
@@ -5994,7 +6234,7 @@
             ]
           },
           "id": {
-            "description": "Collection ULID — stable across renames; the JMAP id",
+            "description": "Collection ULID: stable across renames; the JMAP id",
             "type": "string"
           },
           "kind": {
@@ -6537,7 +6777,7 @@
             ]
           },
           "id": {
-            "description": "Directory entry id — the handle POST /subscriptions takes",
+            "description": "Directory entry id: the handle POST /subscriptions takes",
             "type": "string"
           },
           "kind": {
@@ -7248,7 +7488,7 @@
       "PutMailShareBody": {
         "properties": {
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAt most 32 folders may be named in one grant.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAt most 32 folders may be named in one grant.",
             "items": {
               "type": "string"
             },
@@ -7414,6 +7654,362 @@
         },
         "required": [
           "accepted"
+        ],
+        "type": "object"
+      },
+      "RecipientDeliveryStatus": {
+        "properties": {
+          "at": {
+            "description": "Epoch seconds at which this recipient reached the status above. Absent while the leg is still queued, in which case the submission's createdAt is its time",
+            "format": "int64",
+            "type": "integer"
+          },
+          "delivered": {
+            "description": "Raw JMAP RFC 8621 delivered status ('queued', 'yes', 'no', 'unknown')",
+            "type": "string"
+          },
+          "displayed": {
+            "description": "Raw JMAP RFC 8621 displayed status ('unknown', 'yes')",
+            "type": "string"
+          },
+          "email": {
+            "description": "Recipient email address",
+            "type": "string"
+          },
+          "mxHost": {
+            "description": "Hostname of the mail exchanger that answered for this recipient, or the reporting MTA of a bounce that arrived later. Absent for legs that never spoke SMTP",
+            "type": "string"
+          },
+          "smtpReply": {
+            "description": "The reply the receiving mail system gave for this recipient, verbatim where it spoke SMTP ('250 2.0.0 Ok: queued as 4bXyz', '550 5.1.1 no such user'), synthesized in the same grammar for a leg that did not (local delivery, a policy refusal here)",
+            "type": "string"
+          },
+          "status": {
+            "description": "Delivery status for this recipient",
+            "enum": [
+              "queued",
+              "relayed",
+              "delivered",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "status",
+          "delivered"
+        ],
+        "type": "object"
+      },
+      "RecoveryAddressDeleted": {
+        "properties": {
+          "deleted": {
+            "description": "True if an address was removed by this call",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "RecoveryAddressPending": {
+        "properties": {
+          "address": {
+            "description": "The pending address, masked",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "Epoch seconds after which the confirmation code is dead and the address must be set again",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sameAccount": {
+            "description": "True if this address routes to another mailbox in the SAME account, so a single compromise or a single outage can take both. Allowed, and worth warning about",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "Pending is never a reset target",
+            "enum": [
+              "pending"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "state",
+          "sameAccount",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "RecoveryAddressVerified": {
+        "properties": {
+          "address": {
+            "description": "The verified address, masked",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "verified"
+            ],
+            "type": "string"
+          },
+          "usableAfter": {
+            "description": "Epoch seconds until which this address may receive notices but not drive a reset; null when it is usable immediately",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "state",
+          "usableAfter"
+        ],
+        "type": "object"
+      },
+      "RecoveryCeremonyStarted": {
+        "properties": {
+          "accepted": {
+            "description": "Always true. Whether a code was actually sent is deliberately not reported",
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          },
+          "ceremonyId": {
+            "description": "Opaque handle for this attempt. Pass it to /auth/recovery/complete with the mailed code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ceremonyId",
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "RecoveryCodesIssued": {
+        "properties": {
+          "codes": {
+            "description": "The plaintext codes, shown exactly once. Only their SHA-256 hashes are stored",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "issuedAt": {
+            "description": "Issue timestamp in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codes",
+          "issuedAt"
+        ],
+        "type": "object"
+      },
+      "RecoveryCompleted": {
+        "properties": {
+          "appPasswordsRevoked": {
+            "description": "Non-expiring app passwords revoked. Zero unless the caller asked for it",
+            "type": "integer"
+          },
+          "created": {
+            "description": "True when the mailbox had no password credential and the reset established one",
+            "type": "boolean"
+          },
+          "credentialIds": {
+            "description": "Every password credential now carrying the new secret",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mailboxId": {
+            "description": "The identity whose password was reset",
+            "type": "string"
+          },
+          "recoveryAddressVerified": {
+            "description": "Present on the invitation branch only (§XVII): true when the nominated address was promoted to this mailbox's verified recovery address in the same act. False when the account's policy is admin_only, which means the address was used once as a delivery destination and never stored. That is the one outcome the redeeming user could not otherwise discover, since it turns on a tenant policy they have never heard of",
+            "type": "boolean"
+          },
+          "reset": {
+            "description": "The password was set",
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          },
+          "sessionsRevoked": {
+            "description": "Expiring credentials revoked by the reset (browser sessions and other dated credentials)",
+            "type": "integer"
+          },
+          "usernames": {
+            "description": "Every username those credentials answer to. More than one means two logins now share this password, which the frontend must say out loud",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "reset",
+          "mailboxId",
+          "credentialIds",
+          "usernames",
+          "sessionsRevoked",
+          "appPasswordsRevoked",
+          "created"
+        ],
+        "type": "object"
+      },
+      "RecoveryInvitationSent": {
+        "properties": {
+          "address": {
+            "description": "The nominated address, masked",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "Epoch seconds at which the mailed code stops working",
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "invitation: the mailbox had no password credential, so the mailed code SETS one and verifies the address in the same act. nomination: it already had one, so the mailed code is an ordinary 24h confirmation code that sets nothing and can only be spent from the mailbox's own session",
+            "enum": [
+              "invitation",
+              "nomination"
+            ],
+            "type": "string"
+          },
+          "retained": {
+            "description": "True if the address was stored as this mailbox's pending recovery address. False when the account policy is admin_only: the address was used once as a delivery destination and never stored",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "address",
+          "expiresAt",
+          "retained"
+        ],
+        "type": "object"
+      },
+      "RecoveryPolicy": {
+        "properties": {
+          "policy": {
+            "description": "self_service: mailbox users may recover their own password. admin_only: existing codes and addresses are kept and refused, and resets come from an admin",
+            "enum": [
+              "self_service",
+              "admin_only"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "type": "object"
+      },
+      "RecoveryStatus": {
+        "properties": {
+          "address": {
+            "description": "Verified recovery address, masked (j••@ex•••.com), or null if none is verified",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "addressPlaintext": {
+            "description": "The unmasked verified address. Present for system principals only",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "codesLockedUntil": {
+            "description": "Epoch seconds until code submission is refused after repeated wrong codes, or null",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "codesRemaining": {
+            "description": "Unspent recovery codes. Zero means either none were ever issued or all are spent",
+            "type": "integer"
+          },
+          "invitation": {
+            "description": "An outstanding provisioning invitation, or null. This IS the idempotency answer for POST /mailboxes/:id/invitation (§XVII.5): a caller that lost its create response asks whether one is outstanding rather than holding an idempotency key, because an invitation is never re-sent automatically and a repeat is always a deliberate second call. Consumed and expired both read as null",
+            "properties": {
+              "createdAt": {
+                "description": "Epoch seconds at which it was sent",
+                "format": "int64",
+                "type": "integer"
+              },
+              "expiresAt": {
+                "description": "Epoch seconds at which the invitation code stops working",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "expiresAt",
+              "createdAt"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "pending": {
+            "description": "A typed, unconfirmed address, masked, or null. Reported ALONGSIDE `state` because §II.3 allows both at once (replacing does not disarm: the old address keeps working until the new one confirms), so a settings screen has to be able to show a change in flight without implying the old one has stopped",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "policy": {
+            "description": "The account's recovery policy. admin_only keeps existing rows and refuses their use",
+            "enum": [
+              "self_service",
+              "admin_only"
+            ],
+            "type": "string"
+          },
+          "state": {
+            "description": "Address state: none, pending (typed, unconfirmed, never a reset target), or verified. `verified` wins when BOTH exist, because that is the address a reset would use",
+            "enum": [
+              "none",
+              "pending",
+              "verified"
+            ],
+            "type": "string"
+          },
+          "usableAfter": {
+            "description": "Epoch seconds until which a newly verified address may receive notices but not drive a reset (the 72h cooldown); null when nothing is waiting",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "state",
+          "pending",
+          "usableAfter",
+          "codesRemaining",
+          "codesLockedUntil",
+          "policy",
+          "invitation"
         ],
         "type": "object"
       },
@@ -7856,7 +8452,7 @@
             "type": "string"
           },
           "remoteAddress": {
-            "description": "Target remote email address when destinationType='remote', otherwise null",
+            "description": "Where this address forwards a copy: the destination address when destinationType='remote', otherwise the forward TAP — an address that receives a copy alongside the destination. Null when neither is set",
             "type": [
               "string",
               "null"
@@ -8526,7 +9122,7 @@
             "type": "string"
           },
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list means every folder the grant named has since been deleted. Such a grant is dead — it matches nothing and gives access to nothing — and it is shown rather than hidden so you can see it and remove it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAbsent when the request passed `labelScope=false`.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAbsent when the request passed `labelScope=false`, when the grant fell past the per-request folder-name render bound, or when the owner's store could not be reached to resolve names. Never an empty list here.",
             "items": {
               "type": "string"
             },
@@ -9127,6 +9723,10 @@
         "properties": {
           "enforcement": {
             "properties": {
+              "itipCancelRemoved": {
+                "description": "True if PIM_ITIP_CANCEL_REMOVED is on, so an organizer dropping an attendee from a calendar write cancels that attendee's copy (RFC 6638 3.2.1.2) rather than leaving it. Irreversible per event: there is no PIM undelete and no unsending.",
+                "type": "boolean"
+              },
               "sendLimits": {
                 "description": "True if outbound sending rate limits are actively enforced",
                 "type": "boolean"
@@ -9138,7 +9738,8 @@
             },
             "required": [
               "sendLimits",
-              "storageLimits"
+              "storageLimits",
+              "itipCancelRemoved"
             ],
             "type": "object"
           },
@@ -9387,26 +9988,33 @@
                 "$ref": "#/components/schemas/MessageMeta"
               },
               {
-                "description": "Metadata of the most recent message in the thread"
+                "description": "The conversation's list-row face: the newest live member THAT MATCHED THIS LISTING'S FILTER, or the newest live member when no filter was given. Matching means the same member that qualified the thread — the `label` and the flag filters together — so ?label=INBOX faces the row with the newest Inbox member and not with your own Sent reply, and ?label=INBOX&notFlags=seen faces it with the unread Inbox message that put the row on screen. This is JMAP's rule for Email/query with collapseThreads. Position is a different question and stays conversation-wide: see lastReceivedAt."
               }
             ]
           },
           "lastReceivedAt": {
-            "description": "Timestamp of newest message in epoch seconds",
+            "description": "When this conversation last had activity, in epoch seconds — the newest live member's arrival, ANYWHERE in the thread, which is also what the listing sorts by. May be newer than exemplar.receivedAt: the position is conversation-wide, the exemplar is folder-relative (see exemplar).",
             "format": "int64",
             "type": "integer"
           },
           "messageCount": {
-            "description": "Total number of messages in this conversation",
+            "description": "Live messages in this conversation, across every label — not just the one filtered by. Matches what GET /threads/{threadId} returns, so a row's count agrees with the conversation a client then renders.",
             "format": "int64",
             "type": "integer"
+          },
+          "participants": {
+            "description": "Distinct senders in the conversation, oldest first, deduplicated by address — the \"Carol, Alice, Bob\" line a conversation row shows, which the exemplar alone cannot supply. Conversation-wide like messageCount, so an Inbox row for a thread you replied to lists you as well. Bounded and capped at 8 entries: read from the conversation's opener plus its 20 newest live members, so a long thread reports who started it and who is still in it, and elides the middle. Scoped and trash-filtered like the rest of the row, so the Trash view of a conversation lists the people in its trashed half.",
+            "items": {
+              "$ref": "#/components/schemas/ThreadParticipant"
+            },
+            "type": "array"
           },
           "threadId": {
             "description": "Conversation thread ULID identifier",
             "type": "string"
           },
           "unseenCount": {
-            "description": "Number of unread messages in this conversation",
+            "description": "Unread live messages in this conversation, over the same population as messageCount. Read this and not exemplar's `seen` flag to decide whether a row is unread: the exemplar is one member and may be read while older ones are not.",
             "format": "int64",
             "type": "integer"
           }
@@ -9416,7 +10024,29 @@
           "messageCount",
           "unseenCount",
           "lastReceivedAt",
-          "exemplar"
+          "exemplar",
+          "participants"
+        ],
+        "type": "object"
+      },
+      "ThreadParticipant": {
+        "description": "One sender in the conversation; name is null when the From header carried no display name",
+        "properties": {
+          "email": {
+            "description": "Email address",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name or personal name, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "email"
         ],
         "type": "object"
       },
@@ -11127,6 +11757,259 @@
         ]
       }
     },
+    "/api/v1/accounts/{accountId}/events": {
+      "get": {
+        "description": "Returns paginated delivery events and attempt history across every domain owned by an account, with filtering by time range, outcome, source, or mailbox.",
+        "operationId": "get_AccountEvents",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Time window range ('1h', '6h', '24h', '7d', '30d')",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "description": "Time window range ('1h', '6h', '24h', '7d', '30d')",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by delivery outcome ('delivered', 'bounced', 'deferred', 'relayed', 'filtered')",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "description": "Filter by delivery outcome ('delivered', 'bounced', 'deferred', 'relayed', 'filtered')",
+              "enum": [
+                "delivered",
+                "duplicate",
+                "queued",
+                "filtered",
+                "rejected",
+                "bounced",
+                "deferred",
+                "relayed",
+                "relay_rejected",
+                "relay_suppressed",
+                "relay_indeterminate",
+                "relay_content_lost",
+                "webhook_delivered",
+                "webhook_route_gone",
+                "event_delivered",
+                "event_hook_disabled",
+                "event_hook_gone",
+                "member_skipped",
+                "member_failed",
+                "fbl_recorded",
+                "fbl_content_lost",
+                "dmarc_recorded",
+                "dmarc_content_lost",
+                "dmarc_unreadable",
+                "dmarc_unparseable",
+                "dmarc_rejected",
+                "dead_lettered",
+                "internal_error",
+                "check_refused",
+                "check_accepted",
+                "blob_missing",
+                "rate_limited",
+                "limiter_unavailable",
+                "auth_failed"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by traffic source ('inbound', 'outbound', 'relay', 'append', 'pickup')",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "description": "Filter by traffic source ('inbound', 'outbound', 'relay', 'append', 'pickup')",
+              "enum": [
+                "inbound",
+                "outbound",
+                "sent_copy",
+                "append",
+                "expansion",
+                "relay",
+                "webhook",
+                "pickup",
+                "edge",
+                "fbl",
+                "dmarc",
+                "bounce",
+                "events",
+                "api",
+                "check",
+                "read",
+                "auth"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "'mail' shows only rows where a message moved; 'all' (the default) also includes the rows where the platform describes itself — IMAP uploads, Sent copies, report ingestion, event-webhook batches and the per-RCPT gate. See the per-domain log for the full note.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "'mail' shows only rows where a message moved; 'all' (the default) also includes the rows where the platform describes itself — IMAP uploads, Sent copies, report ingestion, event-webhook batches and the per-RCPT gate. See the per-domain log for the full note.",
+              "enum": [
+                "mail",
+                "all"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by exact delivery ID",
+            "in": "query",
+            "name": "deliveryId",
+            "required": false,
+            "schema": {
+              "description": "Filter by exact delivery ID",
+              "maxLength": 640,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by mailbox ULID identifier",
+            "in": "query",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "description": "Filter by mailbox ULID identifier",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by envelope sender email address",
+            "in": "query",
+            "name": "envelopeFrom",
+            "required": false,
+            "schema": {
+              "description": "Filter by envelope sender email address",
+              "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by the row's detail marker — e.g. 'junk' for messages the platform filed into Junk, or a failure reason like 'sender_blocked'.",
+            "in": "query",
+            "name": "detail",
+            "required": false,
+            "schema": {
+              "description": "Filter by the row's detail marker — e.g. 'junk' for messages the platform filed into Junk, or a failure reason like 'sender_blocked'.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum events per page",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Maximum events per page",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Pagination cursor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountEvents"
+                }
+              }
+            },
+            "description": "Page of traffic delivery events across the account's domains"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed or invalid_cursor"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_query_failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_unavailable"
+          }
+        },
+        "summary": "Query account delivery event log",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/v1/accounts/{accountId}/limit-incidents": {
       "get": {
         "description": "The account's own limit episodes (enforced refusals only — shadow would-refuses are operator-facing), newest first: which limit fired, at what scope, when, and whether a notice was delivered to the account's notice mailbox.",
@@ -12383,6 +13266,82 @@
         ]
       }
     },
+    "/api/v1/accounts/{accountId}/recovery-policy": {
+      "put": {
+        "description": "Chooses whether mailbox users in this account may recover their own password (recovery codes, and the recovery address once it ships), or whether resets come from an admin only. admin_only keeps any existing recovery codes and addresses and refuses their use.",
+        "operationId": "put_RecoveryPolicySet",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "policy": {
+                    "description": "self_service: users may recover their own mailbox. admin_only: recovery rows are kept and refused",
+                    "enum": [
+                      "self_service",
+                      "admin_only"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "policy"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryPolicy"
+                }
+              }
+            },
+            "description": "The policy now in force"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Set the account's mailbox recovery policy",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
     "/api/v1/accounts/{accountId}/restore": {
       "post": {
         "description": "Cancels a pending account deletion during the grace period and restores access.",
@@ -12537,7 +13496,7 @@
     },
     "/api/v1/accounts/{accountId}/traffic": {
       "get": {
-        "description": "Returns total aggregated email volume and bytes across all domains owned by an account.",
+        "description": "Returns total aggregated email volume and bytes across all domains owned by an account. Pass `mailboxId` to narrow the same aggregate to one mailbox — the series a mailbox overview charts. That dimension was added to the analytics write later than the rest, so a mailbox-scoped window covers traffic recorded since; `GET /domains/{domain}/events` (or `/accounts/{accountId}/events`) with the same filter remains the authoritative log.",
         "operationId": "get_AccountTraffic",
         "parameters": [
           {
@@ -12565,6 +13524,17 @@
                 "7d",
                 "30d"
               ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Narrow the aggregate to a single mailbox ULID",
+            "in": "query",
+            "name": "mailboxId",
+            "required": false,
+            "schema": {
+              "description": "Narrow the aggregate to a single mailbox ULID",
+              "maxLength": 64,
               "type": "string"
             }
           }
@@ -12999,6 +13969,255 @@
         ]
       }
     },
+    "/api/v1/auth/recovery/complete": {
+      "post": {
+        "description": "Spends one proof and sets the mailbox password, rotating every password credential, revoking every expiring credential, and creating a password credential if the mailbox had none. The proof is one of: a mailed reset code with its ceremony handle, one unspent recovery code with the username, or a provisioning invitation code with the username (which also verifies the nominated recovery address) (system callers only).",
+        "operationId": "post_AuthRecoveryComplete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ceremonyId": {
+                    "description": "The handle from /auth/recovery/start. Send with `code`",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "code": {
+                    "description": "The mailed reset code. Send with `ceremonyId`",
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "invitationCode": {
+                    "description": "The 12-character code from a provisioning invitation. Send with `username`. Sets the mailbox's FIRST password and verifies the nominated recovery address in the same act",
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "newPassword": {
+                    "description": "The password to set",
+                    "maxLength": 1024,
+                    "minLength": 8,
+                    "type": "string"
+                  },
+                  "recoveryCode": {
+                    "description": "One unspent recovery code. Send with `username`",
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revokeAppPasswords": {
+                    "description": "Revoke the mailbox's non-expiring app passwords too. Off by default: a reset triggered by a forgotten password should not brick every mail client on every device",
+                    "type": "boolean"
+                  },
+                  "rpId": {
+                    "description": "The calling frontend's relying-party id. Send it ALWAYS on the ceremony branch, with or without an assertion: it is what lets a `second_factor_required` refusal be distinguished from `second_factor_elsewhere`, which is the difference between 'use your key' and 'finish this at the other hostname'",
+                    "maxLength": 253,
+                    "type": "string"
+                  },
+                  "username": {
+                    "description": "The login username or address being recovered. Send with `recoveryCode`",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "webauthn": {
+                    "description": "A WebAuthn assertion, when the mailbox has an enrolled key under `rpId`",
+                    "properties": {
+                      "credential": {
+                        "properties": {
+                          "id": {
+                            "description": "Base64url credential id",
+                            "maxLength": 1024,
+                            "type": "string"
+                          },
+                          "response": {
+                            "properties": {
+                              "authenticatorData": {
+                                "maxLength": 65536,
+                                "type": "string"
+                              },
+                              "clientDataJSON": {
+                                "maxLength": 65536,
+                                "type": "string"
+                              },
+                              "signature": {
+                                "maxLength": 65536,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "clientDataJSON",
+                              "authenticatorData",
+                              "signature"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "response"
+                        ],
+                        "type": "object"
+                      },
+                      "origin": {
+                        "description": "The origin the browser stamped into clientDataJSON",
+                        "maxLength": 1024,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "origin",
+                      "credential"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "newPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCompleted"
+                }
+              }
+            },
+            "description": "The reset, and what it invalidated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_code (no such unspent code for this username, or the username does not resolve to a mailbox; on the ceremony and invitation branches a wrong code, with attemptsLeft); ceremony_expired (consumed, lapsed, killed by its attempt counter, or never opened: one answer, because start hands out an id either way); invitation_expired (the same four states for a provisioning invitation, under its own code because the remedy is to ask for another rather than to start one); second_factor_required, carrying the WebAuthn `options` to pass to navigator.credentials.get() (the mailbox has a key under your rpId: run the ceremony and call again with `webauthn`); second_factor_elsewhere with rpIds (its keys are at other hostnames, so finish there or use a recovery code); second_factor_failed; recovery_disabled (the account policy is admin_only; NOT applied to the invitation branch, which is provisioning); system_credentials_required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invitation_superseded: the mailbox acquired a password credential after the invitation was sent, so it is live and a stale invitation must not take it over"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited: too many code submissions for this identity or forwarded client IP. Or code_locked, meaning the identity's hard attempt counter is spent and the surface is closed for an hour"
+          }
+        },
+        "summary": "Complete a recovery with a recovery code",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/auth/recovery/start": {
+      "post": {
+        "description": "Mails an 8-character reset code to the mailbox's verified recovery address and answers 202 with a ceremony id. Answers 202 whether or not the username exists, has a verified address, is past its cooldown, or belongs to a live account, and dispatches the mail asynchronously so the latency does not encode which happened (system callers only).",
+        "operationId": "post_AuthRecoveryStart",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "surface": {
+                    "description": "The calling frontend's display name, shown in the message so a user can tell a code they asked for from one they did not",
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "username": {
+                    "description": "The login username or address being recovered",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "username"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCeremonyStarted"
+                }
+              }
+            },
+            "description": "A ceremony was opened, or was not. Indistinguishable by design"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited: too many starts for this username or forwarded client IP"
+          }
+        },
+        "summary": "Start a password recovery by mail",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
     "/api/v1/auth/verify": {
       "post": {
         "description": "Verifies a username and password against mailbox credentials and returns sender permissions (system callers only).",
@@ -13099,7 +14318,7 @@
                 }
               }
             },
-            "description": "rate_limited — too many verification attempts for this username or forwarded client IP; retry after the Retry-After window. One indistinguishable answer for both dimensions"
+            "description": "rate_limited: too many verification attempts for this username or forwarded client IP; retry after the Retry-After window. One indistinguishable answer for both dimensions"
           }
         },
         "summary": "Verify mailbox credentials",
@@ -13583,7 +14802,7 @@
                 }
               }
             },
-            "description": "unknown_address — recipient address does not resolve to an active route. Permanent: 550 5.1.1."
+            "description": "unknown_address — recipient address does not resolve to an active route. Permanent: 550 5.1.1. For SYSTEM callers the body also carries `domain_hosted`; when it is false the recipient's domain was never ours, the session is a relay attempt, and the honest SMTP reply is 550 5.7.1 (relaying denied) rather than 5.1.1 — then `sender_hosted: true` additionally means the MAIL FROM domain IS hosted here, i.e. one of our own users' clients submitting to the MX instead of ports 465/587, and the MTA should say so in the reply text. Both fields are absent for account callers (the foreign-domain collapse must stay indistinguishable from a miss) and on non-core backends; an MTA must treat absence as unknown and keep 5.1.1."
           },
           "429": {
             "content": {
@@ -14137,6 +15356,152 @@
         ]
       }
     },
+    "/api/v1/deliver/reject": {
+      "post": {
+        "description": "Records a message the inbound MTA refused in-session at DATA, so the recipient can see mail that was evaluated and destroyed rather than delivered — the enforce-mode spam rejection that otherwise leaves no trace anywhere. One traffic row is written per recipient (source `edge`, outcome `rejected`, the reason in `detail`). System credentials only. Advisory and best-effort: the MTA calls this after it has decided its SMTP reply, so a failure here costs a log row and never a delivery decision. Refusals that precede RCPT (no rDNS, DNSBL, per-IP rate limits) must NOT be reported: they have no tenant to belong to. Never billable — a refused message was not delivered.",
+        "operationId": "post_DeliverReject",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "clientIp": {
+                    "description": "The connecting client's IP address",
+                    "maxLength": 64,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "deliveryId": {
+                    "description": "The MX's X-Delivery-Id stem for this message — correlates the refusal with the session's other rows",
+                    "maxLength": 640,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "envelopeFrom": {
+                    "description": "MAIL FROM, or empty/absent for the null sender",
+                    "maxLength": 320,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "messageIdHeader": {
+                    "description": "The Message-ID header, if the message had one",
+                    "maxLength": 500,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "description": "Why the message was refused. Known values: spam_reject, spam_soft_reject, dmarc_reject, dmarc_quarantine, mail_loop, too_many_hops, header_from_not_owned, null_sender_multi_recipient, message_too_large, rate_limit, other. Anything else is recorded as 'other'.",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "recipients": {
+                    "description": "The accepted RCPT TO addresses this refusal applies to — one row is written per recipient",
+                    "items": {
+                      "maxLength": 320,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "response": {
+                    "description": "The SMTP reply text the sending server received",
+                    "maxLength": 500,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sizeBytes": {
+                    "description": "Message size in bytes",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "smtpCode": {
+                    "description": "The SMTP status the MX answered (550 permanent, 451 temporary)",
+                    "maximum": 599,
+                    "minimum": 400,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sourceHost": {
+                    "description": "The receiving MX's own hostname",
+                    "maxLength": 255,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "spamScore": {
+                    "description": "The filter's score, when the refusal came from a spam verdict",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "subject": {
+                    "description": "The message subject, for identifying a false positive",
+                    "maxLength": 256,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "deliveryId",
+                  "recipients",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Refusal accepted for recording (the write is best-effort and off this response)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "insufficient_scope — only a system key may report refusals. An account or mailbox principal reporting a refusal would be asserting what happened to somebody else's mail."
+          }
+        },
+        "summary": "Report a DATA-time refusal (system only)",
+        "tags": [
+          "Delivery"
+        ]
+      }
+    },
     "/api/v1/deliveries/fetch/{token}": {
       "get": {
         "description": "Redeems a signed webhook token URL to download a large attachment or original raw MIME message without requiring an API key.",
@@ -14453,9 +15818,19 @@
     },
     "/api/v1/domains": {
       "get": {
-        "description": "Returns a paginated list of domains owned by this account with optional mailbox counts and sampled storage metrics.",
+        "description": "Returns a paginated list of domains owned by this account with optional mailbox counts and sampled storage metrics. A SYSTEM caller lists every domain on the deployment, and may narrow to one tenant with `accountId`.",
         "operationId": "get_DomainList",
         "parameters": [
+          {
+            "description": "System callers only: list just this account's domains (ignored for account principals, which always see their own)",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "System callers only: list just this account's domains (ignored for account principals, which always see their own)",
+              "type": "string"
+            }
+          },
           {
             "description": "Set to 'true' to include mailbox counts per domain",
             "in": "query",
@@ -14621,7 +15996,7 @@
         },
         "responses": {
           "200": {
-            "description": "ingestion_not_writable — fbl and dmarc turn the whole domain into a report-ingestion sink and are operator state; only a system caller may turn one on. Re-sending the value the domain already carries (as well as false, or omitting them) is unaffected"
+            "description": "ingestion_not_writable: fbl and dmarc turn the whole domain into a report-ingestion sink and are operator state; only a system caller may turn one on. Re-sending the value the domain already carries (as well as false, or omitting them) is unaffected"
           },
           "409": {
             "content": {
@@ -14875,7 +16250,7 @@
                 }
               }
             },
-            "description": "sending_not_writable — account callers earn canSend by publishing DNS and re-POSTing /domains; only a system caller may grant it outright. Refused for ANY canSend:true from a non-system caller, a domain that already sends included, since the assertion is never what grants sending. ingestion_not_writable — the fbl/dmarc ingestion flags are operator state, so only a system caller may turn one on (an owner may turn them off, and may re-send an unchanged value; a re-send racing an operator's revoke is refused, never re-enabled, and then nothing else in the patch is applied either). dns_status_not_writable — dnsStatus is the platform's resolved verdict, written by POST /domains/:domain/dns/check"
+            "description": "sending_not_writable: account callers earn canSend by publishing DNS and re-POSTing /domains; only a system caller may grant it outright. Refused for ANY canSend:true from a non-system caller, a domain that already sends included, since the assertion is never what grants sending. ingestion_not_writable: the fbl/dmarc ingestion flags are operator state, so only a system caller may turn one on (an owner may turn them off, and may re-send an unchanged value; a re-send racing an operator's revoke is refused, never re-enabled, and then nothing else in the patch is applied either). dns_status_not_writable, dnsStatus is the platform's resolved verdict, written by POST /domains/:domain/dns/check"
           },
           "404": {
             "content": {
@@ -15560,6 +16935,7 @@
                 "duplicate",
                 "queued",
                 "filtered",
+                "rejected",
                 "bounced",
                 "deferred",
                 "relayed",
@@ -15609,6 +16985,7 @@
                 "relay",
                 "webhook",
                 "pickup",
+                "edge",
                 "fbl",
                 "dmarc",
                 "bounce",
@@ -15617,6 +16994,21 @@
                 "check",
                 "read",
                 "auth"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "'mail' shows only rows where a message moved — arrived, left, reached a member or a webhook route, was collected from another provider, or its sender was told it failed. 'all' (the default, so no client changes behaviour) adds the rows where the platform describes itself: IMAP uploads, Sent copies, report ingestion, event-webhook batches and the per-RCPT gate. A customer-facing delivery log wants 'mail' — one inbound message writes a gate row AND a delivery row, so 'all' counts it twice.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "'mail' shows only rows where a message moved — arrived, left, reached a member or a webhook route, was collected from another provider, or its sender was told it failed. 'all' (the default, so no client changes behaviour) adds the rows where the platform describes itself: IMAP uploads, Sent copies, report ingestion, event-webhook batches and the per-RCPT gate. A customer-facing delivery log wants 'mail' — one inbound message writes a gate row AND a delivery row, so 'all' counts it twice.",
+              "enum": [
+                "mail",
+                "all"
               ],
               "type": "string"
             }
@@ -15653,6 +17045,18 @@
             "schema": {
               "description": "Filter by envelope sender email address",
               "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by the row's detail marker — e.g. 'junk' for messages the platform filed into Junk, or a failure reason like 'sender_blocked'.",
+            "in": "query",
+            "name": "detail",
+            "required": false,
+            "schema": {
+              "description": "Filter by the row's detail marker — e.g. 'junk' for messages the platform filed into Junk, or a failure reason like 'sender_blocked'.",
+              "maxLength": 64,
               "minLength": 1,
               "type": "string"
             }
@@ -16684,9 +18088,19 @@
     },
     "/api/v1/mailboxes": {
       "get": {
-        "description": "Lists mailboxes for the authenticated account. Set state=deleted to list restorable tombstones (deleted mailboxes still within the undo window).",
+        "description": "Lists mailboxes for the authenticated account. Set state=deleted to list restorable tombstones (deleted mailboxes still within the undo window). A SYSTEM caller lists every mailbox on the deployment, and may narrow to one tenant with `accountId`.",
         "operationId": "get_MailboxList",
         "parameters": [
+          {
+            "description": "System callers only: list just this account's mailboxes (ignored for account principals, which always see their own)",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "System callers only: list just this account's mailboxes (ignored for account principals, which always see their own)",
+              "type": "string"
+            }
+          },
           {
             "description": "deleted: list restorable tombstones instead of live mailboxes",
             "in": "query",
@@ -17322,7 +18736,7 @@
                     "type": "string"
                   },
                   "name": {
-                    "description": "URL slug — letters, digits, and . _ ~ - (the DAV path segment)",
+                    "description": "URL slug: letters, digits, and . _ ~ - (the DAV path segment)",
                     "maxLength": 64,
                     "minLength": 1,
                     "type": "string"
@@ -17921,7 +19335,7 @@
                 }
               }
             },
-            "description": "forbidden — read-only grant"
+            "description": "forbidden: read-only grant"
           },
           "404": {
             "content": {
@@ -18087,7 +19501,7 @@
                 }
               }
             },
-            "description": "expand_requires_range, or search_term_too_long"
+            "description": "expand_requires_range, search_term_too_long, or progress_requires_vtodo (progress is a task filter and cannot be combined with a non-VTODO component)"
           },
           "404": {
             "content": {
@@ -18206,7 +19620,7 @@
                 }
               }
             },
-            "description": "forbidden — read-only grant"
+            "description": "forbidden: read-only grant"
           },
           "404": {
             "content": {
@@ -18226,7 +19640,7 @@
                 }
               }
             },
-            "description": "precondition_failed — If-Match not satisfied"
+            "description": "precondition_failed: If-Match not satisfied"
           }
         },
         "summary": "Delete addressbook object",
@@ -18417,7 +19831,7 @@
                 }
               }
             },
-            "description": "forbidden — read-only grant"
+            "description": "forbidden: read-only grant"
           },
           "404": {
             "content": {
@@ -18437,7 +19851,7 @@
                 }
               }
             },
-            "description": "uid_conflict — the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
+            "description": "uid_conflict: the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
           },
           "412": {
             "content": {
@@ -18447,7 +19861,7 @@
                 }
               }
             },
-            "description": "precondition_failed — If-Match/If-None-Match not satisfied"
+            "description": "precondition_failed: If-Match/If-None-Match not satisfied"
           },
           "413": {
             "content": {
@@ -18624,7 +20038,7 @@
                 }
               }
             },
-            "description": "precondition_failed — If-Match not satisfied"
+            "description": "precondition_failed: If-Match not satisfied"
           }
         },
         "summary": "Move or rename addressbook object",
@@ -19132,7 +20546,7 @@
                     "type": "string"
                   },
                   "name": {
-                    "description": "URL slug — letters, digits, and . _ ~ - (the DAV path segment)",
+                    "description": "URL slug: letters, digits, and . _ ~ - (the DAV path segment)",
                     "maxLength": 64,
                     "minLength": 1,
                     "type": "string"
@@ -19476,6 +20890,20 @@
             "required": true,
             "schema": {
               "description": "Collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Send iTIP scheduling messages for this write: 'true' cancels as organizer or declines as attendee, 'false' sends nothing. Absent keeps the default — organizers schedule, attendees stay silent.",
+            "in": "query",
+            "name": "notify",
+            "required": false,
+            "schema": {
+              "description": "Send iTIP scheduling messages for this write: 'true' cancels as organizer or declines as attendee, 'false' sends nothing. Absent keeps the default — organizers schedule, attendees stay silent.",
+              "enum": [
+                "true",
+                "false"
+              ],
               "type": "string"
             }
           }
@@ -19923,7 +21351,7 @@
                 }
               }
             },
-            "description": "forbidden — read-only grant"
+            "description": "forbidden: read-only grant"
           },
           "404": {
             "content": {
@@ -20092,6 +21520,24 @@
             }
           },
           {
+            "description": "Task completion filter (VTODO only, and narrows to VTODO on its own). 'active' (not completed or cancelled) and 'closed' (completed or cancelled) are exact complements, so a working list and an archive between them lose no task; the rest are JSTask's own progress values. An absent or unrecognized STATUS counts as needs-action, per RFC 5545",
+            "in": "query",
+            "name": "progress",
+            "required": false,
+            "schema": {
+              "description": "Task completion filter (VTODO only, and narrows to VTODO on its own). 'active' (not completed or cancelled) and 'closed' (completed or cancelled) are exact complements, so a working list and an archive between them lose no task; the rest are JSTask's own progress values. An absent or unrecognized STATUS counts as needs-action, per RFC 5545",
+              "enum": [
+                "active",
+                "closed",
+                "needs-action",
+                "in-process",
+                "completed",
+                "cancelled"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Case-insensitive substring over each event's summary and location",
             "in": "query",
             "name": "q",
@@ -20122,7 +21568,7 @@
                 }
               }
             },
-            "description": "expand_requires_range, or search_term_too_long"
+            "description": "expand_requires_range, search_term_too_long, or progress_requires_vtodo (progress is a task filter and cannot be combined with a non-VTODO component)"
           },
           "404": {
             "content": {
@@ -20255,7 +21701,7 @@
                 }
               }
             },
-            "description": "forbidden — read-only grant"
+            "description": "forbidden: read-only grant"
           },
           "404": {
             "content": {
@@ -20275,7 +21721,7 @@
                 }
               }
             },
-            "description": "precondition_failed — If-Match not satisfied"
+            "description": "precondition_failed: If-Match not satisfied"
           }
         },
         "summary": "Delete calendar object",
@@ -20480,7 +21926,7 @@
                 }
               }
             },
-            "description": "forbidden — read-only grant"
+            "description": "forbidden: read-only grant"
           },
           "404": {
             "content": {
@@ -20500,7 +21946,7 @@
                 }
               }
             },
-            "description": "uid_conflict — the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
+            "description": "uid_conflict: the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
           },
           "412": {
             "content": {
@@ -20510,7 +21956,7 @@
                 }
               }
             },
-            "description": "precondition_failed — If-Match/If-None-Match not satisfied"
+            "description": "precondition_failed: If-Match/If-None-Match not satisfied"
           },
           "413": {
             "content": {
@@ -20687,7 +22133,7 @@
                 }
               }
             },
-            "description": "precondition_failed — If-Match not satisfied"
+            "description": "precondition_failed: If-Match not satisfied"
           }
         },
         "summary": "Move or rename calendar object",
@@ -20810,7 +22256,7 @@
                 }
               }
             },
-            "description": "not_attendee — the caller is not on this event"
+            "description": "not_attendee: the caller is not on this event"
           },
           "404": {
             "content": {
@@ -20830,7 +22276,7 @@
                 }
               }
             },
-            "description": "conflict — the copy changed concurrently under the reply; retry"
+            "description": "conflict: the copy changed concurrently under the reply; retry"
           }
         },
         "summary": "RSVP to calendar invitation",
@@ -21357,7 +22803,7 @@
                   {
                     "properties": {
                       "expiresInSeconds": {
-                        "description": "Lifetime in seconds. The credential stops authenticating once it elapses — for a client minting one per browser session, so a closed tab cannot leave a permanently valid key behind. Omit for a credential that never expires (the default, and what a mail client wants)",
+                        "description": "Lifetime in seconds. The credential stops authenticating once it elapses: for a client minting one per browser session, so a closed tab cannot leave a permanently valid key behind. Omit for a credential that never expires (the default, and what a mail client wants)",
                         "maximum": 31536000,
                         "minimum": 60,
                         "type": "integer"
@@ -21487,6 +22933,80 @@
         "summary": "Revoke a mailbox credential",
         "tags": [
           "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/deliveries": {
+      "get": {
+        "description": "Batch delivery status, so a thread or a page of the Sent folder costs one request rather than one per message. Exactly one of `threadId` or `messageIds` is required. Messages with no delivery record are simply absent from the response — the list is never padded with placeholders, and a short answer is not an error.",
+        "operationId": "get_DeliveriesList",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Conversation thread identifier",
+            "in": "query",
+            "name": "threadId",
+            "required": false,
+            "schema": {
+              "description": "Conversation thread identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated message identifiers (at most 100)",
+            "in": "query",
+            "name": "messageIds",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated message identifiers (at most 100)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageDeliveryList"
+                }
+              }
+            },
+            "description": "Delivery statuses for the messages that have one"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "Neither or both selectors given, or too many message ids"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible"
+          }
+        },
+        "summary": "List delivery statuses for a thread or a set of messages",
+        "tags": [
+          "Delivery"
         ]
       }
     },
@@ -21774,6 +23294,123 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/invitation": {
+      "post": {
+        "description": "Nominates an address as this mailbox's recovery address and mails it one code. If the mailbox has NO password credential the code sets the first password and verifies the address in the same act (7 days); if it already has one, the code is an ordinary 24-hour confirmation code that sets nothing and can only be spent from the mailbox's own session. Never re-sent automatically: calling again replaces the outstanding invitation with a fresh code. Callable with an account key or a system key.",
+        "operationId": "post_MailboxInvitationCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "email": {
+                    "description": "The address to nominate as this mailbox's recovery address, and to mail the code to",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "surface": {
+                    "description": "The hostname to tell the recipient to sign in at, e.g. mail.open.email. Printed as a bare hostname and never as a link (§XVII.7): a user being invited has never been here, and a code with no destination is a dead end",
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryInvitationSent"
+                }
+              }
+            },
+            "description": "Which message went out, and whether the address was kept"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; or recovery_address_self, meaning the address reaches the mailbox it would recover, which is a closed loop"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_disabled: the account's policy is admin_only AND the mailbox already has a password, so there is nothing an invitation could do that the policy permits"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_address_verified: this mailbox already has a VERIFIED recovery address. Re-pointing one is PUT /recovery, which re-proves the mailbox's password; an invitation may only nominate where there is nothing to displace"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited: too many invitations for this mailbox, or too much mail to that destination"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_mail_unavailable: this deployment cannot send mail, so the code could never arrive"
+          }
+        },
+        "summary": "Invite a mailbox user to set their own password",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/labels": {
       "get": {
         "description": "Returns all system and custom labels with message counts, unread counts, UID validity, and next UID sequence numbers. For the owner identity it also reports how many sends are scheduled and not yet released, so a client can decide whether to offer a Scheduled view without a second request.",
@@ -21902,7 +23539,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/labels/{label}": {
       "delete": {
-        "description": "Deletes a custom label. Messages carrying this label will retain any other labels they have.",
+        "description": "Deletes a custom label. Messages carrying this label will retain any other labels they have.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
         "operationId": "delete_LabelDelete",
         "parameters": [
           {
@@ -23387,7 +25024,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/messages": {
       "delete": {
-        "description": "Permanently purges all messages from the trash with state=expunged, or deletes a batch of specified message IDs.",
+        "description": "Permanently purges every row on the Recently-deleted tier with state=expunged, or deletes the messages named by `ids` and/or the conversations named by `threadIds`. These are the only two gestures in the API that cannot be undone by moving mail back (`purge=true` destroys; without it the rows drop to the Recently-deleted tier and age out), so a conversation named here MUST also carry `threadLabel`, the folder it was being viewed in. Omitting it is `thread_context_required`, never a default: a conversation routinely has one member in Trash and another still in the Inbox, and a Trash-view delete that expanded to the default set would take the Inbox copy with it. `threadIds` names LIVE conversations only — the Recently-deleted tier has no conversation view, so purging rows there is an `ids` gesture.",
         "operationId": "delete_MessageEmptyTrash",
         "parameters": [
           {
@@ -23439,6 +25076,20 @@
                     "maxItems": 200,
                     "minItems": 1,
                     "type": "array"
+                  },
+                  "threadIds": {
+                    "description": "Conversation IDs to delete, expanded server-side to the members visible in `threadLabel` — which is REQUIRED alongside this. Refused with thread_too_large past 1000 expanded messages rather than deleting part of a conversation.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "threadLabel": {
+                    "description": "The folder each conversation in `threadIds` was being viewed in — the same value passed to GET /threads/{threadId}?label=, so the delete reaches exactly the members that view rendered. Inside Trash that is the trashed members; anywhere else it is the live, non-trashed ones. Required with `threadIds`, and validated: an unknown folder is unknown_label, not a fall back to the default set.",
+                    "minLength": 1,
+                    "type": "string"
                   }
                 },
                 "type": "object"
@@ -23472,7 +25123,7 @@
                 }
               }
             },
-            "description": "validation_failed, delete_target_required, or delete_target_exclusive"
+            "description": "validation_failed, delete_target_required, delete_target_exclusive, thread_context_required, unknown_label, or thread_too_large"
           },
           "404": {
             "content": {
@@ -23485,7 +25136,7 @@
             "description": "Mailbox not found or not accessible to this principal"
           }
         },
-        "summary": "Empty trash or delete batch of messages",
+        "summary": "Empty trash, or delete a batch of messages or whole conversations",
         "tags": [
           "Messages"
         ]
@@ -23577,12 +25228,12 @@
             }
           },
           {
-            "description": "live (default): ordinary listing. expunged: the trash — soft-deleted messages awaiting restore or purge, with expungedAt/purgeAfter and their pre-expunge labels",
+            "description": "live (default): ordinary listing, including messages on the Trash LABEL. expunged: the Recently-deleted TIER — a different place, whose rows have no labels at all and are purged after purgeAfter — carrying expungedAt/purgeAfter, the labels held at expunge, and restoresTo",
             "in": "query",
             "name": "state",
             "required": false,
             "schema": {
-              "description": "live (default): ordinary listing. expunged: the trash — soft-deleted messages awaiting restore or purge, with expungedAt/purgeAfter and their pre-expunge labels",
+              "description": "live (default): ordinary listing, including messages on the Trash LABEL. expunged: the Recently-deleted TIER — a different place, whose rows have no labels at all and are purged after purgeAfter — carrying expungedAt/purgeAfter, the labels held at expunge, and restoresTo",
               "enum": [
                 "live",
                 "expunged"
@@ -23666,7 +25317,7 @@
         ]
       },
       "patch": {
-        "description": "Applies flag, label, and keyword updates across multiple messages in a single atomic operation.",
+        "description": "Applies flag, label, and keyword updates across multiple messages in a single atomic operation. Name the targets by `ids`, by `threadIds`, or both: `threadIds` is expanded to the conversation's members server-side, in the same transaction as the write, so a reply that arrives while the request is in flight is either wholly in the gesture or wholly outside it. That is the difference from expanding it client-side, which also truncates at whatever page of members the client happened to hold. Expansion is the set GET /threads/{threadId} returns: live members in your grant, Trash excluded. `ids` may name a trashed or otherwise excluded message directly — the operand chooses targets, it does not restrict them.",
         "operationId": "patch_MessageBatchUpdate",
         "parameters": [
           {
@@ -23767,15 +25418,26 @@
                     },
                     "type": "array"
                   },
+                  "threadIds": {
+                    "description": "Conversation IDs whose members to update, expanded server-side. A stale ID from before a thread merge resolves transparently, as on GET /threads/{threadId}. Refused with thread_too_large past 1000 expanded messages, rather than acting on some of them.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "threadLabel": {
+                    "description": "The folder each conversation in `threadIds` was being viewed in — the same value passed to GET /threads/{threadId}?label=, so the patch reaches exactly the members that view rendered. Omitted, the expansion is the default view: live members in your grant with Trash excluded. Pass the Trash folder to patch a conversation's trashed members instead, which the default deliberately leaves alone. Optional here and REQUIRED on DELETE /messages, where guessing wrong destroys a member the user was not looking at rather than re-filing one they can see.",
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "unchangedSince": {
                     "description": "Conditional update precondition: update only if modseq <= unchangedSince",
                     "minimum": 0,
                     "type": "integer"
                   }
                 },
-                "required": [
-                  "ids"
-                ],
                 "type": "object"
               }
             }
@@ -23800,7 +25462,7 @@
                 }
               }
             },
-            "description": "validation_failed or invalid label/keyword"
+            "description": "validation_failed, invalid label/keyword, target_required (neither ids nor threadIds given), or thread_too_large"
           },
           "404": {
             "content": {
@@ -23813,7 +25475,7 @@
             "description": "Mailbox not found or not accessible to this principal"
           }
         },
-        "summary": "Update flags and labels for multiple messages",
+        "summary": "Update flags and labels for multiple messages or whole conversations",
         "tags": [
           "Messages"
         ]
@@ -24634,7 +26296,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/messages/restore": {
       "post": {
-        "description": "Restores a batch of soft-deleted messages from trash in a single atomic operation.",
+        "description": "Restores a batch of messages from the Recently-deleted tier in a single atomic operation, each back to where it was filed (restoresTo). For messages on the Trash LABEL use POST /messages/untrash instead.",
         "operationId": "post_MessageBatchRestore",
         "parameters": [
           {
@@ -24702,6 +26364,87 @@
           }
         },
         "summary": "Restore multiple messages from trash",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/untrash": {
+      "post": {
+        "description": "Removes the Trash label from a batch of messages. Where each one lands is its restoresTo: whatever it carries besides Trash if anything, otherwise the filing recorded when it was trashed, otherwise Inbox. Reports as an update on /changes (the rows were never hidden), unlike POST /messages/restore, which reports `created`. For a message on the Recently-deleted TIER use that endpoint instead; here such an id answers not_found. `threadIds` puts a whole conversation back: it expands, server-side and in the same transaction, to the members that are IN the Trash — the mirror of the expansion on POST /messages/patch, and the only set this verb can act on. A conversation with nothing trashed expands to nothing and the call is a no-op.",
+        "operationId": "post_MessageBatchUntrash",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ids": {
+                    "description": "Array of message IDs to take out of Trash",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "threadIds": {
+                    "description": "Conversation IDs whose TRASHED members to take out of Trash, expanded server-side. Refused with thread_too_large past 1000 expanded messages.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchUntrashResult"
+                }
+              }
+            },
+            "description": "Batch untrash outcomes per message"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, target_required (neither ids nor threadIds given), or thread_too_large"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Take messages out of Trash, back to where they were filed",
         "tags": [
           "Messages"
         ]
@@ -24849,7 +26592,7 @@
         ]
       },
       "patch": {
-        "description": "Updates message flags, adds or removes labels, and modifies custom keywords. Removing all labels from a message moves it to trash.",
+        "description": "Updates message flags, adds or removes labels, and modifies custom keywords. Removing a message's LAST label expunges it to the Recently-deleted tier (restorable until purgeAfter) — it does not attach the Trash label. A label write that leaves the message carrying only Trash is a delete: its previous filing is recorded as restoresTo, and POST /messages/untrash reverses it.",
         "operationId": "patch_MessageUpdate",
         "parameters": [
           {
@@ -25069,6 +26812,60 @@
         "summary": "Get parsed message content and attachments",
         "tags": [
           "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/delivery": {
+      "get": {
+        "description": "Delivery status and per-recipient progress for a sent message: local acceptance, acceptance by the destination mail system, or the bounce/rejection reason. `messageId` accepts the Sent copy's message id, the delivery id returned by /send, or the submission id. Answers 404 when there is no delivery record — a message older than the 30-day retention window, or one this mailbox did not send — which callers should render as plain 'sent', not as an error.",
+        "operationId": "get_MessageDeliveryGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Message, delivery or submission identifier",
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "description": "Message, delivery or submission identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageDeliveryStatus"
+                }
+              }
+            },
+            "description": "Delivery status for the requested message"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found, or the message has no delivery record"
+          }
+        },
+        "summary": "Get delivery status of a sent message",
+        "tags": [
+          "Delivery"
         ]
       }
     },
@@ -25417,7 +27214,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/restore": {
       "post": {
-        "description": "Restores a soft-deleted message from trash back to its previous labels or Inbox.",
+        "description": "Restores one message from the Recently-deleted tier back to where it was filed (restoresTo), or Inbox when that is no longer resolvable. For a message on the Trash LABEL use POST /messages/untrash instead. Reports as `created` on /changes, since the row was hidden and is now back.",
         "operationId": "post_MessageRestore",
         "parameters": [
           {
@@ -25567,6 +27364,82 @@
           }
         },
         "summary": "Change mailbox login password",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/password/reset": {
+      "post": {
+        "description": "Sets a new password on every password credential the mailbox has, creating one if it has none, and revokes every expiring credential (browser sessions) so nothing minted before the reset survives it. App passwords are kept unless revokeAppPasswords is set. The mailbox is notified. Callable with an account key or a system key; a mailbox's own bearer uses PUT /password instead, which proves the current password.",
+        "operationId": "post_MailboxPasswordReset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "newPassword": {
+                    "description": "The password to set",
+                    "maxLength": 1024,
+                    "minLength": 8,
+                    "type": "string"
+                  },
+                  "revokeAppPasswords": {
+                    "description": "Revoke the mailbox's non-expiring app passwords too. Off by default, on when the reset is a response to a compromise rather than to a forgotten password",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "newPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCompleted"
+                }
+              }
+            },
+            "description": "What the reset changed and what it invalidated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Reset a mailbox password as an administrator",
         "tags": [
           "Credentials"
         ]
@@ -26674,6 +28547,427 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/recovery": {
+      "delete": {
+        "description": "Removes the verified address and any pending one, and notifies both the mailbox and the address being removed. The mailbox's own bearer must re-prove the current password; an account admin need not, because they cannot know it. Recovery codes are untouched.",
+        "operationId": "delete_RecoveryAddressDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "currentPassword": {
+                    "description": "The mailbox's current password. Required for the mailbox's own bearer, ignored for an account admin",
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryAddressDeleted"
+                }
+              }
+            },
+            "description": "The address is gone, or there was none"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "password_required, for the mailbox's own bearer"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential: the mailbox's own bearer has no password to re-prove"
+          }
+        },
+        "summary": "Remove the mailbox's recovery address",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "get": {
+        "description": "Reports whether this mailbox has a verified recovery address and how many recovery codes remain. The address is masked for every principal except system.",
+        "operationId": "get_RecoveryStatusRead",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryStatus"
+                }
+              }
+            },
+            "description": "Recovery posture"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read mailbox recovery posture",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "put": {
+        "description": "Stores an address as PENDING and mails it an 8-character confirmation code, valid for 24 hours. A pending address is never a reset target, and any address already verified keeps working until the new one is confirmed. Requires the current password.",
+        "operationId": "put_RecoveryAddressSet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "The address to send recovery mail to",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "currentPassword": {
+                    "description": "The mailbox's current password, re-proved",
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "address",
+                  "currentPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryAddressPending"
+                }
+              }
+            },
+            "description": "The address is pending confirmation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; password_required; or recovery_address_self, meaning the address reaches the mailbox it would recover, which is a closed loop"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password; or recovery_disabled, meaning the account's policy is admin_only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential: the mailbox has no password to re-prove"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited: too many address changes, or too much mail to that destination"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_mail_unavailable: this deployment cannot send mail, so a confirmation code could never arrive. Refused rather than stored, because a permanently pending address is worse than no address"
+          }
+        },
+        "summary": "Set the mailbox's recovery address",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/recovery/codes": {
+      "post": {
+        "description": "Issues a fresh set of ten single-use recovery codes and returns the plaintext exactly once, invalidating any previous set. Requires the current password.",
+        "operationId": "post_RecoveryCodesCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "currentPassword": {
+                    "description": "The mailbox's current password, re-proved",
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "currentPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesIssued"
+                }
+              }
+            },
+            "description": "The codes, shown once"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed or password_required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password: the current password did not match. Or recovery_disabled: the account's policy is admin_only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential: the mailbox has no password to re-prove, so it cannot pass the sudo gate"
+          }
+        },
+        "summary": "Issue mailbox recovery codes",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/recovery/confirm": {
+      "post": {
+        "description": "Spends the mailed confirmation code and promotes the pending address to verified. A newly verified address that REPLACES one may receive notices but cannot drive a reset for 72 hours; the first address on a mailbox is usable at once.",
+        "operationId": "post_RecoveryAddressConfirm",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "code": {
+                    "description": "The 8-character code mailed to the pending address",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryAddressVerified"
+                }
+              }
+            },
+            "description": "The address is verified"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; or no_pending_address, meaning nothing is awaiting confirmation or it expired. One answer for both, so this cannot report whether an address is pending"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the fifth wrong code and the pending address was dropped. Set it again"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Confirm the mailbox's pending recovery address",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/reindex": {
       "post": {
         "description": "Re-enqueues background full-text indexing jobs for any unindexed messages in a mailbox (system callers only).",
@@ -26925,7 +29219,7 @@
                 }
               }
             },
-            "description": "validation_failed — malformed rules document"
+            "description": "validation_failed — malformed rules document; or destination_is_self / destination_loops / destination_chain_too_long when a redirect target routes back to this mailbox"
           },
           "404": {
             "content": {
@@ -28709,7 +31003,7 @@
                 }
               }
             },
-            "description": "validation_failed — malformed name or body"
+            "description": "validation_failed — malformed name or body; or destination_is_self / destination_loops / destination_chain_too_long when a redirect target routes back to this mailbox"
           },
           "403": {
             "content": {
@@ -28868,7 +31162,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/threads": {
       "get": {
-        "description": "Returns conversation threads grouped by subject with participant lists, message counts, and snippet preview. Supports filtering by label and unread/starred flags.",
+        "description": "Returns conversation threads, newest activity first, one row per conversation: participants, message and unread counts, and an exemplar message carrying the subject and snippet a row renders. Grouping is by REPLY CHAIN (In-Reply-To/References), never by subject — two unrelated messages sharing a subject are two conversations, and a renamed reply stays in the one it answers. Filtering by `label` and by unread/starred flags uses Gmail semantics: a conversation matches when ANY of its live members does, and the counts then span the whole conversation — but the exemplar is the newest member that MATCHED, so a label-filtered row is faced with the message that folder actually holds. See ThreadListItem.exemplar.",
         "operationId": "get_ThreadList",
         "parameters": [
           {
@@ -29060,6 +31354,16 @@
               "maximum": 200,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Folder context for trash filtering — same label the listing was filtered by. Without it, and in every folder but Trash, members carrying the Trash label are excluded from both `messages` and `messageCount`; pass the Trash label to see exactly those instead. This is the member set POST /messages/patch's `threadIds` expands to, so a client that renders this view is acting on what it rendered.",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "description": "Folder context for trash filtering — same label the listing was filtered by. Without it, and in every folder but Trash, members carrying the Trash label are excluded from both `messages` and `messageCount`; pass the Trash label to see exactly those instead. This is the member set POST /messages/patch's `threadIds` expands to, so a client that renders this view is acting on what it rendered.",
+              "type": "string"
             }
           }
         ],
@@ -30113,7 +32417,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_domain, domain_is_alias, invalid_pattern, pattern_limit, unknown_mailbox, or invalid_alias_address"
+            "description": "validation_failed, unknown_domain, domain_is_alias, invalid_pattern, pattern_limit, unknown_mailbox, invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
           },
           "409": {
             "content": {
@@ -30269,7 +32573,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch, destination_requires_type, unknown_mailbox, or invalid_alias_address"
+            "description": "validation_failed, empty_patch, destination_requires_type, unknown_mailbox, invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
           },
           "404": {
             "content": {
@@ -30430,7 +32734,7 @@
     },
     "/api/v1/routes": {
       "get": {
-        "description": "Returns email routing rules. Filter with type=group for group listings (includes posting and member counts), or type=webhook for destination webhooks and webhook taps.",
+        "description": "Returns email routing rules. Filter with type=group for group listings (includes posting and member counts), type=webhook for destination webhooks and webhook taps, or type=remote for destination forwards and forward taps.",
         "operationId": "get_RouteList",
         "parameters": [
           {
@@ -30529,7 +32833,7 @@
         ]
       },
       "post": {
-        "description": "Creates an email routing rule mapping an address to a mailbox, webhook, remote forwarder, or group. For non-webhook destinations, an optional webhookUrl attaches a tap that receives a copy of incoming messages. Idempotent: re-creating an identical rule returns 200 with the existing route.",
+        "description": "Creates an email routing rule mapping an address to a mailbox, webhook, remote forwarder, or group. For non-webhook destinations an optional webhookUrl attaches a tap that receives a copy of incoming messages; for non-remote destinations an optional remoteAddress attaches a forward tap that relays a copy to another address alongside the delivery. Idempotent: re-creating an identical rule returns 200 with the existing route.",
         "operationId": "post_RouteCreate",
         "requestBody": {
           "content": {
@@ -30603,7 +32907,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_domain, domain_is_alias, or unknown_mailbox"
+            "description": "validation_failed, unknown_domain, domain_is_alias, unknown_mailbox, or destination_is_self / destination_loops / destination_chain_too_long when the forward target routes back to this address"
           },
           "409": {
             "content": {
@@ -30708,7 +33012,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the destination, delivery pacing, group posting policy, or webhook tap for an email address.",
+        "description": "Updates the destination, delivery pacing, group posting policy, webhook tap, or forward tap for an email address.",
         "operationId": "patch_RouteUpdate",
         "parameters": [
           {
@@ -30754,9 +33058,12 @@
                     "type": "string"
                   },
                   "remoteAddress": {
-                    "description": "Destination forwarding email address",
+                    "description": "Destination forwarding address or forward tap address (null to remove tap)",
                     "format": "email",
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "webhookSecret": {
                     "description": "HMAC signing secret for webhooks (null to clear)",
@@ -30798,7 +33105,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch, destination_requires_type, posting_requires_group, no_webhook, or unknown_mailbox"
+            "description": "validation_failed, empty_patch, destination_requires_type, posting_requires_group, no_webhook, unknown_mailbox, or destination_is_self / destination_loops / destination_chain_too_long"
           },
           "404": {
             "content": {
@@ -30969,7 +33276,7 @@
                 }
               }
             },
-            "description": "validation_failed, member_limit, invalid_member_address, or self_membership"
+            "description": "validation_failed, member_limit, invalid_member_address, self_membership — the group itself, by any spelling (a plus-tag or an alias-domain form both resolve back to it); destination_loops / destination_chain_too_long — the member's own delivery chain (a forward, a tap, a nested list) leads back into this group"
           },
           "404": {
             "content": {
@@ -31064,7 +33371,7 @@
                 }
               }
             },
-            "description": "validation_failed, member_limit, invalid_member_address, or self_membership"
+            "description": "validation_failed, member_limit, invalid_member_address, self_membership — the group itself, by any spelling (a plus-tag or an alias-domain form both resolve back to it); destination_loops / destination_chain_too_long — the member's own delivery chain (a forward, a tap, a nested list) leads back into this group"
           },
           "404": {
             "content": {
@@ -31142,7 +33449,7 @@
                 }
               }
             },
-            "description": "validation_failed, member_limit, invalid_member_address, or self_membership"
+            "description": "validation_failed, member_limit, invalid_member_address, self_membership — the group itself, by any spelling (a plus-tag or an alias-domain form both resolve back to it); destination_loops / destination_chain_too_long — the member's own delivery chain (a forward, a tap, a nested list) leads back into this group"
           },
           "404": {
             "content": {
@@ -31221,12 +33528,12 @@
         "operationId": "get_SharedMailboxList",
         "parameters": [
           {
-            "description": "Set `false` to skip resolving each folder-scoped grant's folder NAMES, omitting `labelScope` from every row. Rendering costs one read of the owner's folder list per distinct owner who granted you folder-scoped access, so a client that does not display folder names — notably one calling this per IMAP LIST — should turn it off. The field is OMITTED rather than emptied: `null` already means whole mailbox and `[]` already means a grant whose folders were deleted, so absent is the only honest way to say 'not computed'. Defaults to rendering",
+            "description": "Set `false` to skip resolving each folder-scoped grant's folder NAMES, omitting `labelScope` from every row. Rendering costs one read of the owner's folder list per distinct owner who granted you folder-scoped access, so a client that does not display folder names — notably one calling this per IMAP LIST — should turn it off. The field is OMITTED rather than emptied: `null` already means whole mailbox, so absent is the only honest way to say 'not computed'. Note that skipping the render also skips the dead-grant filter: a grant whose folders were all deleted (normally revoked by the folder delete itself, and hidden here if that cleanup could not run) is only detectable BY rendering, so with `labelScope=false` such residue is listed like any other grant. Defaults to rendering",
             "in": "query",
             "name": "labelScope",
             "required": false,
             "schema": {
-              "description": "Set `false` to skip resolving each folder-scoped grant's folder NAMES, omitting `labelScope` from every row. Rendering costs one read of the owner's folder list per distinct owner who granted you folder-scoped access, so a client that does not display folder names — notably one calling this per IMAP LIST — should turn it off. The field is OMITTED rather than emptied: `null` already means whole mailbox and `[]` already means a grant whose folders were deleted, so absent is the only honest way to say 'not computed'. Defaults to rendering",
+              "description": "Set `false` to skip resolving each folder-scoped grant's folder NAMES, omitting `labelScope` from every row. Rendering costs one read of the owner's folder list per distinct owner who granted you folder-scoped access, so a client that does not display folder names — notably one calling this per IMAP LIST — should turn it off. The field is OMITTED rather than emptied: `null` already means whole mailbox, so absent is the only honest way to say 'not computed'. Note that skipping the render also skips the dead-grant filter: a grant whose folders were all deleted (normally revoked by the folder delete itself, and hidden here if that cleanup could not run) is only detectable BY rendering, so with `labelScope=false` such residue is listed like any other grant. Defaults to rendering",
               "enum": [
                 "true",
                 "false"
@@ -32120,6 +34427,7 @@
                 "duplicate",
                 "queued",
                 "filtered",
+                "rejected",
                 "bounced",
                 "deferred",
                 "relayed",
@@ -32167,6 +34475,7 @@
                 "relay",
                 "webhook",
                 "pickup",
+                "edge",
                 "fbl",
                 "dmarc",
                 "bounce",
@@ -32205,6 +34514,16 @@
             "required": false,
             "schema": {
               "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "detail",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
               "minLength": 1,
               "type": "string"
             }
@@ -32940,7 +35259,7 @@
     },
     "/api/v1/system/platform-dns": {
       "get": {
-        "description": "Checks whether platform DNS records for DMARC reporting and VERP SPF are published and resolvable.",
+        "description": "Checks whether platform DNS records for DMARC reporting and the VERP bounce domain (SPF + MX) are published and resolvable.",
         "operationId": "get_SystemPlatformDnsGet",
         "responses": {
           "200": {
