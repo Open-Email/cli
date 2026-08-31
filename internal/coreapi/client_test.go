@@ -149,9 +149,9 @@ func TestDepaginate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		if r.URL.Query().Get("cursor") == "" {
-			w.Write([]byte(`{"mailboxes":[{"id":"1"},{"id":"2"}],"nextCursor":"c2"}`))
+			w.Write([]byte(`{"identities":[{"id":"1"},{"id":"2"}],"nextCursor":"c2"}`))
 		} else {
-			w.Write([]byte(`{"mailboxes":[{"id":"3"}]}`))
+			w.Write([]byte(`{"identities":[{"id":"3"}]}`))
 		}
 	}))
 	defer srv.Close()

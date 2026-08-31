@@ -17,9 +17,10 @@ const (
 	PimAddressbooks PimKind = "addressbooks"
 )
 
-// PimScope names the mailbox whose store a PIM call addresses. MailboxID is the
-// collection OWNER (the path segment). Acting, when set and different from
-// MailboxID, is sent as X-Acting-Mailbox — how an account or system principal
+// PimScope names the identity whose store a PIM call addresses. MailboxID is
+// the collection OWNER's identity ULID (the path segment — the same id the
+// mail facet answers to). Acting, when set and different from MailboxID, is
+// sent as X-Acting-Identity — how an account or system principal
 // reaches a collection another mailbox shared with Acting. Core enforces both
 // the share grant and the owner's visibility; the header is never needed when
 // operating on one's own store.
@@ -30,7 +31,7 @@ type PimScope struct {
 
 func (s PimScope) headers() map[string]string {
 	if s.Acting != "" && s.Acting != s.MailboxID {
-		return map[string]string{"X-Acting-Mailbox": s.Acting}
+		return map[string]string{"X-Acting-Identity": s.Acting}
 	}
 	return nil
 }
@@ -51,9 +52,9 @@ type PimCollection struct {
 	ObjectCount int64  `json:"objectCount"`
 	// Sharing (core migration 0045): who owns this collection and what the
 	// caller may do with it, for a collection reached through a grant.
-	OwnerMailboxID *string `json:"ownerMailboxId,omitempty"`
-	OwnerAddress   *string `json:"ownerAddress,omitempty"`
-	MyPermission   *string `json:"myPermission,omitempty"`
+	OwnerIdentityID *string `json:"ownerIdentityId,omitempty"`
+	OwnerAddress    *string `json:"ownerAddress,omitempty"`
+	MyPermission    *string `json:"myPermission,omitempty"`
 }
 
 // PimAttendee is one parsed ATTENDEE of a calendar object.
@@ -215,7 +216,7 @@ type PimCollectionDeleted struct {
 
 // PimShare is one sharing grant on a collection.
 type PimShare struct {
-	ShareeMailboxID string `json:"shareeMailboxId"`
+	ShareeIdentityID string `json:"shareeIdentityId"`
 	// ShareeAddress is the sharee's primary address, or null for an
 	// address-less identity (a calendar-only user, which the PIM surface
 	// supports by design). Carried so a listing names a person rather than a
@@ -227,7 +228,7 @@ type PimShare struct {
 
 // PimSharedWithMe is one collection another mailbox shared with this one.
 type PimSharedWithMe struct {
-	OwnerMailboxID string `json:"ownerMailboxId"`
+	OwnerIdentityID string `json:"ownerIdentityId"`
 	// OwnerAddress is the owner's primary address, or null when they have none.
 	// Carried so a listing names a person rather than a ULID.
 	OwnerAddress *string `json:"ownerAddress"`
@@ -245,14 +246,14 @@ type PimSharedWithMe struct {
 // PimPublicCollection is one entry of the account-scoped public directory. ID
 // is the directory-entry handle subscribe takes (not the collection id).
 type PimPublicCollection struct {
-	ID             string  `json:"id"`
-	OwnerMailboxID string  `json:"ownerMailboxId"`
-	CollectionID   string  `json:"collectionId"`
-	Kind           string  `json:"kind"`
-	DisplayName    *string `json:"displayName"`
-	Description    *string `json:"description"`
-	Category       *string `json:"category"`
-	CreatedAt      int64   `json:"createdAt"`
+	ID              string  `json:"id"`
+	OwnerIdentityID string  `json:"ownerIdentityId"`
+	CollectionID    string  `json:"collectionId"`
+	Kind            string  `json:"kind"`
+	DisplayName     *string `json:"displayName"`
+	Description     *string `json:"description"`
+	Category        *string `json:"category"`
+	CreatedAt       int64   `json:"createdAt"`
 }
 
 // PimToken is one feed token (hash-stored; the plaintext appears only at mint).
@@ -329,7 +330,7 @@ type PimPutOpts struct {
 }
 
 func pimBase(s PimScope, kind PimKind) string {
-	return "/mailboxes/" + escapeSegment(s.MailboxID) + "/" + string(kind)
+	return "/identities/" + escapeSegment(s.MailboxID) + "/" + string(kind)
 }
 
 func pimColPath(s PimScope, kind PimKind, ref string) string {
@@ -651,10 +652,10 @@ func (c *Client) ListPimShares(ctx context.Context, s PimScope, kind PimKind, re
 // PutPimShare grants (or re-grants with a new permission) a sharee's access.
 // The grant alone does not open the collection — its visibility must also be
 // shared or public.
-func (c *Client) PutPimShare(ctx context.Context, s PimScope, kind PimKind, ref, shareeMailboxID, permission string) (*PimShare, error) {
+func (c *Client) PutPimShare(ctx context.Context, s PimScope, kind PimKind, ref, shareeIdentityID, permission string) (*PimShare, error) {
 	var out PimShare
 	err := c.doJSON(ctx, request{
-		method: http.MethodPut, path: pimColPath(s, kind, ref) + "/shares/" + escapeSegment(shareeMailboxID),
+		method: http.MethodPut, path: pimColPath(s, kind, ref) + "/shares/" + escapeSegment(shareeIdentityID),
 		body: mustJSON(map[string]string{"permission": permission}), contentType: "application/json",
 		headers: s.headers(), idempotent: true,
 	}, &out)
@@ -665,9 +666,9 @@ func (c *Client) PutPimShare(ctx context.Context, s PimScope, kind PimKind, ref,
 }
 
 // DeletePimShare revokes a sharee's grant.
-func (c *Client) DeletePimShare(ctx context.Context, s PimScope, kind PimKind, ref, shareeMailboxID string) error {
+func (c *Client) DeletePimShare(ctx context.Context, s PimScope, kind PimKind, ref, shareeIdentityID string) error {
 	return c.doJSON(ctx, request{
-		method: http.MethodDelete, path: pimColPath(s, kind, ref) + "/shares/" + escapeSegment(shareeMailboxID),
+		method: http.MethodDelete, path: pimColPath(s, kind, ref) + "/shares/" + escapeSegment(shareeIdentityID),
 		headers: s.headers(),
 	}, nil)
 }
@@ -750,7 +751,7 @@ func (c *Client) ListPimSharedWithMe(ctx context.Context, s PimScope) ([]PimShar
 		Shared []PimSharedWithMe `json:"shared"`
 	}
 	err := c.doJSON(ctx, request{
-		method: http.MethodGet, path: "/mailboxes/" + escapeSegment(s.MailboxID) + "/pim/shared-with-me",
+		method: http.MethodGet, path: "/identities/" + escapeSegment(s.MailboxID) + "/pim/shared-with-me",
 		headers: s.headers(), idempotent: true,
 	}, &out)
 	if err != nil {
@@ -766,7 +767,7 @@ func (c *Client) ListPimPublicDirectory(ctx context.Context, s PimScope) ([]PimP
 		Public []PimPublicCollection `json:"public"`
 	}
 	err := c.doJSON(ctx, request{
-		method: http.MethodGet, path: "/mailboxes/" + escapeSegment(s.MailboxID) + "/pim/public-directory",
+		method: http.MethodGet, path: "/identities/" + escapeSegment(s.MailboxID) + "/pim/public-directory",
 		headers: s.headers(), idempotent: true,
 	}, &out)
 	if err != nil {
@@ -781,7 +782,7 @@ func (c *Client) ListPimSubscriptions(ctx context.Context, s PimScope) ([]PimPub
 		Subscriptions []PimPublicCollection `json:"subscriptions"`
 	}
 	err := c.doJSON(ctx, request{
-		method: http.MethodGet, path: "/mailboxes/" + escapeSegment(s.MailboxID) + "/pim/subscriptions",
+		method: http.MethodGet, path: "/identities/" + escapeSegment(s.MailboxID) + "/pim/subscriptions",
 		headers: s.headers(), idempotent: true,
 	}, &out)
 	if err != nil {
@@ -795,7 +796,7 @@ func (c *Client) ListPimSubscriptions(ctx context.Context, s PimScope) ([]PimPub
 func (c *Client) SubscribePimPublic(ctx context.Context, s PimScope, publicID string) (*PimPublicCollection, error) {
 	var out PimPublicCollection
 	err := c.doJSON(ctx, request{
-		method: http.MethodPost, path: "/mailboxes/" + escapeSegment(s.MailboxID) + "/pim/subscriptions/" + escapeSegment(publicID),
+		method: http.MethodPost, path: "/identities/" + escapeSegment(s.MailboxID) + "/pim/subscriptions/" + escapeSegment(publicID),
 		headers: s.headers(),
 	}, &out)
 	if err != nil {
@@ -807,7 +808,7 @@ func (c *Client) SubscribePimPublic(ctx context.Context, s PimScope, publicID st
 // UnsubscribePimPublic removes a subscription.
 func (c *Client) UnsubscribePimPublic(ctx context.Context, s PimScope, publicID string) error {
 	return c.doJSON(ctx, request{
-		method: http.MethodDelete, path: "/mailboxes/" + escapeSegment(s.MailboxID) + "/pim/subscriptions/" + escapeSegment(publicID),
+		method: http.MethodDelete, path: "/identities/" + escapeSegment(s.MailboxID) + "/pim/subscriptions/" + escapeSegment(publicID),
 		headers: s.headers(),
 	}, nil)
 }

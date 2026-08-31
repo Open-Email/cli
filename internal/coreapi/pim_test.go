@@ -22,7 +22,7 @@ func TestListPimCollections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPimCollections: %v", err)
 	}
-	if gotPath != "/api/v1/mailboxes/m1/addressbooks" {
+	if gotPath != "/api/v1/identities/m1/addressbooks" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if len(cols) != 1 || cols[0].Name != "default" || cols[0].ObjectCount != 2 {
@@ -58,13 +58,13 @@ func TestListPimObjectsQuery(t *testing.T) {
 }
 
 // PUT sends the raw body under the family media type with the preconditions,
-// and a differing Acting mailbox rides X-Acting-Mailbox.
+// and a differing Acting identity rides X-Acting-Identity.
 func TestPutPimObjectHeaders(t *testing.T) {
 	var gotCT, gotIfMatch, gotActing, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotCT = r.Header.Get("Content-Type")
 		gotIfMatch = r.Header.Get("If-Match")
-		gotActing = r.Header.Get("X-Acting-Mailbox")
+		gotActing = r.Header.Get("X-Acting-Identity")
 		gotPath = r.URL.Path
 		w.WriteHeader(201)
 		w.Write([]byte(`{"id":"01O","href":"evt.ics","etag":"abc","created":true,"syncToken":"oe-sync:1:6"}`))
@@ -76,7 +76,7 @@ func TestPutPimObjectHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PutPimObject: %v", err)
 	}
-	if gotPath != "/api/v1/mailboxes/owner1/calendars/01C/objects/evt.ics" {
+	if gotPath != "/api/v1/identities/owner1/calendars/01C/objects/evt.ics" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if gotCT != "text/calendar" || gotIfMatch != `"abc"` || gotActing != "me1" {
@@ -87,11 +87,11 @@ func TestPutPimObjectHeaders(t *testing.T) {
 	}
 }
 
-// Acting equal to the owner sends NO X-Acting-Mailbox (owner mode).
+// Acting equal to the owner sends NO X-Acting-Identity (owner mode).
 func TestPimScopeOwnerSendsNoActingHeader(t *testing.T) {
 	var sawActing bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, sawActing = r.Header["X-Acting-Mailbox"]
+		_, sawActing = r.Header["X-Acting-Identity"]
 		w.Write([]byte(`{"calendars":[]}`))
 	}))
 	defer srv.Close()
@@ -101,7 +101,7 @@ func TestPimScopeOwnerSendsNoActingHeader(t *testing.T) {
 		t.Fatalf("ListPimCollections: %v", err)
 	}
 	if sawActing {
-		t.Fatal("X-Acting-Mailbox sent for an owner-mode call")
+		t.Fatal("X-Acting-Identity sent for an owner-mode call")
 	}
 }
 
@@ -162,7 +162,7 @@ func TestRespondPimObject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RespondPimObject: %v", err)
 	}
-	if gotPath != "/api/v1/mailboxes/m1/calendars/work/objects/evt.ics/respond" {
+	if gotPath != "/api/v1/identities/m1/calendars/work/objects/evt.ics/respond" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if gotBody != `{"partstat":"ACCEPTED"}` {
@@ -244,17 +244,17 @@ func TestSubscribePimPublic(t *testing.T) {
 	var gotMethod, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod, gotPath = r.Method, r.URL.Path
-		w.Write([]byte(`{"id":"01P","ownerMailboxId":"m2","collectionId":"01C","kind":"calendar","displayName":"Team","description":null,"category":null,"createdAt":1}`))
+		w.Write([]byte(`{"id":"01P","ownerIdentityId":"m2","collectionId":"01C","kind":"calendar","displayName":"Team","description":null,"category":null,"createdAt":1}`))
 	}))
 	defer srv.Close()
 	pub, err := m3Client(t, srv.URL).SubscribePimPublic(context.Background(), PimScope{MailboxID: "m1"}, "01P")
 	if err != nil {
 		t.Fatalf("SubscribePimPublic: %v", err)
 	}
-	if gotMethod != "POST" || gotPath != "/api/v1/mailboxes/m1/pim/subscriptions/01P" {
+	if gotMethod != "POST" || gotPath != "/api/v1/identities/m1/pim/subscriptions/01P" {
 		t.Fatalf("%s %s", gotMethod, gotPath)
 	}
-	if pub.OwnerMailboxID != "m2" || pub.DisplayName == nil {
+	if pub.OwnerIdentityID != "m2" || pub.DisplayName == nil {
 		t.Fatalf("bad decode: %+v", pub)
 	}
 }

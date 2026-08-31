@@ -132,7 +132,7 @@ func (c *Client) RespondToMessageInvitation(ctx context.Context, mailboxID, mess
 	var out PimRsvpResult
 	err := c.doJSON(ctx, request{
 		method:      http.MethodPost,
-		path:        "/mailboxes/" + escapeSegment(mailboxID) + "/calendars/invitations/respond",
+		path:        "/identities/" + escapeSegment(mailboxID) + "/calendars/invitations/respond",
 		body:        mustJSON(body),
 		contentType: "application/json",
 	}, &out)
@@ -150,7 +150,7 @@ func (c *Client) InvitationStatus(ctx context.Context, mailboxID, uid string) (*
 	var out PimInvitationStatus
 	err := c.doJSON(ctx, request{
 		method: http.MethodGet,
-		path:   "/mailboxes/" + escapeSegment(mailboxID) + "/calendars/invitations",
+		path:   "/identities/" + escapeSegment(mailboxID) + "/calendars/invitations",
 		query:  q, idempotent: true,
 	}, &out)
 	if err != nil {
@@ -171,7 +171,7 @@ func (c *Client) RespondToInvitation(ctx context.Context, mailboxID, ics, partst
 	var out PimRsvpResult
 	err := c.doJSON(ctx, request{
 		method:      http.MethodPost,
-		path:        "/mailboxes/" + escapeSegment(mailboxID) + "/calendars/invitations/respond",
+		path:        "/identities/" + escapeSegment(mailboxID) + "/calendars/invitations/respond",
 		body:        mustJSON(map[string]string{"ics": ics, "partstat": partstat}),
 		contentType: "application/json",
 	}, &out)

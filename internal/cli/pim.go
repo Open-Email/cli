@@ -64,7 +64,7 @@ func newPimSharedCmd(a *app) *cobra.Command {
 					// the follow-up command takes; the owner column is for reading.
 					rows = append(rows, []string{
 						sh.Kind, sh.Name, strOr(sh.DisplayName, "—"), sh.CollectionID,
-						granteeLabel(sh.OwnerAddress, sh.OwnerMailboxID), sh.Permission,
+						granteeLabel(sh.OwnerAddress, sh.OwnerIdentityID), sh.Permission,
 					})
 				}
 				printTable(w, a.out, []string{"KIND", "NAME", "DISPLAY", "COLLECTION", "OWNER", "PERMISSION"}, rows)
@@ -153,7 +153,7 @@ func newPimSubscribeCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(pub, func(w io.Writer) {
 				a.out.Successf("Subscribed to %s (%s %s of %s)",
-					derefOr(pub.DisplayName, pub.CollectionID), pub.Kind, pub.CollectionID, pub.OwnerMailboxID)
+					derefOr(pub.DisplayName, pub.CollectionID), pub.Kind, pub.CollectionID, pub.OwnerIdentityID)
 			})
 			return nil
 		},
@@ -218,7 +218,7 @@ func printPimPublicRows(a *app, w io.Writer, entries []coreapi.PimPublicCollecti
 	for _, p := range entries {
 		rows = append(rows, []string{
 			p.ID, p.Kind, strOr(p.DisplayName, "—"), strOr(p.Category, "—"),
-			p.OwnerMailboxID, fmtEpoch(p.CreatedAt),
+			p.OwnerIdentityID, fmtEpoch(p.CreatedAt),
 		})
 	}
 	printTable(w, a.out, []string{"ID", "KIND", "DISPLAY", "CATEGORY", "OWNER", "LISTED"}, rows)

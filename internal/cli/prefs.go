@@ -14,7 +14,6 @@ import (
 )
 
 func newPrefsCmd(a *app) *cobra.Command {
-	var identity bool
 	cmd := &cobra.Command{
 		Use:   "prefs",
 		Short: "Read and write the opaque client preferences blob",
@@ -22,8 +21,8 @@ func newPrefsCmd(a *app) *cobra.Command {
 			"interprets — the webmail and other clients keep their settings here.\n" +
 			"This group exists to inspect, back up, and restore that document.\n\n" +
 			"The blob belongs to the IDENTITY, so it follows a user across every facet\n" +
-			"and device. --identity only changes which path spelling is used; both\n" +
-			"reach the same document, since an identity and its mail store share one id.\n\n" +
+			"and device; it is addressed by the identity id, which is the same ULID a\n" +
+			"mail client knows as the mailbox id.\n\n" +
 			"Writes carry a version for compare-and-swap — but only when the input\n" +
 			"CARRIES one. `put` takes the guard from the envelope it is given (the\n" +
 			"default `get` output, or --if-match); a bare prefs object has no version\n" +
@@ -33,23 +32,15 @@ func newPrefsCmd(a *app) *cobra.Command {
 			"version_conflict.",
 	}
 	addMailboxFlag(cmd, a)
-	cmd.PersistentFlags().BoolVar(&identity, "identity", false,
-		"address the blob by its identity path (same document; the honest spelling for a mail-less identity)")
-	scope := func() coreapi.PrefsScope {
-		if identity {
-			return coreapi.PrefsIdentity
-		}
-		return coreapi.PrefsMailbox
-	}
 	cmd.AddCommand(
-		newPrefsGetCmd(a, scope),
-		newPrefsPutCmd(a, scope),
-		newPrefsSetCmd(a, scope),
+		newPrefsGetCmd(a),
+		newPrefsPutCmd(a),
+		newPrefsSetCmd(a),
 	)
 	return cmd
 }
 
-func newPrefsGetCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
+func newPrefsGetCmd(a *app) *cobra.Command {
 	var outPath string
 	var raw bool
 	cmd := &cobra.Command{
@@ -65,7 +56,7 @@ func newPrefsGetCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p, err := client.GetPrefs(cmd.Context(), scope(), id)
+			p, err := client.GetPrefs(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
@@ -99,7 +90,7 @@ func newPrefsGetCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
 	return cmd
 }
 
-func newPrefsPutCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
+func newPrefsPutCmd(a *app) *cobra.Command {
 	var file, ifMatch string
 	var force, createOnly bool
 	cmd := &cobra.Command{
@@ -146,7 +137,7 @@ func newPrefsPutCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p, err := client.PutPrefs(cmd.Context(), scope(), id, prefs, guard)
+			p, err := client.PutPrefs(cmd.Context(), id, prefs, guard)
 			if err != nil {
 				if ae, ok := coreapi.AsAPIError(err); ok && ae.Status == 412 {
 					a.out.Warnf("someone else wrote these prefs since you read them — re-read and re-apply, or pass --force")
@@ -167,7 +158,7 @@ func newPrefsPutCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
 }
 
 // newPrefsSetCmd edits single keys, so the common case needs no JSON wrangling.
-func newPrefsSetCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
+func newPrefsSetCmd(a *app) *cobra.Command {
 	var unset []string
 	cmd := &cobra.Command{
 		Use:   "set [key=value ...]",
@@ -191,7 +182,7 @@ func newPrefsSetCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cur, err := client.GetPrefs(cmd.Context(), scope(), id)
+			cur, err := client.GetPrefs(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
@@ -209,7 +200,7 @@ func newPrefsSetCmd(a *app, scope func() coreapi.PrefsScope) *cobra.Command {
 			for _, key := range unset {
 				delete(prefs, key)
 			}
-			p, err := client.PutPrefs(cmd.Context(), scope(), id, prefs, strconv.FormatInt(cur.Version, 10))
+			p, err := client.PutPrefs(cmd.Context(), id, prefs, strconv.FormatInt(cur.Version, 10))
 			if err != nil {
 				if ae, ok := coreapi.AsAPIError(err); ok && ae.Status == 412 {
 					a.out.Warnf("these prefs changed while you were editing — re-run to apply on top of the new version")

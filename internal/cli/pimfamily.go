@@ -91,7 +91,7 @@ type pimScopeFn func(cmd *cobra.Command, client *coreapi.Client) (coreapi.PimSco
 
 // pimScope resolves the acting mailbox (-m / profile default) and, when
 // --owner names a different mailbox, addresses that owner's store while acting
-// as the resolved mailbox (X-Acting-Mailbox) — the shared-collection path.
+// as the resolved mailbox (X-Acting-Identity) — the shared-collection path.
 func (a *app) pimScope(ctx context.Context, client *coreapi.Client, owner string) (coreapi.PimScope, error) {
 	acting, err := a.resolveMailbox(ctx, client, "")
 	if err != nil {
@@ -905,7 +905,7 @@ func newPimShareListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 					// The address when core knows one, the ULID otherwise — an
 					// address-less identity is a real state here, not an error.
 					rows = append(rows, []string{
-						granteeLabel(sh.ShareeAddress, sh.ShareeMailboxID),
+						granteeLabel(sh.ShareeAddress, sh.ShareeIdentityID),
 						sh.Permission,
 						fmtEpoch(sh.CreatedAt),
 					})
@@ -945,7 +945,7 @@ func newPimShareSetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 				return err
 			}
 			a.out.Emit(sh, func(w io.Writer) {
-				a.out.Successf("Granted %s to %s", sh.Permission, granteeLabel(sh.ShareeAddress, sh.ShareeMailboxID))
+				a.out.Successf("Granted %s to %s", sh.Permission, granteeLabel(sh.ShareeAddress, sh.ShareeIdentityID))
 				a.out.Msgf("the grant opens nothing by itself — the %s's visibility must also be shared or public", f.noun)
 			})
 			return nil
@@ -981,7 +981,7 @@ func newPimShareRemoveCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command 
 			if err := client.DeletePimShare(cmd.Context(), s, f.kind, args[0], sharee); err != nil {
 				return err
 			}
-			a.out.Emit(map[string]any{"deleted": true, "shareeMailboxId": sharee}, func(w io.Writer) {
+			a.out.Emit(map[string]any{"deleted": true, "shareeIdentityId": sharee}, func(w io.Writer) {
 				a.out.Successf("Revoked %s's access", sharee)
 			})
 			return nil

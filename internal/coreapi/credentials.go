@@ -47,7 +47,7 @@ type CredentialCreateInput struct {
 }
 
 func (c *Client) credentialsPath(mailboxID string) string {
-	return "/mailboxes/" + escapeSegment(mailboxID) + "/credentials"
+	return "/identities/" + escapeSegment(mailboxID) + "/credentials"
 }
 
 // CreateCredential creates a password or app_password credential. All management

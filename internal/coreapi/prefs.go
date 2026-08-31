@@ -6,20 +6,6 @@ import (
 	"net/http"
 )
 
-// PrefsScope selects which path spelling addresses the preference blob.
-//
-// Both reach the SAME document: prefs are keyed by IDENTITY (core serves one
-// implementation over `mailboxId` and `identityId`), and an identity and its
-// mail store share one ULID today. The identity spelling is the honest one for
-// a mail-less identity — a calendar-only login still has a theme and a
-// language — while the mailbox spelling is what a mail client already holds.
-type PrefsScope string
-
-const (
-	PrefsMailbox  PrefsScope = "mailboxes"
-	PrefsIdentity PrefsScope = "identities"
-)
-
 // Prefs is the opaque client preferences blob plus its version counter. Core
 // validates nothing inside Prefs — it is the client's own JSON — but the
 // version is what makes concurrent writes safe.
@@ -28,16 +14,19 @@ type Prefs struct {
 	Version int64          `json:"version"`
 }
 
-func prefsPath(scope PrefsScope, id string) string {
-	return "/" + string(scope) + "/" + escapeSegment(id) + "/prefs"
+// prefsPath addresses the blob by identity: prefs are keyed by IDENTITY (a
+// calendar-only login still has a theme and a language), and an identity and
+// its mail store share one ULID, so the id a mail client holds works here too.
+func prefsPath(id string) string {
+	return "/identities/" + escapeSegment(id) + "/prefs"
 }
 
 // GetPrefs reads the preferences blob. Self-service: an app password may read
 // its own.
-func (c *Client) GetPrefs(ctx context.Context, scope PrefsScope, id string) (*Prefs, error) {
+func (c *Client) GetPrefs(ctx context.Context, id string) (*Prefs, error) {
 	var out Prefs
 	err := c.doJSON(ctx, request{
-		method: http.MethodGet, path: prefsPath(scope, id), idempotent: true,
+		method: http.MethodGet, path: prefsPath(id), idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -50,7 +39,7 @@ func (c *Client) GetPrefs(ctx context.Context, scope PrefsScope, id string) (*Pr
 // is refused 412 version_conflict rather than silently clobbering another
 // device; "0" is a create-only write; "" (or "*") is an unconditional upsert.
 // Bodies over 64 KiB are refused 413 too_large.
-func (c *Client) PutPrefs(ctx context.Context, scope PrefsScope, id string, prefs map[string]any, ifMatch string) (*Prefs, error) {
+func (c *Client) PutPrefs(ctx context.Context, id string, prefs map[string]any, ifMatch string) (*Prefs, error) {
 	if prefs == nil {
 		prefs = map[string]any{} // the field is required; nil would marshal to null
 	}
@@ -60,7 +49,7 @@ func (c *Client) PutPrefs(ctx context.Context, scope PrefsScope, id string, pref
 	}
 	var out Prefs
 	err := c.doJSON(ctx, request{
-		method: http.MethodPut, path: prefsPath(scope, id),
+		method: http.MethodPut, path: prefsPath(id),
 		body:        mustJSON(map[string]any{"prefs": prefs}),
 		contentType: "application/json", headers: headers, idempotent: true,
 	}, &out)

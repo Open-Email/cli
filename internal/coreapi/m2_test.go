@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// PurgeMailbox POSTs to /mailboxes/:id/purge and decodes {purged,restorable}.
+// PurgeMailbox POSTs to /identities/:id/purge and decodes {purged,restorable}.
 func TestPurgeMailboxHitsPurgePath(t *testing.T) {
 	var gotMethod, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,8 +21,8 @@ func TestPurgeMailboxHitsPurgePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != http.MethodPost || gotPath != "/api/v1/mailboxes/01ABC/purge" {
-		t.Fatalf("hit %s %s, want POST /api/v1/mailboxes/01ABC/purge", gotMethod, gotPath)
+	if gotMethod != http.MethodPost || gotPath != "/api/v1/identities/01ABC/purge" {
+		t.Fatalf("hit %s %s, want POST /api/v1/identities/01ABC/purge", gotMethod, gotPath)
 	}
 	if !res.Purged || res.Restorable {
 		t.Fatalf("bad decode: %+v", res)
@@ -147,7 +147,7 @@ func TestListCredentialsUnpaginated(t *testing.T) {
 		t.Fatalf("bad creds: %+v", creds)
 	}
 	// mailbox id with '+' must be escaped in the path, not double-encoded.
-	if want := "/api/v1/mailboxes/mb+1/credentials"; gotPath != want {
+	if want := "/api/v1/identities/mb+1/credentials"; gotPath != want {
 		t.Fatalf("path %q want %q", gotPath, want)
 	}
 }

@@ -38,7 +38,7 @@ func prefsDesc(mbx coreapi.Mailbox) resourceDesc {
 			// `version: 0`. The only 404 here is a mailbox that is gone or no
 			// longer reachable with this key, so it must surface rather than be
 			// dressed up as an empty screen.
-			p, err := c.GetPrefs(ctx, coreapi.PrefsMailbox, mbx.ID)
+			p, err := c.GetPrefs(ctx, mbx.ID)
 			if err != nil {
 				return nil, "", err
 			}
@@ -170,7 +170,7 @@ func prefKeyDeleteConfirm(ctx context.Context, ui *Options, mbx coreapi.Mailbox,
 			"the key will fall back to its default, or re-create it on next save.",
 		verb: "remove key",
 		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
-			cur, err := c.GetPrefs(sctx, coreapi.PrefsMailbox, mbx.ID)
+			cur, err := c.GetPrefs(sctx, mbx.ID)
 			if err != nil {
 				return "", err
 			}
@@ -183,7 +183,7 @@ func prefKeyDeleteConfirm(ctx context.Context, ui *Options, mbx coreapi.Mailbox,
 					next[k] = v
 				}
 			}
-			p, err := c.PutPrefs(sctx, coreapi.PrefsMailbox, mbx.ID, next, fmt.Sprintf("%d", cur.Version))
+			p, err := c.PutPrefs(sctx, mbx.ID, next, fmt.Sprintf("%d", cur.Version))
 			if err != nil {
 				if ae, ok := coreapi.AsAPIError(err); ok && ae.Status == 412 {
 					return "", fmt.Errorf("these preferences changed while you were looking — refresh and retry")

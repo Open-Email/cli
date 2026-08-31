@@ -9,9 +9,8 @@ import (
 	"testing"
 )
 
-// The two path spellings reach the same document; the client just relays which
-// one the caller asked for.
-func TestPrefsPathSpellings(t *testing.T) {
+// Prefs are addressed by identity — the one spelling core serves.
+func TestPrefsPath(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -20,21 +19,15 @@ func TestPrefsPathSpellings(t *testing.T) {
 	defer srv.Close()
 	c := m3Client(t, srv.URL)
 
-	p, err := c.GetPrefs(context.Background(), PrefsMailbox, "01M")
+	p, err := c.GetPrefs(context.Background(), "01M")
 	if err != nil {
 		t.Fatalf("GetPrefs: %v", err)
 	}
-	if gotPath != "/api/v1/mailboxes/01M/prefs" {
-		t.Errorf("mailbox path = %q", gotPath)
+	if gotPath != "/api/v1/identities/01M/prefs" {
+		t.Errorf("path = %q", gotPath)
 	}
 	if p.Version != 3 || p.Prefs["theme"] != "dark" {
 		t.Errorf("decode: %+v", p)
-	}
-	if _, err := c.GetPrefs(context.Background(), PrefsIdentity, "01M"); err != nil {
-		t.Fatalf("GetPrefs identity: %v", err)
-	}
-	if gotPath != "/api/v1/identities/01M/prefs" {
-		t.Errorf("identity path = %q", gotPath)
 	}
 }
 
@@ -52,10 +45,10 @@ func TestPutPrefsIfMatch(t *testing.T) {
 	defer srv.Close()
 	c := m3Client(t, srv.URL)
 
-	if _, err := c.PutPrefs(context.Background(), PrefsMailbox, "01M", map[string]any{"a": 1}, "3"); err != nil {
+	if _, err := c.PutPrefs(context.Background(), "01M", map[string]any{"a": 1}, "3"); err != nil {
 		t.Fatalf("PutPrefs: %v", err)
 	}
-	if _, err := c.PutPrefs(context.Background(), PrefsMailbox, "01M", nil, ""); err != nil {
+	if _, err := c.PutPrefs(context.Background(), "01M", nil, ""); err != nil {
 		t.Fatalf("PutPrefs unconditional: %v", err)
 	}
 	if len(gotIfMatch) != 2 || gotIfMatch[0] != "3" || gotIfMatch[1] != "" {
@@ -75,7 +68,7 @@ func TestPutPrefsConflict(t *testing.T) {
 		w.Write([]byte(`{"error":"version_conflict","version":9}`))
 	}))
 	defer srv.Close()
-	_, err := m3Client(t, srv.URL).PutPrefs(context.Background(), PrefsMailbox, "01M", map[string]any{}, "3")
+	_, err := m3Client(t, srv.URL).PutPrefs(context.Background(), "01M", map[string]any{}, "3")
 	ae, ok := AsAPIError(err)
 	if !ok || ae.Status != 412 || ae.Code != "version_conflict" {
 		t.Fatalf("want a 412 version_conflict, got %v", err)

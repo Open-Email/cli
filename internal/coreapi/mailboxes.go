@@ -6,13 +6,14 @@ import (
 	"net/url"
 )
 
-// CreateMailbox creates a mailbox. Account callers are capped by their account's
+// CreateMailbox creates a mailbox (POST /identities — the identity is the
+// subject; the mail store rides along). Account callers are capped by their account's
 // maxMailboxes (403 mailbox_limit_reached, with maxMailboxes in Extra).
 func (c *Client) CreateMailbox(ctx context.Context, in MailboxCreateInput) (*Mailbox, error) {
 	var out Mailbox
 	err := c.doJSON(ctx, request{
 		method:      http.MethodPost,
-		path:        "/mailboxes",
+		path:        "/identities",
 		body:        mustJSON(in),
 		contentType: "application/json",
 	}, &out)
@@ -22,44 +23,44 @@ func (c *Client) CreateMailbox(ctx context.Context, in MailboxCreateInput) (*Mai
 	return &out, nil
 }
 
-// ListMailboxes returns one page of live mailboxes (account callers see only
-// their own).
+// ListMailboxes returns one page of live identities (GET /identities; account
+// callers see only their own).
 func (c *Client) ListMailboxes(ctx context.Context, limit int, cursor string) (Page[Mailbox], error) {
 	var out struct {
-		Mailboxes  []Mailbox `json:"mailboxes"`
+		Identities []Mailbox `json:"identities"`
 		NextCursor string    `json:"nextCursor"`
 	}
 	err := c.doJSON(ctx, request{
 		method:     http.MethodGet,
-		path:       "/mailboxes",
+		path:       "/identities",
 		query:      pageValues(limit, cursor),
 		idempotent: true,
 	}, &out)
 	if err != nil {
 		return Page[Mailbox]{}, err
 	}
-	return Page[Mailbox]{Items: out.Mailboxes, NextCursor: out.NextCursor}, nil
+	return Page[Mailbox]{Items: out.Identities, NextCursor: out.NextCursor}, nil
 }
 
 // ListDeletedMailboxes returns one page of restorable tombstones
-// (GET /mailboxes?state=deleted).
+// (GET /identities?state=deleted).
 func (c *Client) ListDeletedMailboxes(ctx context.Context, limit int, cursor string) (Page[DeletedMailbox], error) {
 	q := pageValues(limit, cursor)
 	q.Set("state", "deleted")
 	var out struct {
-		Mailboxes  []DeletedMailbox `json:"mailboxes"`
+		Identities []DeletedMailbox `json:"identities"`
 		NextCursor string           `json:"nextCursor"`
 	}
 	err := c.doJSON(ctx, request{
 		method:     http.MethodGet,
-		path:       "/mailboxes",
+		path:       "/identities",
 		query:      q,
 		idempotent: true,
 	}, &out)
 	if err != nil {
 		return Page[DeletedMailbox]{}, err
 	}
-	return Page[DeletedMailbox]{Items: out.Mailboxes, NextCursor: out.NextCursor}, nil
+	return Page[DeletedMailbox]{Items: out.Identities, NextCursor: out.NextCursor}, nil
 }
 
 // GetMailbox returns a mailbox with usage stats.
@@ -103,7 +104,7 @@ func (c *Client) UpdateMailbox(ctx context.Context, mailboxID string, patch map[
 	var out Mailbox
 	err := c.doJSON(ctx, request{
 		method:      http.MethodPatch,
-		path:        "/mailboxes/" + escapeSegment(mailboxID),
+		path:        "/identities/" + escapeSegment(mailboxID),
 		body:        mustJSON(patch),
 		contentType: "application/json",
 	}, &out)
@@ -123,7 +124,7 @@ func (c *Client) DeleteMailbox(ctx context.Context, mailboxID string, purge bool
 	var out MailboxDeleteResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodDelete,
-		path:   "/mailboxes/" + escapeSegment(mailboxID),
+		path:   "/identities/" + escapeSegment(mailboxID),
 		query:  q,
 	}, &out)
 	if err != nil {
@@ -138,7 +139,7 @@ func (c *Client) RestoreMailbox(ctx context.Context, mailboxID string) (*Mailbox
 	var out MailboxRestoreResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost,
-		path:   "/mailboxes/" + escapeSegment(mailboxID) + "/restore",
+		path:   "/identities/" + escapeSegment(mailboxID) + "/restore",
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -153,7 +154,7 @@ func (c *Client) PurgeMailbox(ctx context.Context, mailboxID string) (*MailboxPu
 	var out MailboxPurgeResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost,
-		path:   "/mailboxes/" + escapeSegment(mailboxID) + "/purge",
+		path:   "/identities/" + escapeSegment(mailboxID) + "/purge",
 	}, &out)
 	if err != nil {
 		return nil, err

@@ -359,7 +359,7 @@ func pimSharesDesc(mbx coreapi.Mailbox, kind coreapi.PimKind, col coreapi.PimCol
 			rows := make([]rowData, len(shares))
 			for i, sh := range shares {
 				rows[i] = rowData{
-					cells: []string{sh.ShareeMailboxID, sh.Permission, fmtEpoch(sh.CreatedAt)},
+					cells: []string{sh.ShareeIdentityID, sh.Permission, fmtEpoch(sh.CreatedAt)},
 					item:  sh,
 				}
 			}
@@ -611,7 +611,7 @@ func pimShareFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, kin
 		if err != nil {
 			return "", nil, err
 		}
-		flash := sh.Permission + " granted to " + sh.ShareeMailboxID
+		flash := sh.Permission + " granted to " + sh.ShareeIdentityID
 		if col.Visibility == "private" {
 			flash += " — NOTE: visibility is private, the grant opens nothing yet"
 		}
@@ -623,11 +623,11 @@ func pimShareFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, kin
 func pimShareRemoveConfirm(ctx context.Context, ui *Options, mbx coreapi.Mailbox, kind coreapi.PimKind, col coreapi.PimCollection, sh coreapi.PimShare) pane {
 	scope := pimScopeFor(mbx)
 	return newConfirmPane(ctx, ui, confirmSpec{
-		title: "Revoke access for " + sh.ShareeMailboxID,
+		title: "Revoke access for " + sh.ShareeIdentityID,
 		body:  "The sharee loses access to " + col.Name + " immediately (their subscription, if any, stops resolving).",
 		verb:  "revoke share",
 		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
-			if err := c.DeletePimShare(sctx, scope, kind, col.ID, sh.ShareeMailboxID); err != nil {
+			if err := c.DeletePimShare(sctx, scope, kind, col.ID, sh.ShareeIdentityID); err != nil {
 				return "", err
 			}
 			return "share revoked", nil

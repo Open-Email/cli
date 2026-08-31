@@ -953,7 +953,7 @@
             "type": "string"
           },
           "requireActing": {
-            "description": "System keys only (migration 0046): when true, mailbox-scoped requests made with this key must declare `X-Acting-Mailbox` or are refused `403 acting_required`. Set it on an INGRESS credential (a gateway or BFF acting for a logged-in user); never on an autonomous one (smtp-in, pop3-fetch, automation), which has no acting user.",
+            "description": "System keys only (migration 0046): when true, mailbox-scoped requests made with this key must declare `X-Acting-Identity` or are refused `403 acting_required`. Set it on an INGRESS credential (a gateway or BFF acting for a logged-in user); never on an autonomous one (smtp-in, pop3-fetch, automation), which has no acting user.",
             "type": "boolean"
           },
           "revokedAt": {
@@ -6473,8 +6473,8 @@
               "null"
             ]
           },
-          "ownerMailboxId": {
-            "description": "Identity ULID of the mailbox that owns this collection",
+          "ownerIdentityId": {
+            "description": "Identity ULID that owns this collection",
             "type": "string"
           },
           "role": {
@@ -6511,7 +6511,7 @@
           "createdAt",
           "objectCount",
           "myPermission",
-          "ownerMailboxId",
+          "ownerIdentityId",
           "ownerAddress"
         ],
         "type": "object"
@@ -6991,14 +6991,14 @@
             ],
             "type": "string"
           },
-          "ownerMailboxId": {
-            "description": "Mailbox ULID of the owner",
+          "ownerIdentityId": {
+            "description": "Identity ULID of the owner",
             "type": "string"
           }
         },
         "required": [
           "id",
-          "ownerMailboxId",
+          "ownerIdentityId",
           "collectionId",
           "kind",
           "displayName",
@@ -7126,13 +7126,13 @@
               "null"
             ]
           },
-          "shareeMailboxId": {
-            "description": "Mailbox ULID granted access",
+          "shareeIdentityId": {
+            "description": "Identity ULID granted access",
             "type": "string"
           }
         },
         "required": [
-          "shareeMailboxId",
+          "shareeIdentityId",
           "shareeAddress",
           "permission",
           "createdAt"
@@ -7190,8 +7190,8 @@
               "null"
             ]
           },
-          "ownerMailboxId": {
-            "description": "Mailbox ULID of the collection owner",
+          "ownerIdentityId": {
+            "description": "Identity ULID of the collection owner",
             "type": "string"
           },
           "permission": {
@@ -7208,7 +7208,7 @@
           }
         },
         "required": [
-          "ownerMailboxId",
+          "ownerIdentityId",
           "ownerAddress",
           "collectionId",
           "permission",
@@ -8149,7 +8149,7 @@
             "type": "integer"
           },
           "invitation": {
-            "description": "An outstanding provisioning invitation, or null. This IS the idempotency answer for POST /mailboxes/:id/invitation (§XVII.5): a caller that lost its create response asks whether one is outstanding rather than holding an idempotency key, because an invitation is never re-sent automatically and a repeat is always a deliberate second call. Consumed and expired both read as null",
+            "description": "An outstanding provisioning invitation, or null. This IS the idempotency answer for POST /identities/:id/invitation (§XVII.5): a caller that lost its create response asks whether one is outstanding rather than holding an idempotency key, because an invitation is never re-sent automatically and a repeat is always a deliberate second call. Consumed and expired both read as null",
             "properties": {
               "createdAt": {
                 "description": "Epoch seconds at which it was sent",
@@ -14108,7 +14108,7 @@
         ]
       },
       "patch": {
-        "description": "Sets or clears `requireActing` on a SYSTEM API key. When true, mailbox-scoped requests made with the key must declare `X-Acting-Mailbox` or are refused `403 acting_required`. Intended for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry it.",
+        "description": "Sets or clears `requireActing` on a SYSTEM API key. When true, mailbox-scoped requests made with the key must declare `X-Acting-Identity` or are refused `403 acting_required`. Intended for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry it.",
         "operationId": "patch_ApiKeyPatch",
         "parameters": [
           {
@@ -14128,7 +14128,7 @@
               "schema": {
                 "properties": {
                   "requireActing": {
-                    "description": "Require `X-Acting-Mailbox` on mailbox-scoped requests with this key",
+                    "description": "Require `X-Acting-Identity` on mailbox-scoped requests with this key",
                     "type": "boolean"
                   }
                 },
@@ -18248,198 +18248,7 @@
         ]
       }
     },
-    "/api/v1/identities/{identityId}": {
-      "get": {
-        "description": "Returns an identity with its bound stores (mail, calendars, contacts) and usage metrics.",
-        "operationId": "get_IdentityGet",
-        "parameters": [
-          {
-            "description": "Identity ULID identifier",
-            "in": "path",
-            "name": "identityId",
-            "required": true,
-            "schema": {
-              "description": "Identity ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Identity"
-                }
-              }
-            },
-            "description": "Identity and bound store details"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Identity not found or not accessible to this principal"
-          }
-        },
-        "summary": "Get identity and bound store usage",
-        "tags": [
-          "Mailboxes"
-        ]
-      }
-    },
-    "/api/v1/identities/{identityId}/prefs": {
-      "get": {
-        "description": "Returns client preferences (theme, language, signature, etc.) stored as a JSON object, along with the current version number for optimistic locking.",
-        "operationId": "get__api_v1_identities_{identityId}_prefs",
-        "parameters": [
-          {
-            "description": "Identity or mailbox identifier",
-            "in": "path",
-            "name": "identityId",
-            "required": true,
-            "schema": {
-              "description": "Identity or mailbox identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Prefs"
-                }
-              }
-            },
-            "description": "Stored preferences and version number"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Identity not found or not accessible to this principal"
-          }
-        },
-        "summary": "Get identity preferences",
-        "tags": [
-          "Mailboxes"
-        ]
-      },
-      "put": {
-        "description": "Updates or replaces the client preferences JSON object. Supports optimistic locking via the If-Match header.",
-        "operationId": "put__api_v1_identities_{identityId}_prefs",
-        "parameters": [
-          {
-            "description": "Identity or mailbox identifier",
-            "in": "path",
-            "name": "identityId",
-            "required": true,
-            "schema": {
-              "description": "Identity or mailbox identifier",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Expected current version number for optimistic locking (omit for unconditional update)",
-            "in": "header",
-            "name": "if-match",
-            "required": false,
-            "schema": {
-              "description": "Expected current version number for optimistic locking (omit for unconditional update)",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "prefs": {
-                    "additionalProperties": {},
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "prefs"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Prefs"
-                }
-              }
-            },
-            "description": "Updated preferences and new version number"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed — invalid request body"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Identity not found or not accessible to this principal"
-          },
-          "412": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "version_conflict — the preferences were updated by another client"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "too_large — preferences payload exceeds size limit (64 KiB)"
-          }
-        },
-        "summary": "Save identity preferences",
-        "tags": [
-          "Mailboxes"
-        ]
-      }
-    },
-    "/api/v1/mailboxes": {
+    "/api/v1/identities": {
       "get": {
         "description": "Lists mailboxes for the authenticated account. Set state=deleted to list restorable tombstones (deleted mailboxes still within the undo window). A SYSTEM caller lists every mailbox on the deployment, and may narrow to one tenant with `accountId`.",
         "operationId": "get_MailboxList",
@@ -18556,7 +18365,7 @@
                   "anyOf": [
                     {
                       "properties": {
-                        "mailboxes": {
+                        "identities": {
                           "items": {
                             "$ref": "#/components/schemas/MailboxWithUsage"
                           },
@@ -18573,13 +18382,13 @@
                         }
                       },
                       "required": [
-                        "mailboxes"
+                        "identities"
                       ],
                       "type": "object"
                     },
                     {
                       "properties": {
-                        "mailboxes": {
+                        "identities": {
                           "items": {
                             "$ref": "#/components/schemas/DeletedMailbox"
                           },
@@ -18591,7 +18400,7 @@
                         }
                       },
                       "required": [
-                        "mailboxes"
+                        "identities"
                       ],
                       "type": "object"
                     }
@@ -18766,18 +18575,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}": {
+    "/api/v1/identities/{identityId}": {
       "delete": {
         "description": "Soft-deletes a mailbox with a 7-day retention window for recovery. Pass purge=true to immediately queue the mailbox for permanent deletion.",
         "operationId": "delete_MailboxDelete",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -18834,16 +18643,16 @@
         ]
       },
       "get": {
-        "description": "Returns mailbox metadata, current storage usage, message counts, trash metrics, database size, and realtime socket connection stats.",
-        "operationId": "get_MailboxGet",
+        "description": "Returns an identity with its bound stores (mail, calendars, contacts) and usage metrics.",
+        "operationId": "get_IdentityGet",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           }
@@ -18853,11 +18662,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MailboxWithStats"
+                  "$ref": "#/components/schemas/Identity"
                 }
               }
             },
-            "description": "Mailbox details and live usage stats"
+            "description": "Identity and bound store details"
           },
           "404": {
             "content": {
@@ -18867,10 +18676,10 @@
                 }
               }
             },
-            "description": "Mailbox not found or not accessible to this principal"
+            "description": "Identity not found or not accessible to this principal"
           }
         },
-        "summary": "Get mailbox details and usage statistics",
+        "summary": "Get identity and bound store usage",
         "tags": [
           "Mailboxes"
         ]
@@ -18880,12 +18689,12 @@
         "operationId": "patch_MailboxUpdate",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           }
@@ -19012,14 +18821,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks": {
+    "/api/v1/identities/{identityId}/addressbooks": {
       "get": {
         "description": "Returns all addressbooks for a mailbox with their sync tokens.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19066,11 +18875,11 @@
       },
       "post": {
         "description": "Creates a new addressbook collection for a mailbox.",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks",
+        "operationId": "post__api_v1_identities_{identityId}_addressbooks",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19173,18 +18982,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/by-name/{name}": {
+    "/api/v1/identities/{identityId}/addressbooks/by-name/{name}": {
       "get": {
         "description": "Returns collection details and sync token for a addressbook by its URL name slug.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_by-name_{name}",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_by-name_{name}",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -19227,14 +19036,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}": {
       "delete": {
         "description": "Deletes a addressbook collection and all objects stored within it.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}",
+        "operationId": "delete__api_v1_identities_{identityId}_addressbooks_{addressbookId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19302,11 +19111,11 @@
       },
       "get": {
         "description": "Returns collection details and sync token for a addressbook by its ID.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_{addressbookId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19352,11 +19161,11 @@
       },
       "patch": {
         "description": "Updates properties (name, color, description, visibility) for a addressbook collection.",
-        "operationId": "patch__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}",
+        "operationId": "patch__api_v1_identities_{identityId}_addressbooks_{addressbookId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19483,14 +19292,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/changes": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/changes": {
       "get": {
         "description": "Returns added, updated, and deleted object delta changes since a previous sync token (RFC 6578 sync-collection).",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_changes",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_{addressbookId}_changes",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19567,14 +19376,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/export": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/export": {
       "get": {
         "description": "Exports the entire addressbook collection as a single vCard (.vcf) text stream.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_export",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_{addressbookId}_export",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19619,18 +19428,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/import": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/import": {
       "post": {
         "description": "Imports multiple addressbook items in bulk from a text/vcard file (iCalendar .ics or vCard .vcf).",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_import",
+        "operationId": "post__api_v1_identities_{identityId}_addressbooks_{addressbookId}_import",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -19723,14 +19532,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/objects": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/objects": {
       "get": {
         "description": "Returns a paginated list of contacts in an addressbook collection.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_{addressbookId}_objects",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -19879,14 +19688,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/objects/{href}": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/objects/{href}": {
       "delete": {
         "description": "Deletes a addressbook object by its href slug or UID.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
+        "operationId": "delete__api_v1_identities_{identityId}_addressbooks_{addressbookId}_objects_{href}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20009,11 +19818,11 @@
       },
       "get": {
         "description": "Returns a addressbook object in raw text/vcard format, or as JSContact JSON (RFC 9553) when requested with Accept: application/json.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_{addressbookId}_objects_{href}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20084,11 +19893,11 @@
       },
       "put": {
         "description": "Creates or updates a addressbook object from raw text/vcard text or JSContact JSON (RFC 9553).",
-        "operationId": "put__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}",
+        "operationId": "put__api_v1_identities_{identityId}_addressbooks_{addressbookId}_objects_{href}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20249,14 +20058,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/objects/{href}/move": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/objects/{href}/move": {
       "post": {
         "description": "Moves a addressbook object to another collection, renames its href slug, or both.",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_objects_{href}_move",
+        "operationId": "post__api_v1_identities_{identityId}_addressbooks_{addressbookId}_objects_{href}_move",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20406,14 +20215,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/shares": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/shares": {
       "get": {
         "description": "Returns access grants configured on a addressbook collection.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_shares",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_{addressbookId}_shares",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20469,14 +20278,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/shares/{shareeMailboxId}": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/shares/{shareeIdentityId}": {
       "delete": {
         "description": "Revokes a mailbox's access grant to a addressbook collection.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_shares_{shareeMailboxId}",
+        "operationId": "delete__api_v1_identities_{identityId}_addressbooks_{addressbookId}_shares_{shareeIdentityId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20494,7 +20303,7 @@
           },
           {
             "in": "path",
-            "name": "shareeMailboxId",
+            "name": "shareeIdentityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20538,11 +20347,11 @@
       },
       "put": {
         "description": "Grants read or write access to a mailbox for a addressbook collection.",
-        "operationId": "put__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_shares_{shareeMailboxId}",
+        "operationId": "put__api_v1_identities_{identityId}_addressbooks_{addressbookId}_shares_{shareeIdentityId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20560,7 +20369,7 @@
           },
           {
             "in": "path",
-            "name": "shareeMailboxId",
+            "name": "shareeIdentityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20617,14 +20426,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/tokens": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/tokens": {
       "get": {
         "description": "Returns active read-only subscription tokens for a addressbook collection.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_tokens",
+        "operationId": "get__api_v1_identities_{identityId}_addressbooks_{addressbookId}_tokens",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20681,11 +20490,11 @@
       },
       "post": {
         "description": "Generates a secret read-only feed token URL for syncing a addressbook in external apps (webcal/.ics/.vcf).",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_tokens",
+        "operationId": "post__api_v1_identities_{identityId}_addressbooks_{addressbookId}_tokens",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20750,18 +20559,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/addressbooks/{addressbookId}/tokens/{tokenId}": {
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/tokens/{tokenId}": {
       "delete": {
         "description": "Revokes a read-only feed token for a addressbook collection.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_addressbooks_{addressbookId}_tokens_{tokenId}",
+        "operationId": "delete__api_v1_identities_{identityId}_addressbooks_{addressbookId}_tokens_{tokenId}",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -20822,14 +20631,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars": {
+    "/api/v1/identities/{identityId}/calendars": {
       "get": {
         "description": "Returns all calendars for a mailbox with their sync tokens.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars",
+        "operationId": "get__api_v1_identities_{identityId}_calendars",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20876,11 +20685,11 @@
       },
       "post": {
         "description": "Creates a new calendar collection for a mailbox.",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars",
+        "operationId": "post__api_v1_identities_{identityId}_calendars",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -20983,18 +20792,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/by-name/{name}": {
+    "/api/v1/identities/{identityId}/calendars/by-name/{name}": {
       "get": {
         "description": "Returns collection details and sync token for a calendar by its URL name slug.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_by-name_{name}",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_by-name_{name}",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -21037,18 +20846,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/invitations": {
+    "/api/v1/identities/{identityId}/calendars/invitations": {
       "get": {
         "description": "Checks whether an event with a specific iCalendar UID is already filed across any of the mailbox's calendars and returns the user's current RSVP response.",
         "operationId": "get_PimInvitationStatusRoute",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -21093,18 +20902,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/invitations/respond": {
+    "/api/v1/identities/{identityId}/calendars/invitations/respond": {
       "post": {
         "description": "Files an emailed calendar invitation to the default calendar and submits the user's RSVP response (ACCEPT, DECLINE, TENTATIVE) to the organizer.",
         "operationId": "post_PimInvitationRespond",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           }
@@ -21229,14 +21038,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}": {
       "delete": {
         "description": "Deletes a calendar collection and all objects stored within it.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}",
+        "operationId": "delete__api_v1_identities_{identityId}_calendars_{calendarId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -21318,11 +21127,11 @@
       },
       "get": {
         "description": "Returns collection details and sync token for a calendar by its ID.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_{calendarId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -21368,11 +21177,11 @@
       },
       "patch": {
         "description": "Updates properties (name, color, description, visibility) for a calendar collection.",
-        "operationId": "patch__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}",
+        "operationId": "patch__api_v1_identities_{identityId}_calendars_{calendarId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -21499,14 +21308,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/changes": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/changes": {
       "get": {
         "description": "Returns added, updated, and deleted object delta changes since a previous sync token (RFC 6578 sync-collection).",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_changes",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_{calendarId}_changes",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -21583,14 +21392,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/export": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/export": {
       "get": {
         "description": "Exports the entire calendar collection as a single iCalendar (.ics) text stream.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_export",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_{calendarId}_export",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -21635,18 +21444,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/import": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/import": {
       "post": {
         "description": "Imports multiple calendar items in bulk from a text/calendar file (iCalendar .ics or vCard .vcf).",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_import",
+        "operationId": "post__api_v1_identities_{identityId}_calendars_{calendarId}_import",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -21739,14 +21548,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/objects": {
       "get": {
         "description": "Returns a paginated list of calendar objects, optionally filtered by time range and expanded for recurring events.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_{calendarId}_objects",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -21946,14 +21755,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects/{href}": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}": {
       "delete": {
         "description": "Deletes a calendar object by its href slug or UID.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
+        "operationId": "delete__api_v1_identities_{identityId}_calendars_{calendarId}_objects_{href}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22090,11 +21899,11 @@
       },
       "get": {
         "description": "Returns a calendar object in raw text/calendar format, or as JSCalendar JSON (RFC 8984) when requested with Accept: application/json.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_{calendarId}_objects_{href}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22165,11 +21974,11 @@
       },
       "put": {
         "description": "Creates or updates a calendar object from raw text/calendar text or JSCalendar JSON (RFC 8984).",
-        "operationId": "put__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}",
+        "operationId": "put__api_v1_identities_{identityId}_calendars_{calendarId}_objects_{href}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22344,14 +22153,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects/{href}/move": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}/move": {
       "post": {
         "description": "Moves a calendar object to another collection, renames its href slug, or both.",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}_move",
+        "operationId": "post__api_v1_identities_{identityId}_calendars_{calendarId}_objects_{href}_move",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22501,18 +22310,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/objects/{href}/respond": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}/respond": {
       "post": {
         "description": "Records an attendee's participation status (ACCEPTED, DECLINED, TENTATIVE) and notifies the meeting organizer via direct update or iTIP reply message.",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_objects_{href}_respond",
+        "operationId": "post__api_v1_identities_{identityId}_calendars_{calendarId}_objects_{href}_respond",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -22644,14 +22453,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/shares": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/shares": {
       "get": {
         "description": "Returns access grants configured on a calendar collection.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_shares",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_{calendarId}_shares",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22707,14 +22516,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/shares/{shareeMailboxId}": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/shares/{shareeIdentityId}": {
       "delete": {
         "description": "Revokes a mailbox's access grant to a calendar collection.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_shares_{shareeMailboxId}",
+        "operationId": "delete__api_v1_identities_{identityId}_calendars_{calendarId}_shares_{shareeIdentityId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22732,7 +22541,7 @@
           },
           {
             "in": "path",
-            "name": "shareeMailboxId",
+            "name": "shareeIdentityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22776,11 +22585,11 @@
       },
       "put": {
         "description": "Grants read or write access to a mailbox for a calendar collection.",
-        "operationId": "put__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_shares_{shareeMailboxId}",
+        "operationId": "put__api_v1_identities_{identityId}_calendars_{calendarId}_shares_{shareeIdentityId}",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22798,7 +22607,7 @@
           },
           {
             "in": "path",
-            "name": "shareeMailboxId",
+            "name": "shareeIdentityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22855,14 +22664,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/tokens": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/tokens": {
       "get": {
         "description": "Returns active read-only subscription tokens for a calendar collection.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_tokens",
+        "operationId": "get__api_v1_identities_{identityId}_calendars_{calendarId}_tokens",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22919,11 +22728,11 @@
       },
       "post": {
         "description": "Generates a secret read-only feed token URL for syncing a calendar in external apps (webcal/.ics/.vcf).",
-        "operationId": "post__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_tokens",
+        "operationId": "post__api_v1_identities_{identityId}_calendars_{calendarId}_tokens",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -22988,18 +22797,18 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/calendars/{calendarId}/tokens/{tokenId}": {
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/tokens/{tokenId}": {
       "delete": {
         "description": "Revokes a read-only feed token for a calendar collection.",
-        "operationId": "delete__api_v1_mailboxes_{mailboxId}_calendars_{calendarId}_tokens_{tokenId}",
+        "operationId": "delete__api_v1_identities_{identityId}_calendars_{calendarId}_tokens_{tokenId}",
         "parameters": [
           {
-            "description": "Mailbox ULID identifier",
+            "description": "Identity ULID identifier",
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
-              "description": "Mailbox ULID identifier",
+              "description": "Identity ULID identifier",
               "type": "string"
             }
           },
@@ -23060,14 +22869,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/credentials": {
+    "/api/v1/identities/{identityId}/credentials": {
       "get": {
         "description": "Returns every credential of a mailbox, revoked and expired ones included (secrets are never returned). Self-service: the mailbox's own bearer may read its own list.",
         "operationId": "get_CredentialList",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -23118,7 +22927,7 @@
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -23278,14 +23087,14 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/credentials/{credentialId}": {
+    "/api/v1/identities/{identityId}/credentials/{credentialId}": {
       "delete": {
         "description": "Revokes an existing password or app password, closing its active sessions. Self-service: the mailbox's own bearer may revoke its own APP passwords (a login password answers 404 to it, exactly like a missing id).",
         "operationId": "delete_CredentialDelete",
         "parameters": [
           {
             "in": "path",
-            "name": "mailboxId",
+            "name": "identityId",
             "required": true,
             "schema": {
               "type": "string"
@@ -23327,6 +23136,1595 @@
         "summary": "Revoke a mailbox credential",
         "tags": [
           "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/invitation": {
+      "post": {
+        "description": "Nominates an address as this mailbox's recovery address and mails it one code. If the mailbox has NO password credential the code sets the first password and verifies the address in the same act (7 days); if it already has one, the code is an ordinary 24-hour confirmation code that sets nothing and can only be spent from the mailbox's own session. Never re-sent automatically: calling again replaces the outstanding invitation with a fresh code. Callable with an account key or a system key.",
+        "operationId": "post_MailboxInvitationCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "email": {
+                    "description": "The address to nominate as this mailbox's recovery address, and to mail the code to",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "surface": {
+                    "description": "The hostname to tell the recipient to sign in at, e.g. mail.open.email. Printed as a bare hostname and never as a link (§XVII.7): a user being invited has never been here, and a code with no destination is a dead end",
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryInvitationSent"
+                }
+              }
+            },
+            "description": "Which message went out, and whether the address was kept"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; or recovery_address_self, meaning the address reaches the mailbox it would recover, which is a closed loop"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_disabled: the account's policy is admin_only AND the mailbox already has a password, so there is nothing an invitation could do that the policy permits"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_address_verified: this mailbox already has a VERIFIED recovery address. Re-pointing one is PUT /recovery, which re-proves the mailbox's password; an invitation may only nominate where there is nothing to displace"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited: too many invitations for this mailbox, or too much mail to that destination"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_mail_unavailable: this deployment cannot send mail, so the code could never arrive"
+          }
+        },
+        "summary": "Invite a mailbox user to set their own password",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/password": {
+      "put": {
+        "description": "Updates the login password for a mailbox by verifying the existing password.",
+        "operationId": "put_PasswordChange",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "currentPassword": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "newPassword": {
+                    "maxLength": 1024,
+                    "minLength": 8,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordChanged"
+                }
+              }
+            },
+            "description": "Password updated successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — new password too short"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_current_password"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential — mailbox has no password credential to change"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited — too many password change attempts"
+          }
+        },
+        "summary": "Change mailbox login password",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/password/reset": {
+      "post": {
+        "description": "Sets a new password on every password credential the mailbox has, creating one if it has none, and revokes every expiring credential (browser sessions) so nothing minted before the reset survives it. App passwords are kept unless revokeAppPasswords is set. The mailbox is notified. Callable with an account key or a system key; a mailbox's own bearer uses PUT /password instead, which proves the current password.",
+        "operationId": "post_MailboxPasswordReset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "newPassword": {
+                    "description": "The password to set",
+                    "maxLength": 1024,
+                    "minLength": 8,
+                    "type": "string"
+                  },
+                  "revokeAppPasswords": {
+                    "description": "Revoke the mailbox's non-expiring app passwords too. Off by default, on when the reset is a response to a compromise rather than to a forgotten password",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "newPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCompleted"
+                }
+              }
+            },
+            "description": "What the reset changed and what it invalidated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Reset a mailbox password as an administrator",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/pim/public-directory": {
+      "get": {
+        "description": "Returns discoverable public calendars and addressbooks shared across the account tenant.",
+        "operationId": "get_PimPublicDirectory",
+        "parameters": [
+          {
+            "description": "Identity ULID identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "public": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimPublicCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "public"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Public collection listings"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Browse account public directory",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/pim/shared-with-me": {
+      "get": {
+        "description": "Returns calendar and addressbook collections shared with the mailbox by other users.",
+        "operationId": "get_PimSharedWithMeList",
+        "parameters": [
+          {
+            "description": "Identity ULID identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "shared": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimSharedWithMe"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "shared"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "List of shared collections"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List collections shared with mailbox",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/pim/subscriptions": {
+      "get": {
+        "description": "Returns all public collections the mailbox is currently subscribed to.",
+        "operationId": "get_PimSubscriptionList",
+        "parameters": [
+          {
+            "description": "Identity ULID identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "subscriptions": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimPublicCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "subscriptions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "List of subscriptions"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List public collection subscriptions",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/pim/subscriptions/{publicId}": {
+      "delete": {
+        "description": "Unsubscribes the mailbox from a public collection and removes its read grant.",
+        "operationId": "delete_PimUnsubscribe",
+        "parameters": [
+          {
+            "description": "Identity ULID identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public directory listing ULID identifier",
+            "in": "path",
+            "name": "publicId",
+            "required": true,
+            "schema": {
+              "description": "Public directory listing ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unsubscribed successfully"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not subscribed"
+          }
+        },
+        "summary": "Unsubscribe from public collection",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "post": {
+        "description": "Subscribes the mailbox to a public collection and creates a read grant.",
+        "operationId": "post_PimSubscribe",
+        "parameters": [
+          {
+            "description": "Identity ULID identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Public directory listing ULID identifier",
+            "in": "path",
+            "name": "publicId",
+            "required": true,
+            "schema": {
+              "description": "Public directory listing ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimPublicCollection"
+                }
+              }
+            },
+            "description": "Subscribed successfully"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such public collection, or it is no longer public"
+          }
+        },
+        "summary": "Subscribe to public collection",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/prefs": {
+      "get": {
+        "description": "Returns client preferences (theme, language, signature, etc.) stored as a JSON object, along with the current version number for optimistic locking.",
+        "operationId": "get__api_v1_identities_{identityId}_prefs",
+        "parameters": [
+          {
+            "description": "Identity or mailbox identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity or mailbox identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prefs"
+                }
+              }
+            },
+            "description": "Stored preferences and version number"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Identity not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get identity preferences",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "put": {
+        "description": "Updates or replaces the client preferences JSON object. Supports optimistic locking via the If-Match header.",
+        "operationId": "put__api_v1_identities_{identityId}_prefs",
+        "parameters": [
+          {
+            "description": "Identity or mailbox identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity or mailbox identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Expected current version number for optimistic locking (omit for unconditional update)",
+            "in": "header",
+            "name": "if-match",
+            "required": false,
+            "schema": {
+              "description": "Expected current version number for optimistic locking (omit for unconditional update)",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "prefs": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "prefs"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prefs"
+                }
+              }
+            },
+            "description": "Updated preferences and new version number"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — invalid request body"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Identity not found or not accessible to this principal"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "version_conflict — the preferences were updated by another client"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large — preferences payload exceeds size limit (64 KiB)"
+          }
+        },
+        "summary": "Save identity preferences",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/purge": {
+      "post": {
+        "description": "Permanently purges a soft-deleted mailbox and queues its storage data for permanent cleanup, canceling any remaining undo window.",
+        "operationId": "post_MailboxPurge",
+        "parameters": [
+          {
+            "description": "Identity ULID identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxPurgeResult"
+                }
+              }
+            },
+            "description": "Purge initiated successfully"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No restorable mailbox found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_deleted — mailbox is active or already restored"
+          }
+        },
+        "summary": "Permanently purge a deleted mailbox",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/recovery": {
+      "delete": {
+        "description": "Removes the verified address and any pending one, and notifies both the mailbox and the address being removed. The mailbox's own bearer must re-prove the current password; an account admin need not, because they cannot know it. Recovery codes are untouched.",
+        "operationId": "delete_RecoveryAddressDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "currentPassword": {
+                    "description": "The mailbox's current password. Required for the mailbox's own bearer, ignored for an account admin",
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryAddressDeleted"
+                }
+              }
+            },
+            "description": "The address is gone, or there was none"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "password_required, for the mailbox's own bearer"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential: the mailbox's own bearer has no password to re-prove"
+          }
+        },
+        "summary": "Remove the mailbox's recovery address",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "get": {
+        "description": "Reports whether this mailbox has a verified recovery address and how many recovery codes remain. The address is masked for every principal except system.",
+        "operationId": "get_RecoveryStatusRead",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryStatus"
+                }
+              }
+            },
+            "description": "Recovery posture"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Read mailbox recovery posture",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "put": {
+        "description": "Stores an address as PENDING and mails it an 8-character confirmation code, valid for 24 hours. A pending address is never a reset target, and any address already verified keeps working until the new one is confirmed. Requires the current password.",
+        "operationId": "put_RecoveryAddressSet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "The address to send recovery mail to",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "currentPassword": {
+                    "description": "The mailbox's current password, re-proved",
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "address",
+                  "currentPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryAddressPending"
+                }
+              }
+            },
+            "description": "The address is pending confirmation"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; password_required; or recovery_address_self, meaning the address reaches the mailbox it would recover, which is a closed loop"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password; or recovery_disabled, meaning the account's policy is admin_only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential: the mailbox has no password to re-prove"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited: too many address changes, or too much mail to that destination"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "recovery_mail_unavailable: this deployment cannot send mail, so a confirmation code could never arrive. Refused rather than stored, because a permanently pending address is worse than no address"
+          }
+        },
+        "summary": "Set the mailbox's recovery address",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/recovery/codes": {
+      "post": {
+        "description": "Issues a fresh set of ten single-use recovery codes and returns the plaintext exactly once, invalidating any previous set. Requires the current password.",
+        "operationId": "post_RecoveryCodesCreate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "currentPassword": {
+                    "description": "The mailbox's current password, re-proved",
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "currentPassword"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesIssued"
+                }
+              }
+            },
+            "description": "The codes, shown once"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed or password_required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password: the current password did not match. Or recovery_disabled: the account's policy is admin_only"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential: the mailbox has no password to re-prove, so it cannot pass the sudo gate"
+          }
+        },
+        "summary": "Issue mailbox recovery codes",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/recovery/confirm": {
+      "post": {
+        "description": "Spends the mailed confirmation code and promotes the pending address to verified. A newly verified address that REPLACES one may receive notices but cannot drive a reset for 72 hours; the first address on a mailbox is usable at once.",
+        "operationId": "post_RecoveryAddressConfirm",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "code": {
+                    "description": "The 8-character code mailed to the pending address",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryAddressVerified"
+                }
+              }
+            },
+            "description": "The address is verified"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; or no_pending_address, meaning nothing is awaiting confirmation or it expired. One answer for both, so this cannot report whether an address is pending"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the fifth wrong code and the pending address was dropped. Set it again"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Confirm the mailbox's pending recovery address",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/restore": {
+      "post": {
+        "description": "Restores a soft-deleted mailbox from trash within its 7-day retention window. Re-binds the primary address if still available.",
+        "operationId": "post_MailboxRestore",
+        "parameters": [
+          {
+            "description": "Identity ULID identifier",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxRestoreResult"
+                }
+              }
+            },
+            "description": "Restore result and restored mailbox details"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No restorable mailbox found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_deleted — mailbox is active or already restored"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "gone — retention window elapsed or mailbox was permanently purged"
+          }
+        },
+        "summary": "Restore a deleted mailbox",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/webauthn/credentials": {
+      "get": {
+        "description": "Returns all enrolled WebAuthn hardware keys and passkeys for a mailbox.",
+        "operationId": "get_WebauthnCredentialList",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "credentials": {
+                      "items": {
+                        "$ref": "#/components/schemas/WebauthnCredential"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "credentials"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "List of enrolled keys"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List enrolled WebAuthn security keys",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "post": {
+        "description": "Verifies the browser WebAuthn attestation response and stores the enrolled security key.",
+        "operationId": "post_WebauthnRegisterFinish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "description": "User-chosen label for the security key (e.g. 'YubiKey 5')",
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "origin": {
+                    "description": "Origin URL of the web page where ceremony took place",
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
+                  "response": {
+                    "properties": {
+                      "attestationObject": {
+                        "description": "Base64url-encoded attestationObject",
+                        "maxLength": 65536,
+                        "type": "string"
+                      },
+                      "clientDataJSON": {
+                        "description": "Base64url-encoded clientDataJSON",
+                        "maxLength": 65536,
+                        "type": "string"
+                      },
+                      "transports": {
+                        "description": "Supported authenticator transports (e.g. ['usb', 'nfc'])",
+                        "items": {
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "maxItems": 8,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "clientDataJSON",
+                      "attestationObject"
+                    ],
+                    "type": "object"
+                  },
+                  "rpId": {
+                    "description": "Relying Party ID (domain hostname)",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rpId",
+                  "origin",
+                  "response"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnCredential"
+                }
+              }
+            },
+            "description": "Enrolled security key details"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, invalid_origin, challenge_expired, webauthn_failed, or duplicate_credential"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Finish WebAuthn security key registration",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/webauthn/credentials/{webauthnId}": {
+      "delete": {
+        "description": "Deletes an enrolled WebAuthn security key from a mailbox.",
+        "operationId": "delete_WebauthnCredentialDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "WebAuthn key ULID identifier",
+            "in": "path",
+            "name": "webauthnId",
+            "required": true,
+            "schema": {
+              "description": "WebAuthn key ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Security key removed successfully"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or key not found"
+          }
+        },
+        "summary": "Remove an enrolled WebAuthn security key",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/webauthn/registrations": {
+      "post": {
+        "description": "Generates a WebAuthn challenge and registration options to enroll a new hardware security key or passkey for 2-factor authentication.",
+        "operationId": "post_WebauthnRegisterBegin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rpId": {
+                    "description": "Relying Party ID (domain hostname)",
+                    "maxLength": 253,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rpId"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebauthnRegistrationOptions"
+                }
+              }
+            },
+            "description": "WebAuthn creation options to pass to navigator.credentials.create()"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited"
+          }
+        },
+        "summary": "Begin WebAuthn security key registration",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}": {
+      "get": {
+        "description": "Returns mailbox metadata, current storage usage, message counts, trash metrics, database size, and realtime socket connection stats.",
+        "operationId": "get_MailboxGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxWithStats"
+                }
+              }
+            },
+            "description": "Mailbox details and live usage stats"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get mailbox details and usage statistics",
+        "tags": [
+          "Mailboxes"
         ]
       }
     },
@@ -24177,123 +25575,6 @@
         "summary": "Confirm a forwarding destination",
         "tags": [
           "Sieve"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/invitation": {
-      "post": {
-        "description": "Nominates an address as this mailbox's recovery address and mails it one code. If the mailbox has NO password credential the code sets the first password and verifies the address in the same act (7 days); if it already has one, the code is an ordinary 24-hour confirmation code that sets nothing and can only be spent from the mailbox's own session. Never re-sent automatically: calling again replaces the outstanding invitation with a fresh code. Callable with an account key or a system key.",
-        "operationId": "post_MailboxInvitationCreate",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "email": {
-                    "description": "The address to nominate as this mailbox's recovery address, and to mail the code to",
-                    "maxLength": 320,
-                    "minLength": 3,
-                    "type": "string"
-                  },
-                  "surface": {
-                    "description": "The hostname to tell the recipient to sign in at, e.g. mail.open.email. Printed as a bare hostname and never as a link (§XVII.7): a user being invited has never been here, and a code with no destination is a dead end",
-                    "maxLength": 64,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "email"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryInvitationSent"
-                }
-              }
-            },
-            "description": "Which message went out, and whether the address was kept"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed; or recovery_address_self, meaning the address reaches the mailbox it would recover, which is a closed loop"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "recovery_disabled: the account's policy is admin_only AND the mailbox already has a password, so there is nothing an invitation could do that the policy permits"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "recovery_address_verified: this mailbox already has a VERIFIED recovery address. Re-pointing one is PUT /recovery, which re-proves the mailbox's password; an invitation may only nominate where there is nothing to displace"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "rate_limited: too many invitations for this mailbox, or too much mail to that destination"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "recovery_mail_unavailable: this deployment cannot send mail, so the code could never arrive"
-          }
-        },
-        "summary": "Invite a mailbox user to set their own password",
-        "tags": [
-          "Credentials"
         ]
       }
     },
@@ -28299,189 +29580,6 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/password": {
-      "put": {
-        "description": "Updates the login password for a mailbox by verifying the existing password.",
-        "operationId": "put_PasswordChange",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "currentPassword": {
-                    "maxLength": 1024,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "newPassword": {
-                    "maxLength": 1024,
-                    "minLength": 8,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "currentPassword",
-                  "newPassword"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PasswordChanged"
-                }
-              }
-            },
-            "description": "Password updated successfully"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed — new password too short"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "invalid_current_password"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "no_password_credential — mailbox has no password credential to change"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "rate_limited — too many password change attempts"
-          }
-        },
-        "summary": "Change mailbox login password",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/password/reset": {
-      "post": {
-        "description": "Sets a new password on every password credential the mailbox has, creating one if it has none, and revokes every expiring credential (browser sessions) so nothing minted before the reset survives it. App passwords are kept unless revokeAppPasswords is set. The mailbox is notified. Callable with an account key or a system key; a mailbox's own bearer uses PUT /password instead, which proves the current password.",
-        "operationId": "post_MailboxPasswordReset",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "newPassword": {
-                    "description": "The password to set",
-                    "maxLength": 1024,
-                    "minLength": 8,
-                    "type": "string"
-                  },
-                  "revokeAppPasswords": {
-                    "description": "Revoke the mailbox's non-expiring app passwords too. Off by default, on when the reset is a response to a compromise rather than to a forgotten password",
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "newPassword"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryCompleted"
-                }
-              }
-            },
-            "description": "What the reset changed and what it invalidated"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "Reset a mailbox password as an administrator",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
     "/api/v1/mailboxes/{mailboxId}/pickups": {
       "get": {
         "description": "Returns all configured POP3 pickup sources for this mailbox with pagination.",
@@ -28958,285 +30056,6 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/pim/public-directory": {
-      "get": {
-        "description": "Returns discoverable public calendars and addressbooks shared across the account tenant.",
-        "operationId": "get_PimPublicDirectory",
-        "parameters": [
-          {
-            "description": "Mailbox ULID identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Mailbox ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "public": {
-                      "items": {
-                        "$ref": "#/components/schemas/PimPublicCollection"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "public"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Public collection listings"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "Browse account public directory",
-        "tags": [
-          "PIM"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/pim/shared-with-me": {
-      "get": {
-        "description": "Returns calendar and addressbook collections shared with the mailbox by other users.",
-        "operationId": "get_PimSharedWithMeList",
-        "parameters": [
-          {
-            "description": "Mailbox ULID identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Mailbox ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "shared": {
-                      "items": {
-                        "$ref": "#/components/schemas/PimSharedWithMe"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "shared"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "List of shared collections"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "List collections shared with mailbox",
-        "tags": [
-          "PIM"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/pim/subscriptions": {
-      "get": {
-        "description": "Returns all public collections the mailbox is currently subscribed to.",
-        "operationId": "get_PimSubscriptionList",
-        "parameters": [
-          {
-            "description": "Mailbox ULID identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Mailbox ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "subscriptions": {
-                      "items": {
-                        "$ref": "#/components/schemas/PimPublicCollection"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "subscriptions"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "List of subscriptions"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "List public collection subscriptions",
-        "tags": [
-          "PIM"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/pim/subscriptions/{publicId}": {
-      "delete": {
-        "description": "Unsubscribes the mailbox from a public collection and removes its read grant.",
-        "operationId": "delete_PimUnsubscribe",
-        "parameters": [
-          {
-            "description": "Mailbox ULID identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Mailbox ULID identifier",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Public directory listing ULID identifier",
-            "in": "path",
-            "name": "publicId",
-            "required": true,
-            "schema": {
-              "description": "Public directory listing ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "deleted": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "deleted"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Unsubscribed successfully"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Not subscribed"
-          }
-        },
-        "summary": "Unsubscribe from public collection",
-        "tags": [
-          "PIM"
-        ]
-      },
-      "post": {
-        "description": "Subscribes the mailbox to a public collection and creates a read grant.",
-        "operationId": "post_PimSubscribe",
-        "parameters": [
-          {
-            "description": "Mailbox ULID identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Mailbox ULID identifier",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Public directory listing ULID identifier",
-            "in": "path",
-            "name": "publicId",
-            "required": true,
-            "schema": {
-              "description": "Public directory listing ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PimPublicCollection"
-                }
-              }
-            },
-            "description": "Subscribed successfully"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "No such public collection, or it is no longer public"
-          }
-        },
-        "summary": "Subscribe to public collection",
-        "tags": [
-          "PIM"
-        ]
-      }
-    },
     "/api/v1/mailboxes/{mailboxId}/pop3-lock": {
       "delete": {
         "description": "Releases an active POP3 maildrop lock lease (system callers only).",
@@ -29383,628 +30202,6 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/prefs": {
-      "get": {
-        "description": "Returns client preferences (theme, language, signature, etc.) stored as a JSON object, along with the current version number for optimistic locking.",
-        "operationId": "get__api_v1_mailboxes_{mailboxId}_prefs",
-        "parameters": [
-          {
-            "description": "Identity or mailbox identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Identity or mailbox identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Prefs"
-                }
-              }
-            },
-            "description": "Stored preferences and version number"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Identity not found or not accessible to this principal"
-          }
-        },
-        "summary": "Get identity preferences",
-        "tags": [
-          "Mailboxes"
-        ]
-      },
-      "put": {
-        "description": "Updates or replaces the client preferences JSON object. Supports optimistic locking via the If-Match header.",
-        "operationId": "put__api_v1_mailboxes_{mailboxId}_prefs",
-        "parameters": [
-          {
-            "description": "Identity or mailbox identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Identity or mailbox identifier",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Expected current version number for optimistic locking (omit for unconditional update)",
-            "in": "header",
-            "name": "if-match",
-            "required": false,
-            "schema": {
-              "description": "Expected current version number for optimistic locking (omit for unconditional update)",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "prefs": {
-                    "additionalProperties": {},
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "prefs"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Prefs"
-                }
-              }
-            },
-            "description": "Updated preferences and new version number"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed — invalid request body"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Identity not found or not accessible to this principal"
-          },
-          "412": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "version_conflict — the preferences were updated by another client"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "too_large — preferences payload exceeds size limit (64 KiB)"
-          }
-        },
-        "summary": "Save identity preferences",
-        "tags": [
-          "Mailboxes"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/purge": {
-      "post": {
-        "description": "Permanently purges a soft-deleted mailbox and queues its storage data for permanent cleanup, canceling any remaining undo window.",
-        "operationId": "post_MailboxPurge",
-        "parameters": [
-          {
-            "description": "Mailbox ULID identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Mailbox ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MailboxPurgeResult"
-                }
-              }
-            },
-            "description": "Purge initiated successfully"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "No restorable mailbox found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "not_deleted — mailbox is active or already restored"
-          }
-        },
-        "summary": "Permanently purge a deleted mailbox",
-        "tags": [
-          "Mailboxes"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/recovery": {
-      "delete": {
-        "description": "Removes the verified address and any pending one, and notifies both the mailbox and the address being removed. The mailbox's own bearer must re-prove the current password; an account admin need not, because they cannot know it. Recovery codes are untouched.",
-        "operationId": "delete_RecoveryAddressDelete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "currentPassword": {
-                    "description": "The mailbox's current password. Required for the mailbox's own bearer, ignored for an account admin",
-                    "maxLength": 1024,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": false
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryAddressDeleted"
-                }
-              }
-            },
-            "description": "The address is gone, or there was none"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "password_required, for the mailbox's own bearer"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "invalid_password"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "no_password_credential: the mailbox's own bearer has no password to re-prove"
-          }
-        },
-        "summary": "Remove the mailbox's recovery address",
-        "tags": [
-          "Credentials"
-        ]
-      },
-      "get": {
-        "description": "Reports whether this mailbox has a verified recovery address and how many recovery codes remain. The address is masked for every principal except system.",
-        "operationId": "get_RecoveryStatusRead",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryStatus"
-                }
-              }
-            },
-            "description": "Recovery posture"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "Read mailbox recovery posture",
-        "tags": [
-          "Credentials"
-        ]
-      },
-      "put": {
-        "description": "Stores an address as PENDING and mails it an 8-character confirmation code, valid for 24 hours. A pending address is never a reset target, and any address already verified keeps working until the new one is confirmed. Requires the current password.",
-        "operationId": "put_RecoveryAddressSet",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "address": {
-                    "description": "The address to send recovery mail to",
-                    "maxLength": 320,
-                    "minLength": 3,
-                    "type": "string"
-                  },
-                  "currentPassword": {
-                    "description": "The mailbox's current password, re-proved",
-                    "maxLength": 1024,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "address",
-                  "currentPassword"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryAddressPending"
-                }
-              }
-            },
-            "description": "The address is pending confirmation"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed; password_required; or recovery_address_self, meaning the address reaches the mailbox it would recover, which is a closed loop"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "invalid_password; or recovery_disabled, meaning the account's policy is admin_only"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "no_password_credential: the mailbox has no password to re-prove"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "rate_limited: too many address changes, or too much mail to that destination"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "recovery_mail_unavailable: this deployment cannot send mail, so a confirmation code could never arrive. Refused rather than stored, because a permanently pending address is worse than no address"
-          }
-        },
-        "summary": "Set the mailbox's recovery address",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/recovery/codes": {
-      "post": {
-        "description": "Issues a fresh set of ten single-use recovery codes and returns the plaintext exactly once, invalidating any previous set. Requires the current password.",
-        "operationId": "post_RecoveryCodesCreate",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "currentPassword": {
-                    "description": "The mailbox's current password, re-proved",
-                    "maxLength": 1024,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "currentPassword"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryCodesIssued"
-                }
-              }
-            },
-            "description": "The codes, shown once"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed or password_required"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "invalid_password: the current password did not match. Or recovery_disabled: the account's policy is admin_only"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "no_password_credential: the mailbox has no password to re-prove, so it cannot pass the sudo gate"
-          }
-        },
-        "summary": "Issue mailbox recovery codes",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/recovery/confirm": {
-      "post": {
-        "description": "Spends the mailed confirmation code and promotes the pending address to verified. A newly verified address that REPLACES one may receive notices but cannot drive a reset for 72 hours; the first address on a mailbox is usable at once.",
-        "operationId": "post_RecoveryAddressConfirm",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "code": {
-                    "description": "The 8-character code mailed to the pending address",
-                    "maxLength": 64,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "code"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryAddressVerified"
-                }
-              }
-            },
-            "description": "The address is verified"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed; or no_pending_address, meaning nothing is awaiting confirmation or it expired. One answer for both, so this cannot report whether an address is pending"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the fifth wrong code and the pending address was dropped. Set it again"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "Confirm the mailbox's pending recovery address",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
     "/api/v1/mailboxes/{mailboxId}/reindex": {
       "post": {
         "description": "Re-enqueues background full-text indexing jobs for any unindexed messages in a mailbox (system callers only).",
@@ -30061,70 +30258,6 @@
         "summary": "Re-index mailbox messages",
         "tags": [
           "Maintenance"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/restore": {
-      "post": {
-        "description": "Restores a soft-deleted mailbox from trash within its 7-day retention window. Re-binds the primary address if still available.",
-        "operationId": "post_MailboxRestore",
-        "parameters": [
-          {
-            "description": "Mailbox ULID identifier",
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "description": "Mailbox ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MailboxRestoreResult"
-                }
-              }
-            },
-            "description": "Restore result and restored mailbox details"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "No restorable mailbox found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "not_deleted — mailbox is active or already restored"
-          },
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "gone — retention window elapsed or mailbox was permanently purged"
-          }
-        },
-        "summary": "Restore a deleted mailbox",
-        "tags": [
-          "Mailboxes"
         ]
       }
     },
@@ -33032,286 +33165,6 @@
         ]
       }
     },
-    "/api/v1/mailboxes/{mailboxId}/webauthn/credentials": {
-      "get": {
-        "description": "Returns all enrolled WebAuthn hardware keys and passkeys for a mailbox.",
-        "operationId": "get_WebauthnCredentialList",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "credentials": {
-                      "items": {
-                        "$ref": "#/components/schemas/WebauthnCredential"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "credentials"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "List of enrolled keys"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "List enrolled WebAuthn security keys",
-        "tags": [
-          "Credentials"
-        ]
-      },
-      "post": {
-        "description": "Verifies the browser WebAuthn attestation response and stores the enrolled security key.",
-        "operationId": "post_WebauthnRegisterFinish",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "name": {
-                    "description": "User-chosen label for the security key (e.g. 'YubiKey 5')",
-                    "maxLength": 128,
-                    "type": "string"
-                  },
-                  "origin": {
-                    "description": "Origin URL of the web page where ceremony took place",
-                    "maxLength": 1024,
-                    "type": "string"
-                  },
-                  "response": {
-                    "properties": {
-                      "attestationObject": {
-                        "description": "Base64url-encoded attestationObject",
-                        "maxLength": 65536,
-                        "type": "string"
-                      },
-                      "clientDataJSON": {
-                        "description": "Base64url-encoded clientDataJSON",
-                        "maxLength": 65536,
-                        "type": "string"
-                      },
-                      "transports": {
-                        "description": "Supported authenticator transports (e.g. ['usb', 'nfc'])",
-                        "items": {
-                          "maxLength": 32,
-                          "type": "string"
-                        },
-                        "maxItems": 8,
-                        "type": "array"
-                      }
-                    },
-                    "required": [
-                      "clientDataJSON",
-                      "attestationObject"
-                    ],
-                    "type": "object"
-                  },
-                  "rpId": {
-                    "description": "Relying Party ID (domain hostname)",
-                    "maxLength": 253,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "rpId",
-                  "origin",
-                  "response"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebauthnCredential"
-                }
-              }
-            },
-            "description": "Enrolled security key details"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed, invalid_origin, challenge_expired, webauthn_failed, or duplicate_credential"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          }
-        },
-        "summary": "Finish WebAuthn security key registration",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/webauthn/credentials/{webauthnId}": {
-      "delete": {
-        "description": "Deletes an enrolled WebAuthn security key from a mailbox.",
-        "operationId": "delete_WebauthnCredentialDelete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "WebAuthn key ULID identifier",
-            "in": "path",
-            "name": "webauthnId",
-            "required": true,
-            "schema": {
-              "description": "WebAuthn key ULID identifier",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Security key removed successfully"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox or key not found"
-          }
-        },
-        "summary": "Remove an enrolled WebAuthn security key",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
-    "/api/v1/mailboxes/{mailboxId}/webauthn/registrations": {
-      "post": {
-        "description": "Generates a WebAuthn challenge and registration options to enroll a new hardware security key or passkey for 2-factor authentication.",
-        "operationId": "post_WebauthnRegisterBegin",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "mailboxId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "rpId": {
-                    "description": "Relying Party ID (domain hostname)",
-                    "maxLength": 253,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "rpId"
-                ],
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebauthnRegistrationOptions"
-                }
-              }
-            },
-            "description": "WebAuthn creation options to pass to navigator.credentials.create()"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Mailbox not found or not accessible to this principal"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "rate_limited"
-          }
-        },
-        "summary": "Begin WebAuthn security key registration",
-        "tags": [
-          "Credentials"
-        ]
-      }
-    },
     "/api/v1/patterns": {
       "get": {
         "description": "Returns a paginated list of wildcard address pattern routes for an account or domain.",
@@ -34581,7 +34434,7 @@
     },
     "/api/v1/shared-mailboxes": {
       "get": {
-        "description": "Returns every mailbox belonging to someone else that you have been given access to, oldest grant first, each with the rights you hold on it. Use the returned `mailboxId` to read that mailbox through the ordinary mailbox endpoints.\n\nThere is no mailbox in the path: the answer is scoped to whoever is authenticated. A mailbox credential lists its own grants. An account credential is not an identity and receives an empty list — to see one member's shared mailboxes, ask with that member's credential. A system credential must name the identity it is acting for in the `X-Acting-Mailbox` header, and without it receives an empty list rather than every grant on the deployment.\n\nAn empty list is the normal answer for someone nothing has been shared with; it is never an error. The full list is always returned — there is no paging.",
+        "description": "Returns every mailbox belonging to someone else that you have been given access to, oldest grant first, each with the rights you hold on it. Use the returned `mailboxId` to read that mailbox through the ordinary mailbox endpoints.\n\nThere is no mailbox in the path: the answer is scoped to whoever is authenticated. A mailbox credential lists its own grants. An account credential is not an identity and receives an empty list — to see one member's shared mailboxes, ask with that member's credential. A system credential must name the identity it is acting for in the `X-Acting-Identity` header, and without it receives an empty list rather than every grant on the deployment.\n\nAn empty list is the normal answer for someone nothing has been shared with; it is never an error. The full list is always returned — there is no paging.",
         "operationId": "get_SharedMailboxList",
         "parameters": [
           {
@@ -34601,7 +34454,7 @@
           {
             "description": "System credentials only: the ULID of the identity to answer for. Ignored for mailbox and account credentials, which already identify the caller. Omitting it on a system credential returns an empty list",
             "in": "header",
-            "name": "x-acting-mailbox",
+            "name": "x-acting-identity",
             "required": false,
             "schema": {
               "description": "System credentials only: the ULID of the identity to answer for. Ignored for mailbox and account credentials, which already identify the caller. Omitting it on a system credential returns an empty list",

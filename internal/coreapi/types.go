@@ -230,7 +230,7 @@ type SendUsage struct {
 	BurstWindowSeconds int64   `json:"burstWindowSeconds"`
 }
 
-// DeletedMailbox is a restorable tombstone (GET /mailboxes?state=deleted).
+// DeletedMailbox is a restorable tombstone (GET /identities?state=deleted).
 type DeletedMailbox struct {
 	ID              string  `json:"id"`
 	AccountID       *string `json:"accountId"`
@@ -245,7 +245,7 @@ type DeletedMailbox struct {
 	WipeOverdue *bool  `json:"wipeOverdue,omitempty"`
 }
 
-// MailboxCreateInput is the POST /mailboxes body (all fields optional; accountId
+// MailboxCreateInput is the POST /identities body (all fields optional; accountId
 // is honored only for system callers).
 type MailboxCreateInput struct {
 	PrimaryAddress *string `json:"primaryAddress,omitempty"`
@@ -253,7 +253,7 @@ type MailboxCreateInput struct {
 	AccountID      *string `json:"accountId,omitempty"`
 }
 
-// MailboxDeleteResult is the DELETE /mailboxes/:id body.
+// MailboxDeleteResult is the DELETE /identities/:id body.
 type MailboxDeleteResult struct {
 	Deleted         bool   `json:"deleted"`
 	Purged          bool   `json:"purged,omitempty"`
@@ -261,14 +261,14 @@ type MailboxDeleteResult struct {
 	RestorableUntil *int64 `json:"restorableUntil,omitempty"`
 }
 
-// MailboxPurgeResult is the POST /mailboxes/:id/purge body. Restorable is
+// MailboxPurgeResult is the POST /identities/:id/purge body. Restorable is
 // always false (the tombstone is now non-restorable).
 type MailboxPurgeResult struct {
 	Purged     bool `json:"purged"`
 	Restorable bool `json:"restorable"`
 }
 
-// MailboxRestoreResult is the POST /mailboxes/:id/restore body.
+// MailboxRestoreResult is the POST /identities/:id/restore body.
 type MailboxRestoreResult struct {
 	Restored       bool    `json:"restored"`
 	ID             string  `json:"id"`
