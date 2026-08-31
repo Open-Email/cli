@@ -262,21 +262,31 @@ func (c *Client) doJSON(ctx context.Context, r request, out any) error {
 // exact response (union shapes with real nulls and duplicate:false) rather than a
 // re-marshaled, omitempty-lossy struct.
 func (c *Client) doJSONRaw(ctx context.Context, r request, out any) ([]byte, error) {
+	data, _, err := c.doJSONStatus(ctx, r, out)
+	return data, err
+}
+
+// doJSONStatus is doJSONRaw plus the 2xx status code, for the handful of routes
+// where the code SELECTS the body shape rather than merely reporting success —
+// /submit answers a SendResult at 200/207 and a ScheduledSend at 202. Decoding
+// one into the other yields a struct that is quietly, plausibly empty, so those
+// callers must branch on the code rather than sniff the fields.
+func (c *Client) doJSONStatus(ctx context.Context, r request, out any) ([]byte, int, error) {
 	resp, err := c.do(ctx, r)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONBody))
 	if err != nil {
-		return nil, fmt.Errorf("coreapi: read %s %s: %w", r.method, r.path, err)
+		return nil, resp.StatusCode, fmt.Errorf("coreapi: read %s %s: %w", r.method, r.path, err)
 	}
 	if out != nil && len(data) > 0 {
 		if err := json.Unmarshal(data, out); err != nil {
-			return data, fmt.Errorf("coreapi: decode %s %s: %w", r.method, r.path, err)
+			return data, resp.StatusCode, fmt.Errorf("coreapi: decode %s %s: %w", r.method, r.path, err)
 		}
 	}
-	return data, nil
+	return data, resp.StatusCode, nil
 }
 
 // cancelBody ties context cancel to Body.Close for streamed responses.

@@ -89,7 +89,7 @@ func newDomainListCmd(a *app) *cobra.Command {
 func newDomainCreateCmd(a *app) *cobra.Command {
 	var (
 		enabled, canSend, canReceive, fbl, dmarc, platform bool
-		jmap, dav, itip                                    bool
+		jmap, dav, itip, sendOnly                          bool
 		aliasOf, account                                   string
 	)
 	cmd := &cobra.Command{
@@ -97,11 +97,22 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 		Short: "Create a domain",
 		Long: "Create a domain. Booleans default to core's values when omitted " +
 			"(enabled/can-receive true, can-send/fbl/dmarc false); pass e.g. --can-send or --enabled=false to override.\n\n" +
+			"--send-only creates a SEND-ONLY domain: its mailboxes stay with another provider and only sending " +
+			"moves here. The platform then treats the domain as external for delivery (mail from your own " +
+			"mailboxes to it is relayed to its MX like any other address, group members there are forwards), " +
+			"the MX record is left out of the DNS checklist, and mail reaching our MX for it directly is refused. " +
+			"It is `--can-receive=false` under the name of what it does; flip it later with `domains update`.\n\n" +
 			"System keys must choose ownership explicitly: --account <id> for a tenant domain, or " +
 			"--platform for a platform domain owned by no account (operator-only; invisible to every tenant). " +
 			"Account keys need neither — they always own what they create.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// One switch, two spellings: --send-only IS --can-receive=false. Both
+			// at once is a contradiction waiting to be silently resolved, so refuse
+			// — before authentication, like every usage error.
+			if sendOnly && cmd.Flags().Changed("can-receive") {
+				return usageError(errors.New("--send-only and --can-receive are mutually exclusive (--send-only means --can-receive=false)"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -109,11 +120,16 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 			if platform && cmd.Flags().Changed("account") {
 				return usageError(errors.New("--account and --platform are mutually exclusive"))
 			}
+			recv := boolPtrIfChanged(cmd, "can-receive", canReceive)
+			if sendOnly {
+				no := false
+				recv = &no
+			}
 			in := coreapi.DomainCreateInput{
 				Domain:     args[0],
 				Enabled:    boolPtrIfChanged(cmd, "enabled", enabled),
 				CanSend:    boolPtrIfChanged(cmd, "can-send", canSend),
-				CanReceive: boolPtrIfChanged(cmd, "can-receive", canReceive),
+				CanReceive: recv,
 				FBL:        boolPtrIfChanged(cmd, "fbl", fbl),
 				DMARC:      boolPtrIfChanged(cmd, "dmarc", dmarc),
 				JMAP:       boolPtrIfChanged(cmd, "jmap", jmap),
@@ -160,7 +176,8 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&enabled, "enabled", true, "domain is enabled")
 	cmd.Flags().BoolVar(&canSend, "can-send", false, "domain may send")
-	cmd.Flags().BoolVar(&canReceive, "can-receive", true, "domain may receive")
+	cmd.Flags().BoolVar(&canReceive, "can-receive", true, "domain receives mail here (false = the send-only mode; prefer --send-only, which says what it does)")
+	cmd.Flags().BoolVar(&sendOnly, "send-only", false, "SEND-ONLY domain: mailboxes stay with another provider, only sending moves here — the platform relays mail for it to its own MX, asks for no MX record, and refuses mail reaching our MX for it (same as --can-receive=false)")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "FBL ingestion domain (parses DSN/ARF reports; mutually exclusive with alias)")
 	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "DMARC report-ingestion domain: swallows every local part and parses arriving aggregate (RUA) reports — NOT the _dmarc DNS record")
 	cmd.Flags().BoolVar(&jmap, "jmap", false, "JMAP autodiscovery: adds the _jmap._tcp SRV record to this domain's DNS checklist")
@@ -240,7 +257,7 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 	var (
 		enabled, canSend, canReceive, fbl, dmarc bool
 		jmap, dav, itip                          bool
-		sendPaused                               bool
+		sendPaused, sendOnly                     bool
 		aliasOf                                  string
 		clearAlias                               bool
 	)
@@ -249,6 +266,9 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 		Short: "Update a domain",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("send-only") && cmd.Flags().Changed("can-receive") {
+				return usageError(errors.New("--send-only and --can-receive are mutually exclusive (--send-only means --can-receive=false)"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -271,6 +291,11 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 			}
 			if cmd.Flags().Changed("can-receive") {
 				patch["canReceive"] = canReceive
+			}
+			// The same switch under the name of what it does: --send-only turns
+			// receiving off here, --send-only=false turns it back on.
+			if cmd.Flags().Changed("send-only") {
+				patch["canReceive"] = !sendOnly
 			}
 			if cmd.Flags().Changed("fbl") {
 				patch["fbl"] = fbl
@@ -312,7 +337,8 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "set enabled")
 	cmd.Flags().BoolVar(&canSend, "can-send", false, "set send capability")
 	cmd.Flags().BoolVar(&sendPaused, "send-paused", false, "HOLD outbound sending for this domain (system key required, in BOTH directions). Reversible: submissions are deferred (429 → 451) and queued mail is held, not bounced — unlike --can-send=false, which is permanent. Egress only")
-	cmd.Flags().BoolVar(&canReceive, "can-receive", false, "set receive capability")
+	cmd.Flags().BoolVar(&canReceive, "can-receive", false, "set whether the domain receives mail here (false = send-only; prefer --send-only)")
+	cmd.Flags().BoolVar(&sendOnly, "send-only", false, "make the domain SEND-ONLY: mailboxes stay with another provider, only sending is here — the platform relays mail for it to its own MX and drops the MX record from the DNS checklist. --send-only=false turns receiving here back on")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "set the FBL ingestion flag")
 	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "set the DMARC report-ingestion flag (aggregate/RUA parsing — NOT the _dmarc DNS record)")
 	cmd.Flags().BoolVar(&jmap, "jmap", false, "set JMAP autodiscovery (adds the _jmap._tcp SRV record to the DNS checklist)")
@@ -460,7 +486,7 @@ func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 		// looks nothing like one that was never set up to send. `Sending` above
 		// is the lifecycle answer and already folds this in.
 		{"Send paused", boolYN(d.SendPaused)},
-		{"Can receive", boolYN(d.CanReceive)},
+		{"Can receive", receiveMode(d)},
 		{"FBL", boolYN(d.FBL)},
 		{"DMARC ingestion", boolYN(d.DMARC)},
 		{"JMAP autodiscovery", boolYN(d.JMAP)},
@@ -555,6 +581,17 @@ func printOnboardingNext(w io.Writer, p *Printer, d *coreapi.Domain, records []c
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Still to publish (re-run this command afterwards to activate sending):")
 	printDNSRecords(w, p, pending, true)
+}
+
+// receiveMode names what `can_receive = 0` MEANS rather than printing a bare
+// "no": the domain sends from here while its inbound MX stays with another
+// provider, and the platform relays mail for it there. A reader of `get` should
+// not have to know that `no` is a mode and not a fault.
+func receiveMode(d *coreapi.Domain) string {
+	if d.CanReceive {
+		return "yes"
+	}
+	return "no — send-only (inbound MX elsewhere; mail for it is relayed there)"
 }
 
 // boolYNUnknown renders a tri-state liveness: nil is UNKNOWN (resolver

@@ -44,6 +44,35 @@ openemail mailboxes update <mailboxId> --address sales@example.com   # relabel t
 Omit `--address` on create for a bare store (POP3 pickup target, APPEND-only
 archive) that receives nothing until you bind a route.
 
+
+## Send-only domain — mailboxes stay with another provider
+
+Some domains should *send* from here while their inbound mail keeps living at
+Google, Microsoft, or wherever it is today. That is a mode, not a half-finished
+setup, and it is chosen at create time so the DNS checklist never asks you to
+point the MX at us (which would move your inbound mail):
+
+```sh
+openemail domains create example.com --send-only
+openemail domains dns example.com       # bounce CNAME + DKIM only — no MX row
+```
+
+What the platform does with a send-only domain: mail from your own mailboxes to
+addresses on it is relayed to the domain's real MX like any other external
+address (a route on it is a sending identity, not a place mail lands), a group
+member on it is a forward, and mail reaching our MX for it directly is refused.
+Nothing infers the mode from DNS — a domain left in the default while its MX
+stays elsewhere gets split delivery (your users' mail lands here, everyone
+else's lands there), so choose it explicitly.
+
+Flip it later either way; `--send-only=false` turns receiving here back on and
+the MX record rejoins the checklist:
+
+```sh
+openemail domains update example.com --send-only
+openemail domains update example.com --send-only=false
+```
+
 ## Send a message
 
 ```sh
@@ -439,6 +468,47 @@ a new absence, which makes everyone eligible for a reply again — including peo
 who already heard from you during the last one. Editing while you are already away
 deliberately re-notifies nobody. So fix a typo with `set`; never with `off` then
 `on`.
+
+## Forward mail to another address
+
+```sh
+openemail forwarding add me@elsewhere.example          # mails that address a code
+openemail forwarding verify me@elsewhere.example ABCD1234
+openemail forwarding all me@elsewhere.example          # forward everything to it
+openemail forwarding show
+```
+
+The middle step is not a formality. Adding a destination forwards **nothing** —
+core mails the address an eight-character code, good for 24 hours, and mail moves
+only once that code comes back. The person who receives the forwarded mail is the
+one who consents to receiving it, which is why the proof is theirs to give and not
+yours to assert.
+
+`add` is also the resend verb: run it again for an address that already exists and
+a fresh code goes out, whether the last one expired or the recipient stopped the
+forwarding from their end (they can, using the disable link core puts in every
+forwarded message — such a destination reads as `stopped by recipient` here).
+
+To stop for a while, `pause`; the destination stays verified, so `resume` costs no
+second ceremony. `off` gives up the setting but keeps the destination proven.
+Every command takes the address itself or the destination id.
+
+## Send a draft you filed earlier
+
+```sh
+openemail messages compose --to you@example.com --subject "Proposal" --text-file draft.txt
+openemail messages submit <messageId>
+```
+
+`compose` files a message without sending it; `submit` sends it **byte-for-byte as
+stored** — core derives the envelope from the message's own headers, strips `Bcc`
+from the wire copy, and turns the draft row itself into the Sent copy. Nothing is
+rebuilt, so what arrives is exactly what you reviewed.
+
+Both steps take an idempotency key by default, so a re-run after a partial failure
+converges instead of mailing the recipients who already succeeded a second time. A
+submission core is still retrying reports itself as such and exits **zero** — do not
+re-run it; that is the one thing that could send the message twice.
 
 Dates are optional and bound the absence (`--from ''` clears one). They are given
 as `YYYY-MM-DD`, an RFC3339 instant, or unix seconds, and are normalized to UTC.

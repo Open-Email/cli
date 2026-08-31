@@ -29,6 +29,7 @@ func newMessagesCmd(a *app) *cobra.Command {
 		newMessagePartCmd(a),
 		newMessageAppendCmd(a),
 		newMessageComposeCmd(a),
+		newMessageSubmitCmd(a),
 		newMessageLearnCmd(a, "junk", "spam"),
 		newMessageLearnCmd(a, "not-junk", "ham"),
 		newMessageFlagCmd(a),

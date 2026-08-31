@@ -75,13 +75,14 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `patterns` | per-domain pattern routes |
 | `credentials` | a mailbox's login credentials (app-passwords; `--expires-in` for session-scoped ones, @-free usernames for mail-less identities) |
 | `identities` | `get [id]` — the durable identity and its bound stores (mail + PIM facets with usage); a calendar-only identity shows no mail facet |
-| `messages` | list/get/`raw`/`append`/`compose` (file from fields without sending — drafts, imports)/`junk`/`not-junk` (train this mailbox's spam filter; many ids train in one call)/`flag`/`label`/`move`/`delete`/`restore` (many ids restore in one atomic call)/`trash empty`/`mime` |
+| `messages` | list/get/`raw`/`append`/`compose` (file from fields without sending — drafts, imports)/`submit` (send a stored draft byte-for-byte as stored — the draft row itself becomes the Sent copy)/`junk`/`not-junk` (train this mailbox's spam filter; many ids train in one call)/`flag`/`label`/`move`/`delete`/`restore` (many ids restore in one atomic call)/`trash empty`/`mime` |
 | `labels` | list/create/rename/delete/`messages`/`expunge` |
 | `threads` | list, get (with reply context), `reply` — the server derives recipient, subject and threading headers from the conversation |
 | `search [query]` | full-text search, or a structured filter search when any of `--from/--to/--before/--after/--unread/--has-attachment/--sort/…` is passed (`--snippet` for highlighted excerpts, `--total` for the match count) |
 | `rules` | filter rules — the simple alternative to writing Sieve: `list`/`get`/`put`/`delete`, plus `add`/`remove`/`enable`/`disable`/`move` edits and `script` (the Sieve they compile to) |
 | `sieve` | `scripts {list,get,put,delete,rename}`, `activate`/`deactivate`/`active`, `check`, `capabilities` |
 | `vacation` (alias `ooo`) | out-of-office auto-reply: `show`/`set`/`on`/`off` — one reply per correspondent per absence, compare-and-swap on the document's state |
+| `forwarding` (alias `forward`) | forward mail to an address elsewhere: `show`, `add` (mails the destination an eight-character code), `verify`, `remove`, `all` (forward everything to a verified destination), `pause`/`resume`, `off`. Adding a destination forwards nothing — consent belongs to whoever receives the mail, so nothing moves until the code comes back, and the recipient can stop it from their end at any time. Commands take an address or a destination id |
 | `compose` | send a structured message: multiple recipients, `--attach` files (staged as uploads), one result per recipient |
 | `calendars` | calendars: list/create/get/update/delete, `objects` (alias `events`: list with `--start/--end/--expand` range queries, get/put/delete/move raw .ics or `--json` JSCalendar), `respond` (RSVP), `invitations {show,status,respond}` (read and answer an invitation straight from the email it arrived in), `changes` (sync diff), `export`/`import`, `shares`, `tokens` (feed URLs) |
 | `addressbooks` | addressbooks: the same verb set over raw .vcf objects (alias `contacts`; no range/RSVP) |

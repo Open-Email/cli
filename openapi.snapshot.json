@@ -4148,6 +4148,165 @@
         ],
         "type": "object"
       },
+      "Forwarding": {
+        "properties": {
+          "destinations": {
+            "description": "Every destination this mailbox has named",
+            "items": {
+              "$ref": "#/components/schemas/ForwardingDestination"
+            },
+            "type": "array"
+          },
+          "forwardAll": {
+            "$ref": "#/components/schemas/ForwardingSetting"
+          }
+        },
+        "required": [
+          "destinations",
+          "forwardAll"
+        ],
+        "type": "object"
+      },
+      "ForwardingDestination": {
+        "properties": {
+          "address": {
+            "description": "The destination address, lowercased",
+            "type": "string"
+          },
+          "codeExpiresAt": {
+            "description": "When the outstanding confirmation code expires, in epoch seconds, or null when none is outstanding",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "description": "Creation timestamp in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Destination ULID — the handle every route uses, so no address is path-encoded",
+            "type": "string"
+          },
+          "state": {
+            "description": "Verification state; only 'verified' forwards",
+            "enum": [
+              "pending",
+              "verified",
+              "revoked_by_recipient"
+            ],
+            "type": "string"
+          },
+          "verifiedAt": {
+            "description": "When the code was consumed, in epoch seconds, or null",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "address",
+          "state",
+          "codeExpiresAt",
+          "verifiedAt",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ForwardingDestinationPending": {
+        "properties": {
+          "address": {
+            "description": "The destination address, masked (j••@ex•••.com)",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "When the mailed code expires, in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Destination ULID",
+            "type": "string"
+          },
+          "state": {
+            "description": "Always 'pending' immediately after a code is mailed",
+            "enum": [
+              "pending",
+              "verified",
+              "revoked_by_recipient"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "address",
+          "state",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "ForwardingDestinationVerified": {
+        "properties": {
+          "address": {
+            "description": "The destination address, masked",
+            "type": "string"
+          },
+          "id": {
+            "description": "Destination ULID",
+            "type": "string"
+          },
+          "state": {
+            "description": "'verified'",
+            "enum": [
+              "pending",
+              "verified",
+              "revoked_by_recipient"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "address",
+          "state"
+        ],
+        "type": "object"
+      },
+      "ForwardingSetting": {
+        "description": "The forward-everything setting",
+        "properties": {
+          "address": {
+            "description": "That destination's address, or null when off",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "destinationId": {
+            "description": "The destination receiving a copy of all mail, or null when off",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paused": {
+            "description": "True while forwarding is paused; the destination stays verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "destinationId",
+          "address",
+          "paused"
+        ],
+        "type": "object"
+      },
       "HostnameCheckStatus": {
         "description": "Verification details from the latest check",
         "properties": {
@@ -11604,7 +11763,7 @@
                 }
               }
             },
-            "description": "validation_failed — or empty_patch (no recognized field supplied)"
+            "description": "validation_failed, empty_patch (no recognized field supplied), or notice_mailbox_not_owned (the incident-notice mailbox must belong to this account)"
           },
           "403": {
             "content": {
@@ -15347,7 +15506,7 @@
                 }
               }
             },
-            "description": "over_quota — mailbox storage quota exceeded"
+            "description": "over_quota (mailbox quota) or account_over_quota (the account storage pool) — either way the message stays on the remote server until space appears"
           }
         },
         "summary": "Deliver message fetched from POP3 pickup",
@@ -15945,7 +16104,7 @@
                     "type": "string"
                   },
                   "canReceive": {
-                    "description": "Inbound receiving enabled",
+                    "description": "Whether this domain RECEIVES mail here. `false` is the send-only mode: the tenant sends as the domain while its inbound MX stays at another provider — every locality decision treats the domain as external (mail from the platform to it relays to its own MX, group members there are remote forwards, `/dns/check` omits the MX record), and mail arriving at our MX for it is refused `receiving_disabled`.",
                     "type": "boolean"
                   },
                   "canSend": {
@@ -15996,7 +16155,52 @@
         },
         "responses": {
           "200": {
-            "description": "ingestion_not_writable: fbl and dmarc turn the whole domain into a report-ingestion sink and are operator state; only a system caller may turn one on. Re-sending the value the domain already carries (as well as false, or omitting them) is unaffected"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Domain"
+                    },
+                    {
+                      "properties": {
+                        "records": {
+                          "items": {
+                            "$ref": "#/components/schemas/DnsRecordCheck"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "records"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "The domain — created, or an existing row the caller owns advanced through a fresh DNS check (a re-POST is the onboarding loop, never a conflict) — plus every DNS record to publish with its live check result. Sending activates automatically once the send records are live"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; domain_not_verified — the response's `record` field is the exact ownership TXT to publish, so publish it and POST again; account_required or unknown_account (system caller naming the owner); or an invalid aliasOf: alias_self, unknown_domain, alias_cross_account, alias_chain, alias_fbl_exclusive"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "ingestion_not_writable: fbl, dmarc and srs turn the whole domain into a report-ingestion sink and are operator state; only a system caller may turn one on. Re-sending the value the domain already carries (as well as false, or omitting them) is unaffected"
           },
           "409": {
             "content": {
@@ -16006,7 +16210,7 @@
                 }
               }
             },
-            "description": "domain_claimed_elsewhere (the caller proved control, but another account holds the domain — an operator must transfer it), domain_unavailable (identical for every other conflict — no tenant enumeration), or alias_conflict"
+            "description": "domain_claimed_elsewhere (the caller proved control, but another account holds the domain — an operator must transfer it), domain_unavailable (identical for every other conflict — no tenant enumeration), account_deleted, or alias_conflict"
           },
           "503": {
             "content": {
@@ -16149,7 +16353,7 @@
                     ]
                   },
                   "canReceive": {
-                    "description": "Inbound mail receiving flag",
+                    "description": "Whether this domain RECEIVES mail here (default true). `false` is the send-only mode — see the create description: the domain's own MX becomes the authority for its mail everywhere on the platform.",
                     "type": "boolean"
                   },
                   "canSend": {
@@ -17809,6 +18013,96 @@
         ]
       }
     },
+    "/api/v1/forwarding/disable/{token}": {
+      "get": {
+        "description": "Public. Renders a confirmation page for the recipient of forwarded mail; the page's form (and RFC 8058 one-click) POSTs to the same URL. A GET never revokes anything — link scanners prefetch URLs.",
+        "operationId": "get_ForwardingDisablePage",
+        "parameters": [
+          {
+            "description": "Signed disable-link token",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "description": "Signed disable-link token",
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Confirmation page"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid, superseded, or unknown link (indistinguishable)"
+          }
+        },
+        "summary": "Forwarding disable link (confirmation page)",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "post": {
+        "description": "Public. Revokes the destination: forward-everything and every filter rule redirecting to this address stop at the next delivery. Idempotent — a second POST finds it already revoked. Serves both the confirmation page's form and RFC 8058 one-click POSTs.",
+        "operationId": "post_ForwardingDisableRevoke",
+        "parameters": [
+          {
+            "description": "Signed disable-link token",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "description": "Signed disable-link token",
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forwarding stopped (or already stopped)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid, superseded, or unknown link (indistinguishable)"
+          }
+        },
+        "summary": "Forwarding disable link (revoke)",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "get_Health",
@@ -18391,7 +18685,7 @@
                 }
               }
             },
-            "description": "address_taken — the primary email address is already routed to another mailbox"
+            "description": "address_taken — the primary email address is already routed to another mailbox — or account_deleted (the owning account is soft-deleted; restore it first)"
           },
           "429": {
             "content": {
@@ -22703,7 +22997,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/credentials": {
       "get": {
-        "description": "Returns all active credentials for a mailbox (secrets are never returned).",
+        "description": "Returns every credential of a mailbox, revoked and expired ones included (secrets are never returned). Self-service: the mailbox's own bearer may read its own list.",
         "operationId": "get_CredentialList",
         "parameters": [
           {
@@ -22802,6 +23096,11 @@
                   },
                   {
                     "properties": {
+                      "currentPassword": {
+                        "description": "Required when the caller is the mailbox's OWN bearer (self-service), ignored for account and system callers: the mailbox's current login password, re-proved because an app password outlives the session that mints it. Refused as password_required (400), invalid_password (403) or no_password_credential (409)",
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
                       "expiresInSeconds": {
                         "description": "Lifetime in seconds. The credential stops authenticating once it elapses: for a client minting one per browser session, so a closed tab cannot leave a permanently valid key behind. Omit for a credential that never expires (the default, and what a mail client wants)",
                         "maximum": 31536000,
@@ -22865,7 +23164,17 @@
                 }
               }
             },
-            "description": "validation_failed, username_required, or username_not_mailbox_address"
+            "description": "validation_failed, username_required, username_not_mailbox_address, or password_required (the mailbox's own bearer sent no currentPassword)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password (the mailbox's own bearer proved the wrong password), or account_credentials_required (a mailbox bearer asked for a login password: admin only)"
           },
           "404": {
             "content": {
@@ -22876,6 +23185,26 @@
               }
             },
             "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential — the mailbox has no login password to prove, so it cannot self-serve"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited — too many self-service attempts"
           }
         },
         "summary": "Create mailbox credential",
@@ -22886,7 +23215,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/credentials/{credentialId}": {
       "delete": {
-        "description": "Revokes an existing password or app password, closing its active sessions.",
+        "description": "Revokes an existing password or app password, closing its active sessions. Self-service: the mailbox's own bearer may revoke its own APP passwords (a login password answers 404 to it, exactly like a missing id).",
         "operationId": "delete_CredentialDelete",
         "parameters": [
           {
@@ -23291,6 +23620,498 @@
         "summary": "Subscribe to live mailbox change events over WebSocket",
         "tags": [
           "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/forwarding": {
+      "get": {
+        "description": "Returns every address this mailbox has named for forwarding, with its verification state, plus the forward-everything setting. Never returns a confirmation code.",
+        "operationId": "get_ForwardingGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forwarding"
+                }
+              }
+            },
+            "description": "Destinations and the forward-everything setting"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get forwarding destinations and settings",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/forwarding/all": {
+      "delete": {
+        "description": "Switches forward-everything off. Destinations survive — they are proven, and re-proving them to resume would be punitive.",
+        "operationId": "delete_ForwardingAllClear",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forwarding"
+                }
+              }
+            },
+            "description": "Forwarding is off"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Stop forwarding all mail",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "patch": {
+        "description": "Pauses or resumes forward-everything without touching the destination: a paused forward keeps its proof, so resuming never re-verifies.",
+        "operationId": "patch_ForwardingAllPause",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "paused": {
+                    "description": "True to pause forwarding, false to resume. Never re-verifies the destination",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "paused"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forwarding"
+                }
+              }
+            },
+            "description": "The new state"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found, or forwarding is not set"
+          }
+        },
+        "summary": "Pause or resume forwarding",
+        "tags": [
+          "Sieve"
+        ]
+      },
+      "put": {
+        "description": "Points forward-everything at a verified destination, and resumes it if it was paused. Junk, bounce and daemon mail are never forwarded.",
+        "operationId": "put_ForwardingAllSet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "destinationId": {
+                    "description": "A verified destination to receive a copy of all mail",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "destinationId"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forwarding"
+                }
+              }
+            },
+            "description": "Forwarding is on"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "destination_not_verified — the destination has not proved a code"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or destination not found, or not accessible to this principal"
+          }
+        },
+        "summary": "Forward all mail to a destination",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/forwarding/destinations": {
+      "post": {
+        "description": "Names an address and mails it an eight-character confirmation code, valid for 24 hours. The destination forwards nothing until the code is confirmed. Re-posting an address that already exists re-mails a fresh code rather than refusing, which is also how a destination the recipient revoked is re-proved.",
+        "operationId": "post_ForwardingDestinationAdd",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "The address to forward to",
+                    "maxLength": 320,
+                    "minLength": 3,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "address"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForwardingDestinationPending"
+                }
+              }
+            },
+            "description": "The destination is pending and a code has been mailed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; or destination_is_self / destination_loops / destination_chain_too_long when the address routes back to this mailbox; or destination_not_permitted when the account's allowlist refuses it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_many_destinations — the per-mailbox cap is reached; remove one first"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "resend_cooldown — a code was mailed to this address moments ago"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forwarding_mail_unavailable — this deployment cannot send confirmation mail, so no pending row is stored"
+          }
+        },
+        "summary": "Add a forwarding destination",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/forwarding/destinations/{destId}": {
+      "delete": {
+        "description": "Removes the destination and clears the forward-everything setting if it pointed there. Filter rules redirecting to the address stop forwarding at the next delivery.",
+        "operationId": "delete_ForwardingDestinationDelete",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Forwarding destination ULID",
+            "in": "path",
+            "name": "destId",
+            "required": true,
+            "schema": {
+              "description": "Forwarding destination ULID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Removed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or destination not found, or not accessible to this principal"
+          }
+        },
+        "summary": "Remove a forwarding destination",
+        "tags": [
+          "Sieve"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/forwarding/destinations/{destId}/verify": {
+      "post": {
+        "description": "Spends the code mailed to the destination. Five wrong codes end the ceremony. Confirming invalidates every disable link previously mailed for it.",
+        "operationId": "post_ForwardingDestinationVerify",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Forwarding destination ULID",
+            "in": "path",
+            "name": "destId",
+            "required": true,
+            "schema": {
+              "description": "Forwarding destination ULID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "code": {
+                    "description": "The eight-character code mailed to the destination",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForwardingDestinationVerified"
+                }
+              }
+            },
+            "description": "The destination is verified"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed; or no_pending_code, meaning nothing is awaiting confirmation or the code expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the fifth wrong code. Add the address again for a fresh one"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or destination not found, or not accessible to this principal"
+          }
+        },
+        "summary": "Confirm a forwarding destination",
+        "tags": [
+          "Sieve"
         ]
       }
     },
@@ -25653,7 +26474,7 @@
                 }
               }
             },
-            "description": "over_quota — mailbox storage limit exceeded"
+            "description": "over_quota (mailbox storage limit) or account_over_quota (the account storage pool) — distinct so the client knows which limit to raise"
           }
         },
         "summary": "Append raw MIME message to mailbox",
@@ -26116,7 +26937,7 @@
                 }
               }
             },
-            "description": "over_quota"
+            "description": "over_quota (mailbox storage limit) or account_over_quota (the account storage pool) — distinct so the client knows which limit to raise"
           }
         },
         "summary": "Save structured message to mailbox",
@@ -27259,6 +28080,157 @@
         "summary": "Restore an expunged message from trash",
         "tags": [
           "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/submit": {
+      "post": {
+        "description": "Sends a message already stored in this mailbox as a draft, byte-for-byte as stored: the `Bcc` header is stripped from the wire copy, the envelope is derived from the message's own `Sender`/`From` (return path) and `To`/`Cc`/`Bcc` (recipients), and the draft row itself becomes the Sent copy — no rebuild, no second copy. Every `From` address must be this mailbox's own. Answers one result per recipient like `/send` (`200` all accepted, `207` mixed). A retryable per-recipient outcome is retried by the server (`202`, state `pending`) rather than reported as `failed`; a replay under the same `X-Delivery-Id` answers `202` with the submission's own record.",
+        "operationId": "post_MessageSubmit",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The draft's message ULID",
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "description": "The draft's message ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deliver a bounce notice (DSN) to this mailbox if relay fails (default true)",
+            "in": "query",
+            "name": "bounce",
+            "required": false,
+            "schema": {
+              "description": "Deliver a bounce notice (DSN) to this mailbox if relay fails (default true)",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional idempotency key: a replay answers 202 with this submission's own record instead of sending again",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": false,
+            "schema": {
+              "description": "Optional idempotency key: a replay answers 202 with this submission's own record instead of sending again",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            },
+            "description": "Every recipient was accepted (delivered, queued, or filtered); the draft is now in Sent"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledSend"
+                }
+              }
+            },
+            "description": "The submission is on record as this schedule and is not (or not yet) a finished send — a REPLAY under the same `X-Delivery-Id` (`state` says what became of it), or a release the server deferred to retry itself (`state: pending`, `error` names why). The draft keeps `$submitpending` until it settles"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            },
+            "description": "Mixed: at least one recipient failed permanently. The draft moved to Sent if any recipient was accepted, else stays a draft wearing `$submitfailed`"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, no_recipients, too_many_recipients, invalid_from (no usable Sender/From), ambiguous_sender (more than one Sender/From address, so no return path can be derived), or a malformed X-Delivery-Id"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found (the mailbox or message does not exist, or is not this caller's) or mailbox_gone (the mailbox was torn down mid-submission)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_a_draft — the message is not (or no longer) a draft: moved out of Drafts, in Trash, `\\Draft` cleared, or already sent. already_scheduled — a pending schedule holds this draft; cancel it first (carries `scheduleId`)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "TEMPORARY — rate_limited (over the daily allowance), sending_paused or from_sending_paused (a reversible hold), all with `Retry-After` and `retryAfterSeconds`; retry with the same X-Delivery-Id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "blob_unreadable — the draft's bytes could not be read right now; retry"
+          }
+        },
+        "summary": "Send a stored draft",
+        "tags": [
+          "Delivery"
         ]
       }
     },
@@ -29219,7 +30191,7 @@
                 }
               }
             },
-            "description": "validation_failed — malformed rules document; or destination_is_self / destination_loops / destination_chain_too_long when a redirect target routes back to this mailbox"
+            "description": "validation_failed — malformed rules document; or destination_is_self / destination_loops / destination_chain_too_long when a redirect target routes back to this mailbox; or destination_unverified when a redirect target this save introduces has not been confirmed as a forwarding destination"
           },
           "404": {
             "content": {
@@ -29798,7 +30770,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_query, invalid_cursor, or search_offset_too_deep"
+            "description": "validation_failed, empty_query, invalid_cursor, search_offset_too_deep, or grouped_search_unpaginated (grouped mode cannot be combined with cursor paging)"
           },
           "404": {
             "content": {
@@ -30220,6 +31192,16 @@
               }
             },
             "description": "Sent copy lost its pending intent; retry with the same X-Delivery-Id"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "over_quota or account_over_quota — a SCHEDULED send only: the draft it must store has nowhere to live. An immediate send is never refused for storage; a Sent copy that cannot be stored degrades to `sentCopy: \"over_quota\"` in the result instead"
           }
         },
         "summary": "Send an email message",
@@ -30433,7 +31415,7 @@
                 }
               }
             },
-            "description": "`validation_failed` — malformed body. `invalid_rights` — the rights value is not a known preset and not a valid letter set; the response carries an `invalidLetters` array naming the offending letters. `self_share_prohibited` — a mailbox cannot be shared with itself. `rights_not_allowed_on_folder_share` — a folder-scoped grant may only carry `lrs` (read, and private read/unread marks); the response names the offending letters and the allowed set. `empty_label_scope` — `labelScope` was an empty list, which would be a grant that can see nothing; use DELETE to revoke instead. `unknown_label` — one or more named folders do not exist in this mailbox; the response names them. `label_scope_too_large` — more folders were named than one grant may carry; the response carries the `max`. `invalid_label_scope` — a scope entry was not a folder identifier. `cross_account_share_refused` — the grantee belongs to a different account (system principals only; tenants receive 404 instead, so the API cannot be used to discover identities in other accounts)"
+            "description": "`validation_failed` — malformed body. `invalid_rights` — the rights value is not a known preset and not a valid letter set; the response carries an `invalidLetters` array naming the offending letters. `self_share_prohibited` — a mailbox cannot be shared with itself. `rights_not_allowed_on_folder_share` — a folder-scoped grant may only carry `lrswit` (read, private read/unread marks, write flags/keywords within the scope, file into a named in-scope folder, and trash out of the folder — never expunge or folder administration); the response names the offending letters and the allowed set. `empty_label_scope` — `labelScope` was an empty list, which would be a grant that can see nothing; use DELETE to revoke instead. `unknown_label` — one or more named folders do not exist in this mailbox; the response names them. `label_scope_too_large` — more folders were named than one grant may carry; the response carries the `max`. `invalid_label_scope` — a scope entry was not a folder identifier. `cross_account_share_refused` — the grantee belongs to a different account (system principals only; tenants receive 404 instead, so the API cannot be used to discover identities in other accounts)"
           },
           "404": {
             "content": {
@@ -31003,7 +31985,7 @@
                 }
               }
             },
-            "description": "validation_failed — malformed name or body; or destination_is_self / destination_loops / destination_chain_too_long when a redirect target routes back to this mailbox"
+            "description": "validation_failed — malformed name or body; or destination_is_self / destination_loops / destination_chain_too_long when a redirect target routes back to this mailbox; or destination_unverified when a redirect target this write introduces has not been confirmed as a forwarding destination"
           },
           "403": {
             "content": {
@@ -31677,6 +32659,16 @@
               }
             },
             "description": "Sent copy lost its pending intent; retry with the same X-Delivery-Id"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "over_quota or account_over_quota — a SCHEDULED reply only: the draft it must store has nowhere to live. An immediate reply is never refused for storage"
           }
         },
         "summary": "Reply to a conversation thread",

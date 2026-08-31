@@ -122,6 +122,15 @@ func contractPairings() []pairing {
 		{val: SieveCheckResult{}, comp: "SieveCheckResult"},
 		{val: SieveCapabilities{}, comp: "SieveCapabilities"},
 		{val: Vacation{}, comp: "Vacation"},
+		// Verified forwarding. The three destination shapes are deliberately
+		// separate components rather than one with optional fields: the add and
+		// verify answers MASK the address and omit the timestamps, so a single
+		// struct would make a masked address indistinguishable from a real one.
+		{val: Forwarding{}, comp: "Forwarding"},
+		{val: ForwardingDestination{}, comp: "ForwardingDestination"},
+		{val: ForwardingDestinationPending{}, comp: "ForwardingDestinationPending"},
+		{val: ForwardingDestinationVerified{}, comp: "ForwardingDestinationVerified"},
+		{val: ForwardingSetting{}, comp: "ForwardingSetting"},
 		// Event webhooks (docs/events-design.md §XIV).
 		{val: EventWebhook{}, comp: "EventWebhook"},
 		{val: EventWebhookTestResult{}, comp: "EventWebhookTestResult"},
@@ -129,6 +138,11 @@ func contractPairings() []pairing {
 		{val: UploadResult{}, comp: "UploadResult"},
 		{val: SendResult{}, comp: "SendResult"},
 		{val: SendRecipientResult{}, comp: "SendRecipientResult"},
+		// The 202 half of submitting a stored draft: core kept the submission and
+		// is retrying it. Pinned because a client that stopped decoding `state`
+		// or `result` would report a still-running submission as a finished one.
+		{val: ScheduledSend{}, comp: "ScheduledSend"},
+		{val: ScheduledLegResult{}, comp: "ScheduledLegResult"},
 		// Operator surfaces (system-only).
 		{val: Suppression{}, comp: "Suppression"},
 		// The tenant tier: address lists (core 0040) replaced the per-account

@@ -110,7 +110,7 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 		fields = append(fields,
 			boolField("Enabled", "", &enabled),
 			boolField("Can send", "allow outbound submission from this domain", &canSend),
-			boolField("Can receive", "", &canRecv),
+			boolField("Receive mail here", "no = SEND-ONLY: the domain's inbound MX stays with another provider; the platform relays mail for it there and asks for no MX record", &canRecv),
 			boolField("FBL ingestion", "parse DSN/ARF feedback reports delivered to this domain", &fbl),
 			boolField("DMARC ingestion", "parse aggregate (RUA) reports delivered to this domain — not the _dmarc DNS record", &dmarc),
 			huh.NewInput().Title("Alias of").
