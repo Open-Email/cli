@@ -13,7 +13,7 @@ import (
 // hostnameServices is the fixed set core defines. Listed here so `set` can
 // refuse a typo locally with a useful message instead of a 404 from a path
 // segment the server never matched.
-var hostnameServices = []string{"mail", "smtp", "webmail", "dav"}
+var hostnameServices = []string{"mail", "smtp", "webmail", "dav", "mx"}
 
 // newDomainHostnamesCmd is the vanity-hostname surface: a customer's own
 // `mail.`/`smtp.`/`webmail.`/`dav.` names in front of the platform services.
@@ -24,14 +24,16 @@ var hostnameServices = []string{"mail", "smtp", "webmail", "dav"}
 func newDomainHostnamesCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hostnames",
-		Short: "Vanity hostnames — the domain's own names for mail, smtp, webmail and dav",
+		Short: "Vanity hostnames — the domain's own names for mail, smtp, webmail, dav and mx",
 		Long: "Put a customer's OWN hostnames in front of the platform services: they publish one " +
 			"CNAME per service and their users configure `mail.acme.com` rather than a platform " +
-			"hostname.\n\n" +
+			"hostname. The `mx` slot is the exception: an MX target cannot be a CNAME (RFC 2181), " +
+			"so that name is DELEGATED instead — publish the NS records the claim reports, and the " +
+			"platform serves its addresses.\n\n" +
 			"Claiming is not serving. A claim records that the hostname belongs to this domain (it " +
 			"must be a strict subdomain of it); nothing is served until `hostnames check` sees the " +
-			"CNAME actually pointing at the platform target. A hostname whose CNAME is later removed " +
-			"stops being served on the next check.",
+			"CNAME (or, for mx, the NS delegation) actually pointing at the platform. A record that " +
+			"is later removed stops being served on the next check.",
 	}
 	cmd.AddCommand(
 		newHostnamesListCmd(a),
@@ -65,7 +67,7 @@ func newHostnamesListCmd(a *app) *cobra.Command {
 func newHostnamesSetCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <domain> <service> <hostname>",
-		Short: "Claim a hostname for one service (mail | smtp | webmail | dav)",
+		Short: "Claim a hostname for one service (mail | smtp | webmail | dav | mx)",
 		Long: "Claim a hostname for one service. It must be a STRICT subdomain of the domain — which is " +
 			"what makes ownership self-evident, since the domain's own control was already proved.\n\n" +
 			"The claim is CHECKED as it is recorded: a CNAME that is already published verifies on the " +
@@ -91,7 +93,7 @@ func newHostnamesSetCmd(a *app) *cobra.Command {
 				// verdict the claim came back with, so a customer who published
 				// first is told they are done rather than told to publish.
 				slot := slotFor(res, service)
-				if slot == nil || slot.Target == nil {
+				if slot == nil || (slot.Target == nil && len(slot.NsTargets) == 0) {
 					return
 				}
 				switch {
@@ -99,6 +101,14 @@ func newHostnamesSetCmd(a *app) *cobra.Command {
 					a.out.Msgf("%s", a.out.Dim("We could not set this hostname up on our side — that is not your DNS. Try `hostnames check` again in a minute."))
 				case slot.VerifiedAt != nil:
 					a.out.Msgf("%s verified — nothing more to publish.", hostname)
+				case len(slot.NsTargets) > 0:
+					// The mx slot is a DELEGATION, not a CNAME (RFC 2181): the
+					// customer hands us the NAME and we serve its addresses.
+					for _, ns := range slot.NsTargets {
+						a.out.Msgf("Publish: %s NS %s", hostname, ns)
+					}
+					a.out.Msgf("%s", a.out.Dim("NS records, not a CNAME — an MX target cannot be a CNAME. Publish ALL of them; a partial or mixed set will not verify."))
+					a.out.Msgf("%s", a.out.Dim("Then run `openemail domains hostnames check "+domain+"`, and point your MX record at "+hostname+" once verified."))
 				default:
 					a.out.Msgf("Publish: %s CNAME %s", hostname, *slot.Target)
 					// mail/smtp need a plain, unintercepted CNAME. That only ever
@@ -199,10 +209,12 @@ func printHostnames(w io.Writer, p *Printer, list *coreapi.DomainHostnameList) {
 		target := "not offered"
 		if h.Target != nil {
 			target = *h.Target
+		} else if len(h.NsTargets) > 0 {
+			target = "NS: " + strings.Join(h.NsTargets, ", ")
 		}
 		rows = append(rows, []string{h.Service, hostname, target, hostnameState(h)})
 	}
-	printTable(w, p, []string{"SERVICE", "HOSTNAME", "CNAME TARGET", "STATE"}, rows)
+	printTable(w, p, []string{"SERVICE", "HOSTNAME", "TARGET", "STATE"}, rows)
 	// Said after the table rather than instead of it: an operator may have
 	// provisioned rows with a system key on an account that cannot claim its
 	// own, and those are exactly the rows worth still showing.
@@ -233,6 +245,14 @@ func hostnameState(h coreapi.DomainHostname) string {
 		case "unknown":
 			return "DNS unavailable"
 		}
+		switch h.Status.NS {
+		case "missing":
+			return "NS records not published"
+		case "mismatch":
+			return "NS records don't match ours"
+		case "unknown":
+			return "DNS unavailable"
+		}
 		if h.Status.CAA == "blocked" {
 			return "blocked by CAA"
 		}
@@ -260,6 +280,13 @@ func hostnameState(h coreapi.DomainHostname) string {
 			// Sampled from one node behind round-robin DNS, so this is expected
 			// for a few minutes after verification and never on its own a fault.
 			return "verified, certificate pending"
+		}
+		// mx only, display: is the platform responder answering for the name?
+		switch h.Status.Resolution {
+		case "ok":
+			return "live"
+		case "none":
+			return "verified, propagating"
 		}
 	}
 	return "verified"

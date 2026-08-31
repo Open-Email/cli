@@ -83,9 +83,16 @@
               "null"
             ]
           },
-          "sendDisabled": {
-            "description": "True if outbound sending is permanently disabled for all mailboxes in this account",
-            "type": "boolean"
+          "sendHold": {
+            "description": "Operator enforcement over every mailbox on every domain this account owns: 'disabled' = permanent stop, 'paused' = reversible hold, null = neither",
+            "enum": [
+              "disabled",
+              "paused"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sendMsgsPerDay": {
             "description": "Daily outbound message limit (null = platform default, 0 = unlimited)",
@@ -102,10 +109,6 @@
               "integer",
               "null"
             ]
-          },
-          "sendPaused": {
-            "description": "True if outbound sending is temporarily paused for all mailboxes in this account",
-            "type": "boolean"
           },
           "sendRcptsPerDay": {
             "description": "Daily outbound recipient limit (null = platform default, 0 = unlimited)",
@@ -148,8 +151,7 @@
           "name",
           "maxMailboxes",
           "verificationToken",
-          "sendDisabled",
-          "sendPaused",
+          "sendHold",
           "sendMsgsPerDay",
           "sendRcptsPerDay",
           "sendMsgsPerHour",
@@ -402,14 +404,6 @@
             ],
             "type": "object"
           },
-          "disabled": {
-            "description": "True if outbound sending is permanently disabled",
-            "type": "boolean"
-          },
-          "paused": {
-            "description": "True if outbound sending is temporarily paused",
-            "type": "boolean"
-          },
           "send": {
             "properties": {
               "messages": {
@@ -477,6 +471,17 @@
             ],
             "type": "object"
           },
+          "sendHold": {
+            "description": "The account's own hold: 'disabled' = permanent stop, 'paused' = reversible hold, null = neither",
+            "enum": [
+              "disabled",
+              "paused"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "windowSeconds": {
             "description": "Duration of the rate-limit window in seconds (e.g. 86400)",
             "format": "int64",
@@ -485,8 +490,7 @@
         },
         "required": [
           "accountId",
-          "disabled",
-          "paused",
+          "sendHold",
           "send",
           "creates",
           "windowSeconds",
@@ -2906,14 +2910,6 @@
               "null"
             ]
           },
-          "canReceive": {
-            "description": "True if inbound receiving is enabled for this domain",
-            "type": "boolean"
-          },
-          "canSend": {
-            "description": "True if outbound sending is enabled for this domain",
-            "type": "boolean"
-          },
           "createdAt": {
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
@@ -2951,7 +2947,7 @@
             "type": "string"
           },
           "enabled": {
-            "description": "True if the domain is active",
+            "description": "True if the domain is in service (both directions) — the owner's switch",
             "type": "boolean"
           },
           "fbl": {
@@ -2980,15 +2976,30 @@
             ]
           },
           "receiving": {
-            "description": "Effective receiving status (enabled && canReceive)",
+            "description": "This domain receives here (enabled && !sendOnly)",
             "type": "boolean"
           },
-          "sendPaused": {
-            "description": "True if outbound sending is temporarily paused",
+          "sendHold": {
+            "description": "This domain's own operator enforcement: 'disabled' = permanent stop (403 sending_disabled), 'paused' = reversible hold (429 sending_paused), null = neither. System-written only; the account's hold is reported on the Account",
+            "enum": [
+              "disabled",
+              "paused"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sendOnly": {
+            "description": "True for the SEND-ONLY mode: the tenant sends as the domain while its inbound MX stays at another provider, so nothing on it is a local recipient — the owner's choice of where their mail lives, not an enforcement state",
+            "type": "boolean"
+          },
+          "sendVerified": {
+            "description": "True once the send records (bounce CNAME + both DKIM CNAMEs) were proven live by POST /domains — the EARNED half of sendability; false means 'publish DNS', never 'stopped'",
             "type": "boolean"
           },
           "sending": {
-            "description": "Effective sending status (enabled && canSend && !sendPaused)",
+            "description": "This domain may send by its own switches (enabled && sendVerified && sendHold === null). The account's hold is not folded in — read it from the Account; /auth/verify reports the effective fold for a login",
             "type": "boolean"
           },
           "srs": {
@@ -3013,9 +3024,9 @@
         "required": [
           "domain",
           "enabled",
-          "canSend",
-          "sendPaused",
-          "canReceive",
+          "sendOnly",
+          "sendVerified",
+          "sendHold",
           "aliasOf",
           "fbl",
           "dmarc",
@@ -3359,6 +3370,13 @@
               "null"
             ]
           },
+          "nsTargets": {
+            "description": "mx only: the platform nameserver hostnames the customer must publish as NS records at the claimed name (instead of a CNAME)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "service": {
             "$ref": "#/components/schemas/HostnameService"
           },
@@ -3366,7 +3384,7 @@
             "$ref": "#/components/schemas/HostnameCheckStatus"
           },
           "target": {
-            "description": "Expected CNAME target host to point DNS to",
+            "description": "Expected CNAME target host to point DNS to (null for the NS-delegated mx service)",
             "type": [
               "string",
               "null"
@@ -3405,7 +3423,7 @@
             "type": "string"
           },
           "hostnames": {
-            "description": "Custom hostname configurations for all four services",
+            "description": "Custom hostname configurations for every service slot",
             "items": {
               "$ref": "#/components/schemas/DomainHostname"
             },
@@ -4069,9 +4087,14 @@
               "dnsUncheckedCount": {
                 "description": "Count of domains never yet checked for DNS setup",
                 "type": "integer"
+              },
+              "unverifiedCount": {
+                "description": "Count of domains whose send records were never proven live (the pre-onboarding state) — separate from disabledCount, which counts only deliberate operator stops",
+                "type": "integer"
               }
             },
             "required": [
+              "unverifiedCount",
               "dnsOkCount",
               "dnsIncompleteCount",
               "dnsUncheckedCount"
@@ -4368,7 +4391,7 @@
             "type": "object"
           },
           "cname": {
-            "description": "CNAME resolution status against the expected platform target",
+            "description": "CNAME resolution status against the expected platform target (CNAME services only)",
             "enum": [
               "ok",
               "mismatch",
@@ -4384,10 +4407,28 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "ns": {
+            "description": "NS delegation status against the platform nameserver set (mx only). 'mismatch' includes a foreign nameserver beside ours: split authority is a misconfiguration, not a partial pass",
+            "enum": [
+              "ok",
+              "mismatch",
+              "missing",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "resolution": {
+            "description": "mx only, display: whether an address query through the delegation answers — proof the platform responder serves this name. Never gates verification",
+            "enum": [
+              "ok",
+              "none",
+              "unknown"
+            ],
+            "type": "string"
           }
         },
         "required": [
-          "cname",
           "found"
         ],
         "type": [
@@ -4463,7 +4504,8 @@
           "mail",
           "smtp",
           "webmail",
-          "dav"
+          "dav",
+          "mx"
         ],
         "type": "string"
       },
@@ -4954,9 +4996,16 @@
               "null"
             ]
           },
-          "sendDisabled": {
-            "description": "True if outbound sending is permanently disabled",
-            "type": "boolean"
+          "sendHold": {
+            "description": "This mailbox's own operator enforcement: 'disabled' = permanent stop (403 sending_disabled), 'paused' = reversible hold (429 sending_paused), null = neither. System-written only",
+            "enum": [
+              "disabled",
+              "paused"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sendMsgsPerDay": {
             "description": "Daily outbound message limit (null = platform default, 0 = unlimited)",
@@ -4973,10 +5022,6 @@
               "integer",
               "null"
             ]
-          },
-          "sendPaused": {
-            "description": "True if outbound sending is temporarily paused",
-            "type": "boolean"
           },
           "sendRcptsPerDay": {
             "description": "Daily outbound recipient limit (null = platform default, 0 = unlimited)",
@@ -5001,8 +5046,7 @@
           "quotaBytes",
           "accountId",
           "createdAt",
-          "sendDisabled",
-          "sendPaused",
+          "sendHold",
           "sendMsgsPerDay",
           "sendRcptsPerDay",
           "sendMsgsPerHour",
@@ -9187,10 +9231,6 @@
             "format": "int64",
             "type": "integer"
           },
-          "disabled": {
-            "description": "True if outbound sending is permanently disabled",
-            "type": "boolean"
-          },
           "messages": {
             "description": "Number of distinct messages sent in the rolling 24-hour window",
             "format": "int64",
@@ -9216,10 +9256,6 @@
               "integer",
               "null"
             ]
-          },
-          "paused": {
-            "description": "True if outbound sending is temporarily paused",
-            "type": "boolean"
           },
           "rcptsPerDay": {
             "description": "Configured daily recipient limit (null = unlimited or unenforced)",
@@ -9247,6 +9283,17 @@
             "format": "int64",
             "type": "integer"
           },
+          "sendHold": {
+            "description": "The mailbox's own hold: 'disabled' = permanent stop, 'paused' = reversible hold, null = neither",
+            "enum": [
+              "disabled",
+              "paused"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "windowSeconds": {
             "description": "Duration of the rate-limit window in seconds (e.g. 86400 for 24h)",
             "format": "int64",
@@ -9262,8 +9309,7 @@
           "recipientsHour",
           "msgsPerHour",
           "rcptsPerHour",
-          "disabled",
-          "paused",
+          "sendHold",
           "windowSeconds",
           "burstWindowSeconds"
         ],
@@ -9643,11 +9689,11 @@
             "$ref": "#/components/schemas/FleetSendState"
           },
           "anyDisabled": {
-            "description": "True if any account or identity is currently send-disabled",
+            "description": "True if any account, domain or identity is currently send-disabled by an operator",
             "type": "boolean"
           },
           "anyPaused": {
-            "description": "True if any account or identity is currently send-paused",
+            "description": "True if any account, domain or identity is currently send-paused",
             "type": "boolean"
           },
           "domains": {
@@ -10934,10 +10980,11 @@
             "type": "string"
           },
           "sendHold": {
-            "description": "Reason if canSend is false ('disabled' = permanent stop, 'paused' = temporary hold)",
+            "description": "Why canSend is false, present only then: 'unverified' = the domain's send records were never published (publish DNS), 'paused' = a reversible hold at some scope, 'disabled' = a permanent stop or a login that cannot send at all",
             "enum": [
               "disabled",
-              "paused"
+              "paused",
+              "unverified"
             ],
             "type": "string"
           }
@@ -11681,9 +11728,16 @@
                       "null"
                     ]
                   },
-                  "sendDisabled": {
-                    "description": "STOP (true) or release (false) all outbound mail for this account. Refusals answer 403 sending_disabled — permanent, so SMTP submission gets a 550 rather than a queue-and-retry, and the queued relay backlog is bounced. The abuse response",
-                    "type": "boolean"
+                  "sendHold": {
+                    "description": "Operator enforcement over ALL outbound mail for this account. 'disabled' STOPS it — the abuse response: refusals answer 403 sending_disabled, permanent, so SMTP submission gets a 550 rather than a queue-and-retry, and the queued relay backlog is bounced. 'paused' HOLDS it — the reversible form, for non-payment or an investigation you intend to conclude: refusals answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sending MTA queues the mail; the queued relay backlog is DEFERRED rather than bounced. null lifts either. Egress only: a held account still receives",
+                    "enum": [
+                      "disabled",
+                      "paused"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "sendMsgsPerDay": {
                     "description": "Distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns. null = the platform default; 0 = unlimited. Over it, submissions answer 429 rate_limited",
@@ -11702,10 +11756,6 @@
                       "integer",
                       "null"
                     ]
-                  },
-                  "sendPaused": {
-                    "description": "HOLD (true) or resume (false) all outbound mail for this account — the reversible form, for non-payment or an investigation you intend to conclude. Refusals answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sending MTA queues the mail; the queued relay backlog is DEFERRED rather than bounced. `sendDisabled` wins if both are set. Egress only: a paused account still receives",
-                    "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "Envelope recipients this ACCOUNT may send to per rolling 24h. null = the platform default; 0 = unlimited",
@@ -16103,14 +16153,6 @@
                     "minLength": 3,
                     "type": "string"
                   },
-                  "canReceive": {
-                    "description": "Whether this domain RECEIVES mail here. `false` is the send-only mode: the tenant sends as the domain while its inbound MX stays at another provider — every locality decision treats the domain as external (mail from the platform to it relays to its own MX, group members there are remote forwards, `/dns/check` omits the MX record), and mail arriving at our MX for it is refused `receiving_disabled`.",
-                    "type": "boolean"
-                  },
-                  "canSend": {
-                    "description": "Outbound sending enabled",
-                    "type": "boolean"
-                  },
                   "dav": {
                     "description": "Enable CalDAV/CardDAV autodiscovery DNS checks",
                     "type": "boolean"
@@ -16138,6 +16180,14 @@
                   },
                   "jmap": {
                     "description": "Enable JMAP autodiscovery DNS checks",
+                    "type": "boolean"
+                  },
+                  "sendOnly": {
+                    "description": "The SEND-ONLY mode (default false): the tenant sends as the domain while its inbound MX stays at another provider — every locality decision treats the domain as external (mail from the platform to it relays to its own MX, group members there are remote forwards, `/dns/check` omits the MX record), and mail arriving at our MX for it is refused `receiving_disabled`.",
+                    "type": "boolean"
+                  },
+                  "sendVerified": {
+                    "description": "Mark the send records as already proven (system callers only — ignored otherwise: sending is EARNED by this call's own DNS check, so an account body asking for it still converges)",
                     "type": "boolean"
                   },
                   "srs": {
@@ -16352,14 +16402,6 @@
                       "null"
                     ]
                   },
-                  "canReceive": {
-                    "description": "Whether this domain RECEIVES mail here (default true). `false` is the send-only mode — see the create description: the domain's own MX becomes the authority for its mail everywhere on the platform.",
-                    "type": "boolean"
-                  },
-                  "canSend": {
-                    "description": "Outbound sending flag (setting to true is system-only; owners earn sending through DNS verification)",
-                    "type": "boolean"
-                  },
                   "dav": {
                     "description": "Enable CalDAV/CardDAV autodiscovery checks",
                     "type": "boolean"
@@ -16411,8 +16453,23 @@
                     "description": "Enable JMAP autodiscovery checks",
                     "type": "boolean"
                   },
-                  "sendPaused": {
-                    "description": "Temporarily hold outbound sending for this domain (system callers only)",
+                  "sendHold": {
+                    "description": "Operator enforcement (system callers only). 'disabled' STOPS sending: 403 sending_disabled, a permanent 550 at smtp-in, the queued backlog bounced. 'paused' HOLDS it: 429 sending_paused + Retry-After, a 451 the sending MTA queues, the backlog deferred. null lifts either. Egress only: a held domain still receives",
+                    "enum": [
+                      "disabled",
+                      "paused"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sendOnly": {
+                    "description": "The SEND-ONLY mode — see the create description. `true` makes the domain's own MX the authority for its mail everywhere on the platform; `false` receives here again.",
+                    "type": "boolean"
+                  },
+                  "sendVerified": {
+                    "description": "The send-records verdict (system callers only, in both directions). Owners earn it by publishing DNS and re-POSTing /domains; an operator may assert or revoke it outright",
                     "type": "boolean"
                   },
                   "srs": {
@@ -16454,7 +16511,7 @@
                 }
               }
             },
-            "description": "sending_not_writable: account callers earn canSend by publishing DNS and re-POSTing /domains; only a system caller may grant it outright. Refused for ANY canSend:true from a non-system caller, a domain that already sends included, since the assertion is never what grants sending. ingestion_not_writable: the fbl/dmarc ingestion flags are operator state, so only a system caller may turn one on (an owner may turn them off, and may re-send an unchanged value; a re-send racing an operator's revoke is refused, never re-enabled, and then nothing else in the patch is applied either). dns_status_not_writable, dnsStatus is the platform's resolved verdict, written by POST /domains/:domain/dns/check"
+            "description": "sending_not_writable: `sendVerified` and `sendHold` are operator state — account callers earn sending by publishing DNS and re-POSTing /domains, and a hold its owner could lift is not a hold. Refused for ANY value of either from a non-system caller. ingestion_not_writable: the fbl/dmarc ingestion flags are operator state, so only a system caller may turn one on (an owner may turn them off, and may re-send an unchanged value; a re-send racing an operator's revoke is refused, never re-enabled, and then nothing else in the patch is applied either). dns_status_not_writable, dnsStatus is the platform's resolved verdict, written by POST /domains/:domain/dns/check"
           },
           "404": {
             "content": {
@@ -17423,7 +17480,7 @@
     },
     "/api/v1/domains/{domain}/hostnames": {
       "get": {
-        "description": "Returns custom vanity hostnames (mail, SMTP, webmail, CalDAV) configured for a domain and their verification status.",
+        "description": "Returns custom vanity hostnames (mail, SMTP, webmail, CalDAV, MX) configured for a domain and their verification status.",
         "operationId": "get_DomainHostnamesGet",
         "parameters": [
           {
@@ -17541,7 +17598,8 @@
                 "mail",
                 "smtp",
                 "webmail",
-                "dav"
+                "dav",
+                "mx"
               ],
               "type": "string"
             }
@@ -17585,7 +17643,7 @@
         ]
       },
       "put": {
-        "description": "Claims and verifies a custom vanity subdomain for a specific protocol service (mail, smtp, webmail, dav).",
+        "description": "Claims and verifies a custom vanity subdomain for a specific protocol service (mail, smtp, webmail, dav, mx).",
         "operationId": "put_DomainHostnameSet",
         "parameters": [
           {
@@ -17605,7 +17663,8 @@
                 "mail",
                 "smtp",
                 "webmail",
-                "dav"
+                "dav",
+                "mx"
               ],
               "type": "string"
             }
@@ -18596,9 +18655,16 @@
                       "null"
                     ]
                   },
-                  "sendDisabled": {
-                    "description": "System callers only. STOP outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Permanent by contract — SMTP submission gets a 550 and the mail bounces. Does not affect receiving or reading",
-                    "type": "boolean"
+                  "sendHold": {
+                    "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading",
+                    "enum": [
+                      "disabled",
+                      "paused"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "sendMsgsPerDay": {
                     "description": "System callers only. Distinct messages this mailbox may send per rolling 24h. null = the platform default; 0 = unlimited",
@@ -18617,10 +18683,6 @@
                       "integer",
                       "null"
                     ]
-                  },
-                  "sendPaused": {
-                    "description": "System callers only. HOLD outbound sending for this mailbox — the reversible form of sendDisabled, for a suspension you intend to lift (non-payment, an investigation). Submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. `sendDisabled` wins if both are set. Does not affect receiving or reading",
-                    "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
@@ -18859,9 +18921,16 @@
                       "null"
                     ]
                   },
-                  "sendDisabled": {
-                    "description": "System callers only. STOP outbound sending for this mailbox: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop. Permanent by contract — SMTP submission gets a 550 and the mail bounces. Does not affect receiving or reading",
-                    "type": "boolean"
+                  "sendHold": {
+                    "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading",
+                    "enum": [
+                      "disabled",
+                      "paused"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "sendMsgsPerDay": {
                     "description": "System callers only. Distinct messages this mailbox may send per rolling 24h. null = the platform default; 0 = unlimited",
@@ -18880,10 +18949,6 @@
                       "integer",
                       "null"
                     ]
-                  },
-                  "sendPaused": {
-                    "description": "System callers only. HOLD outbound sending for this mailbox — the reversible form of sendDisabled, for a suspension you intend to lift (non-payment, an investigation). Submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. `sendDisabled` wins if both are set. Does not affect receiving or reading",
-                    "type": "boolean"
                   },
                   "sendRcptsPerDay": {
                     "description": "System callers only. Envelope recipients this mailbox may send to per rolling 24h. null = the platform default; 0 = unlimited",
@@ -35600,7 +35665,7 @@
     },
     "/api/v1/system/hostnames": {
       "get": {
-        "description": "Returns verified hostnames for edge routing and TLS termination allowlists (system callers only).",
+        "description": "Returns feed-eligible hostnames for edge allow-lists: verified rows for the CNAME services, claimed rows for the NS-delegated mx service (system callers only).",
         "operationId": "get_SystemHostnameFeed",
         "parameters": [
           {
@@ -35614,7 +35679,8 @@
                 "mail",
                 "smtp",
                 "webmail",
-                "dav"
+                "dav",
+                "mx"
               ],
               "type": "string"
             }
@@ -35668,7 +35734,7 @@
             "description": "system_credentials_required"
           }
         },
-        "summary": "Feed verified vanity hostnames",
+        "summary": "Feed vanity hostnames for edges",
         "tags": [
           "System"
         ]

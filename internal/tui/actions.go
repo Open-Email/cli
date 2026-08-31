@@ -73,19 +73,18 @@ func boolField(title, desc string, v *bool) huh.Field {
 
 func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) pane {
 	var (
-		domain  string
-		owner   string
-		enabled = true
-		canSend = false
-		canRecv = true
-		fbl     = false
-		dmarc   = false
-		aliasOf string
+		domain   string
+		owner    string
+		enabled  = true
+		sendOnly = false
+		fbl      = false
+		dmarc    = false
+		aliasOf  string
 	)
 	title := "New domain"
 	if existing != nil {
 		domain = existing.Domain
-		enabled, canSend, canRecv, fbl = existing.Enabled, existing.CanSend, existing.CanReceive, existing.FBL
+		enabled, sendOnly, fbl = existing.Enabled, existing.SendOnly, existing.FBL
 		dmarc = existing.DMARC
 		aliasOf = strOr(existing.AliasOf, "")
 		title = "Edit domain " + existing.Domain
@@ -109,8 +108,9 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 		}
 		fields = append(fields,
 			boolField("Enabled", "", &enabled),
-			boolField("Can send", "allow outbound submission from this domain", &canSend),
-			boolField("Receive mail here", "no = SEND-ONLY: the domain's inbound MX stays with another provider; the platform relays mail for it there and asks for no MX record", &canRecv),
+			// Sending is EARNED from DNS and held/stopped by an operator
+			// (`openemail admin hold`); neither is a toggle on this form.
+			boolField("Send-only", "yes = the domain's inbound MX stays with another provider; the platform relays mail for it there and asks for no MX record", &sendOnly),
 			boolField("FBL ingestion", "parse DSN/ARF feedback reports delivered to this domain", &fbl),
 			boolField("DMARC ingestion", "parse aggregate (RUA) reports delivered to this domain — not the _dmarc DNS record", &dmarc),
 			huh.NewInput().Title("Alias of").
@@ -124,7 +124,7 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 		if existing == nil {
 			in := coreapi.DomainCreateInput{
 				Domain: strings.TrimSpace(domain), Enabled: &enabled,
-				CanSend: &canSend, CanReceive: &canRecv, FBL: &fbl, DMARC: &dmarc,
+				SendOnly: &sendOnly, FBL: &fbl, DMARC: &dmarc,
 			}
 			if o := strings.TrimSpace(owner); o != "" {
 				in.AccountID = &o
@@ -140,16 +140,7 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 			}
 			return "domain " + d.Domain + " created", nil, nil
 		}
-		patch := map[string]any{"enabled": enabled, "canReceive": canRecv, "fbl": fbl, "dmarc": dmarc}
-		// canSend is EARNED from DNS: core refuses canSend:true from an account
-		// key (403 sending_not_writable), so sending it unchanged would make
-		// every unrelated edit of an already-sending domain fail. Send it only
-		// when the operator actually moved the toggle — turning sending OFF is
-		// always allowed, and turning it ON is what legitimately needs a system
-		// key or a re-run of domain create.
-		if canSend != existing.CanSend {
-			patch["canSend"] = canSend
-		}
+		patch := map[string]any{"enabled": enabled, "sendOnly": sendOnly, "fbl": fbl, "dmarc": dmarc}
 		if alias == "" {
 			patch["aliasOf"] = nil
 		} else {

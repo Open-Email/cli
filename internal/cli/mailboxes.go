@@ -157,10 +157,10 @@ func newMailboxListCmd(a *app) *cobra.Command {
 					// The two modes are marked apart: an operator scanning this
 					// during an incident needs to know which mailboxes will BOUNCE
 					// mail and which are merely holding it.
-					switch {
-					case m.SendDisabled:
+					switch hold(m.SendHold) {
+					case "disabled":
 						address += "  [DISABLED]"
-					case m.SendPaused:
+					case "paused":
 						address += "  [PAUSED]"
 					}
 					rows = append(rows, []string{
@@ -255,7 +255,7 @@ func newMailboxSendUsageCmd(a *app) *cobra.Command {
 			a.out.Emit(u, func(w io.Writer) {
 				window := fmt.Sprintf("%dh", u.WindowSeconds/3600)
 				rows := [][]string{
-					{"Sending", fmtSendState(u.Disabled, u.Paused)},
+					{"Sending", fmtSendState(u.SendHold)},
 					{"Window", "rolling " + window},
 					{"Messages", fmt.Sprintf("%d of %s", u.Messages, fmtSendLimit(u.MsgsPerDay))},
 					{"Recipients", fmt.Sprintf("%d of %s", u.Recipients, fmtSendLimit(u.RcptsPerDay))},
@@ -294,17 +294,12 @@ func newMailboxGetCmd(a *app) *cobra.Command {
 
 func newMailboxUpdateCmd(a *app) *cobra.Command {
 	var address, quota, sendMsgs, sendRcpts string
-	var freeze, unfreeze, pause, resume bool
 	cmd := &cobra.Command{
 		Use:   "update <mailboxId>",
-		Short: "Update a mailbox's quota, primary address, or send policy",
-		Long: "Update one mailbox. The send controls come in two modes:\n\n" +
-			"  --freeze  permanent (403): an SMTP client gets 550 and gives up, and mail\n" +
-			"            already queued in the relay is bounced.\n" +
-			"  --pause   reversible (429): an SMTP client gets 451 and its own queue holds\n" +
-			"            the mail, and the relay backlog is deferred rather than bounced.\n\n" +
-			"Pausing destroys no mail; freezing does. Neither affects receiving or reading.\n" +
-			"Both need a system key — a tenant that can lift its own hold does not have one.",
+		Short: "Update a mailbox's quota, primary address, or send caps",
+		Long: "Update one mailbox. The send caps need a system key — a tenant that can raise\n" +
+			"its own cap has a suggestion, not a limit. Holding or stopping a mailbox's\n" +
+			"sending is an operator action: openemail admin hold mailbox <id> --pause|--stop.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -326,37 +321,9 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 					patch["quotaBytes"] = *v
 				}
 			}
-			// Send policy — SYSTEM-only at core (a tenant that can lift its own
-			// freeze or raise its own caps has a suggestion, not a limit), so an
-			// account key gets 403 system_credentials_required here.
-			//
-			// Freeze and unfreeze are separate boolean flags rather than one
-			// --send-disabled=true|false because this is the destructive-ish
-			// direction of an abuse control: `--freeze` and `--unfreeze` cannot
-			// be confused for each other at 2am, and a mistyped value cannot
-			// silently mean the opposite of what was meant.
-			if cmd.Flags().Changed("freeze") && cmd.Flags().Changed("unfreeze") {
-				return usageError(errors.New("--freeze and --unfreeze are mutually exclusive"))
-			}
-			if cmd.Flags().Changed("pause") && cmd.Flags().Changed("resume") {
-				return usageError(errors.New("--pause and --resume are mutually exclusive"))
-			}
-			if cmd.Flags().Changed("freeze") {
-				patch["sendDisabled"] = true
-			}
-			if cmd.Flags().Changed("unfreeze") {
-				patch["sendDisabled"] = false
-			}
-			// The reversible mode, same shape and same reasoning: two flags so
-			// "hold" and "release" can never be confused at 2am. --freeze --pause
-			// together is allowed — core resolves it toward the freeze, and
-			// escalating a hold to a stop in one call is a real thing to want.
-			if cmd.Flags().Changed("pause") {
-				patch["sendPaused"] = true
-			}
-			if cmd.Flags().Changed("resume") {
-				patch["sendPaused"] = false
-			}
+			// Send caps — SYSTEM-only at core (a tenant that can raise its own
+			// caps has a suggestion, not a limit), so an account key gets 403
+			// system_credentials_required here.
 			for _, f := range []struct {
 				flag  string
 				field string
@@ -376,7 +343,7 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 			}
 
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --address, --quota, --freeze/--unfreeze, --pause/--resume, or a --send-*-per-day cap"))
+				return usageError(errors.New("nothing to update — pass --address, --quota, or a --send-*-per-day cap (to hold or stop sending: openemail admin hold)"))
 			}
 			mb, err := client.UpdateMailbox(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -391,10 +358,6 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&address, "address", "", "new primary address (must already route to this mailbox — bind via 'routes create' first; empty is not a clear)")
 	cmd.Flags().StringVar(&quota, "quota", "", "new quota in bytes, or 'unlimited'")
-	cmd.Flags().BoolVar(&freeze, "freeze", false, "STOP this mailbox sending: submissions refused permanently and queued mail bounced at the relay (system key required)")
-	cmd.Flags().BoolVar(&unfreeze, "unfreeze", false, "allow this mailbox to send again (system key required)")
-	cmd.Flags().BoolVar(&pause, "pause", false, "HOLD this mailbox's sending: submissions deferred and queued mail held, not bounced (system key required)")
-	cmd.Flags().BoolVar(&resume, "resume", false, "lift this mailbox's send hold (system key required)")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages per rolling 24h: a number, 'unlimited', or 'default' to drop the override (system key required)")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h: a number, 'unlimited', or 'default' to drop the override (system key required)")
 	return cmd
@@ -554,7 +517,7 @@ func printMailbox(w io.Writer, p *Printer, m *coreapi.Mailbox) {
 		{"Quota", fmtQuota(m.QuotaBytes)},
 		{"Account", strOr(m.AccountID, "—")},
 		{"Created", fmtEpoch(m.CreatedAt)},
-		{"Sending", fmtSendState(m.SendDisabled, m.SendPaused)},
+		{"Sending", fmtSendState(m.SendHold)},
 	}
 	// The caps are shown only when this mailbox overrides them. On the common
 	// mailbox both read "platform default", which is two rows of noise saying

@@ -77,16 +77,16 @@ func TestFmtSendLimit(t *testing.T) {
 func TestFmtSendState(t *testing.T) {
 	// The disabled string must be unmistakable in a table an operator scans
 	// during an incident; the enabled one must not shout.
-	if got := fmtSendState(false, false); got != "enabled" {
+	if got := fmtSendState(nil); got != "enabled" {
 		t.Errorf("fmtSendState(live) = %q; want %q", got, "enabled")
 	}
-	if got := fmtSendState(true, false); got == "enabled" || got == "" {
+	if got := fmtSendState(strPtr("disabled")); got == "enabled" || got == "" {
 		t.Errorf("fmtSendState(disabled) = %q; want a distinct disabled state", got)
 	}
 	// A HOLD is its own state, not a synonym for the freeze: one bounces queued
 	// mail and the other keeps it, so a reader must be able to tell them apart.
-	paused := fmtSendState(false, true)
-	if paused == "enabled" || paused == fmtSendState(true, false) {
+	paused := fmtSendState(strPtr("paused"))
+	if paused == "enabled" || paused == fmtSendState(strPtr("disabled")) {
 		t.Errorf("fmtSendState(paused) = %q; want a state distinct from both enabled and disabled", paused)
 	}
 }

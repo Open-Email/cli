@@ -181,19 +181,27 @@ func fmtSendCap(n *int64) string {
 	return strconv.FormatInt(*n, 10)
 }
 
-// fmtSendState renders the send freeze or hold. Spelled as a state rather than
+// hold dereferences a resource's `sendHold` (nil | "paused" | "disabled") to
+// the plain string every switch here compares against; nil reads as "".
+func hold(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// fmtSendState renders the operator's send hold. Spelled as a state rather than
 // a yes/no because "Sending: no" reads like a capability the mailbox never had,
-// while both of these are things an operator DID and can undo.
+// while both of these are things an operator DID and can undo (openemail admin
+// hold / release).
 //
 // The two modes are named apart because their effect on QUEUED mail differs: a
-// freeze bounces it, a hold keeps it. DISABLED (core's word for the freeze) is
-// reported first, since core resolves a row carrying both toward the permanent
-// answer.
-func fmtSendState(disabled, paused bool) string {
-	switch {
-	case disabled:
+// stop bounces it, a hold keeps it.
+func fmtSendState(sendHold *string) string {
+	switch hold(sendHold) {
+	case "disabled":
 		return "DISABLED (submissions refused permanently; queued mail bounced at the relay)"
-	case paused:
+	case "paused":
 		return "PAUSED (submissions deferred; queued mail held, not bounced)"
 	}
 	return "enabled"

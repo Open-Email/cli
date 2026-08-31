@@ -58,10 +58,10 @@ func TestParseMaxMailboxesFlag(t *testing.T) {
 // the SCOPE, since the reason to reach for it over the per-mailbox freeze is
 // that it also covers mailboxes the tenant has not created yet.
 func TestFmtAccountSendState(t *testing.T) {
-	if got := fmtAccountSendState(false, false); got != "enabled" {
+	if got := fmtAccountSendState(nil); got != "enabled" {
 		t.Errorf("fmtAccountSendState(live) = %q; want %q", got, "enabled")
 	}
-	disabled := fmtAccountSendState(true, false)
+	disabled := fmtAccountSendState(strPtr("disabled"))
 	if !strings.Contains(disabled, "DISABLED") {
 		t.Errorf("fmtAccountSendState(disabled) = %q; want it to shout DISABLED", disabled)
 	}
@@ -74,7 +74,7 @@ func TestFmtAccountSendState(t *testing.T) {
 	// The HOLD must read as a DIFFERENT state, and must say what happens to the
 	// queued mail: an operator choosing between the two is choosing between
 	// bouncing a tenant's mail and holding it, which is the whole distinction.
-	paused := fmtAccountSendState(false, true)
+	paused := fmtAccountSendState(strPtr("paused"))
 	if !strings.Contains(paused, "PAUSED") {
 		t.Errorf("fmtAccountSendState(paused) = %q; want it to shout PAUSED", paused)
 	}
@@ -87,47 +87,25 @@ func TestFmtAccountSendState(t *testing.T) {
 
 	// Both set resolves toward the FREEZE, matching what core actually does — so
 	// the CLI can never describe behavior the tenant is not getting.
-	if got := fmtAccountSendState(true, true); !strings.Contains(got, "DISABLED") {
+	if got := fmtAccountSendState(strPtr("disabled")); !strings.Contains(got, "DISABLED") {
 		t.Errorf("fmtAccountSendState(both) = %q; want the permanent answer to win", got)
 	}
 }
 
-// --pause and --resume are separate booleans for the same reason --freeze and
-// --unfreeze are, and passing both must be a usage error rather than
-// last-one-wins. Validated BEFORE authentication: contradictory flags are a
-// usage error whatever credentials the caller holds.
-func TestAccountUpdateRejectsBothPauseFlags(t *testing.T) {
-	a := &app{out: newPrinter(false, true)}
-	cmd := newAccountUpdateCmd(a)
-	cmd.SetArgs([]string{"ACC1", "--pause", "--resume"})
-	cmd.SilenceUsage = true
-	cmd.SilenceErrors = true
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected --pause --resume to be refused")
-	}
-	if !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("error = %v; want it to say the flags are mutually exclusive", err)
-	}
-}
-
-// --freeze and --unfreeze are separate booleans rather than one
-// --send-disabled=true|false precisely so a mistake cannot silently mean the
-// opposite; passing both must therefore be an error, not a last-one-wins.
-func TestAccountUpdateRejectsBothFreezeFlags(t *testing.T) {
-	a := &app{out: newPrinter(false, true)}
-	cmd := newAccountUpdateCmd(a)
-	if err := cmd.Flags().Set("freeze", "true"); err != nil {
-		t.Fatalf("set --freeze: %v", err)
-	}
-	if err := cmd.Flags().Set("unfreeze", "true"); err != nil {
-		t.Fatalf("set --unfreeze: %v", err)
-	}
-	err := cmd.RunE(cmd, []string{"ACC_X"})
-	if err == nil {
-		t.Fatal("expected --freeze with --unfreeze to be refused")
-	}
-	if !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("error = %q; want it to name the conflict", err.Error())
+// The hold verbs moved to `admin hold`/`admin release`; exactly one mode is
+// required there, and the usage error fires BEFORE authentication, whatever
+// credentials the caller holds.
+func TestAdminHoldRequiresExactlyOneMode(t *testing.T) {
+	for _, args := range [][]string{
+		{"account", "ACC1", "--pause", "--stop"},
+		{"account", "ACC1"},
+	} {
+		cmd := newAdminHoldCmd(&app{out: newPrinter(false, true)})
+		cmd.SetArgs(args)
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "exactly one") {
+			t.Errorf("%v: error = %v; want the exactly-one usage error", args, err)
+		}
 	}
 }

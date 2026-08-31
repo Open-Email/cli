@@ -69,12 +69,11 @@ func domainsDesc() resourceDesc {
 				{k: "receiving", v: yn(d.Receiving)},
 				{k: "sending", v: yn(d.Sending)},
 				{k: "enabled", v: yn(d.Enabled)},
-				{k: "can send", v: yn(d.CanSend)},
-				// Shown beside `can send` rather than folded into it: the raw pair
-				// is what answers "which switch is set?", and a domain held for
-				// suspension looks nothing like one that was never set up to send.
-				{k: "send paused", v: yn(d.SendPaused)},
-				{k: "can receive", v: yn(d.CanReceive)},
+				// The three facts behind `sending`, each with one author: the
+				// owner's mode, the DNS check's verdict, the operator's hold.
+				{k: "send-only", v: yn(d.SendOnly)},
+				{k: "send records verified", v: yn(d.SendVerified)},
+				{k: "send hold", v: strOr(d.SendHold, "none")},
 				{k: "alias of", v: strOr(d.AliasOf, "—")},
 				{k: "fbl", v: yn(d.FBL)},
 				{k: "dmarc ingestion", v: yn(d.DMARC)},
@@ -205,10 +204,10 @@ func mailboxesDesc() resourceDesc {
 				// two modes are named apart: DISABLED bounces queued mail, PAUSED
 				// holds it.
 				address := strOr(m.PrimaryAddress, "—")
-				switch {
-				case m.SendDisabled:
+				switch sendHoldOf(m.SendHold) {
+				case "disabled":
 					address += " [DISABLED]"
-				case m.SendPaused:
+				case "paused":
 					address += " [PAUSED]"
 				}
 				rows[i] = rowData{
@@ -574,10 +573,10 @@ func accountsDesc() resourceDesc {
 				// disabled, and an unmarked row is an account whose sending is
 				// disabled with nothing anywhere saying so.
 				name := a.Name
-				switch {
-				case a.SendDisabled:
+				switch sendHoldOf(a.SendHold) {
+				case "disabled":
 					name += " [DISABLED]"
-				case a.SendPaused:
+				case "paused":
 					name += " [PAUSED]"
 				}
 				rows[i] = rowData{
@@ -590,10 +589,10 @@ func accountsDesc() resourceDesc {
 		detail: func(item any) []kv {
 			a := item.(coreapi.Account)
 			sending := "enabled"
-			switch {
-			case a.SendDisabled:
+			switch sendHoldOf(a.SendHold) {
+			case "disabled":
 				sending = "DISABLED — every mailbox on every domain; queued mail bounced at the relay"
-			case a.SendPaused:
+			case "paused":
 				sending = "PAUSED — every mailbox on every domain; queued mail held, not bounced"
 			}
 			return []kv{

@@ -129,10 +129,10 @@ func newAccountListCmd(a *app) *cobra.Command {
 					// list is where an operator scans for the disabled tenant, and
 					// a marker buried in a name column is one they miss.
 					sending := "enabled"
-					switch {
-					case ac.SendDisabled:
+					switch hold(ac.SendHold) {
+					case "disabled":
 						sending = "DISABLED"
-					case ac.SendPaused:
+					case "paused":
 						sending = "PAUSED"
 					}
 					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "unlimited"), fmtEpoch(ac.CreatedAt)})
@@ -266,7 +266,7 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"ID", acc.ID},
 		{"Name", acc.Name},
 		{"State", fmtAccountLifecycle(acc)},
-		{"Sending", fmtAccountSendState(acc.SendDisabled, acc.SendPaused)},
+		{"Sending", fmtAccountSendState(acc.SendHold)},
 		{"Messages/day", fmtSendCap(acc.SendMsgsPerDay)},
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},
 		{"Max mailboxes", int64Or(acc.MaxMailboxes, "unlimited")},
@@ -299,7 +299,8 @@ func fmtStoragePool(p *int64) string {
 	return fmtBytes(*p)
 }
 
-func fmtAccountSendState(disabled, paused bool) string {
+func fmtAccountSendState(sendHold *string) string {
+	disabled, paused := hold(sendHold) == "disabled", hold(sendHold) == "paused"
 	switch {
 	case disabled:
 		return "DISABLED (every mailbox on every domain; queued mail bounced at the relay)"
@@ -314,53 +315,19 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		name                string
 		maxMailboxes        string
 		sendMsgs, sendRcpts string
-		freeze, unfreeze    bool
-		pause, resume       bool
 		vanityHosts         string
 		storageLimit        string
 	)
 	cmd := &cobra.Command{
 		Use:     "update <accountId>",
 		Aliases: []string{"patch"},
-		Short:   "Update an account — including the tenant-scale send freeze or hold (system callers only)",
-		Long: "Update a tenant account. Two tenant-scale stop buttons, and the difference is\n" +
-			"what happens to the mail:\n\n" +
-			"  --freeze  ABUSE STOP. Submissions are refused permanently (403), so an SMTP\n" +
-			"            client gets a 550 and gives up, and mail already in the relay queue\n" +
-			"            is bounced. Use it when you want the sending to END.\n" +
-			"  --pause   REVERSIBLE HOLD. Submissions are refused temporarily (429), so an\n" +
-			"            SMTP client gets a 451 and ITS OWN queue holds the mail, and the\n" +
-			"            relay backlog is deferred rather than bounced. Use it for\n" +
-			"            non-payment, or while investigating something you expect to clear.\n\n" +
-			"Pausing destroys no mail; freezing does. If you are not sure which you want,\n" +
-			"pause — a hold can be upgraded to a freeze, but bounced mail cannot be recalled.\n" +
-			"A hold outliving the relay's ~3.2-day retry window dead-letters that backlog\n" +
-			"(preserved and redrivable, but no longer automatic).\n\n" +
-			"Neither touches inbound: a disabled or held account still receives its mail, and\n" +
-			"every mailbox stays readable. System callers only, in full — a tenant that could\n" +
-			"lift its own freeze does not have one.",
+		Short:   "Update an account's name, caps, storage pool or vanity-hostname gate (system callers only)",
+		Long: "Update a tenant account. Holding or stopping the tenant's outbound mail is an operator\n" +
+			"action of its own: openemail admin hold account <id> --pause|--stop (and admin release).\n" +
+			"Both cover every mailbox on every domain the account owns, queued relay backlog included,\n" +
+			"and neither touches inbound.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Flag validation BEFORE authentication: contradictory flags are a
-			// usage error whatever credentials the caller holds, and answering
-			// "not authenticated" to `--freeze --unfreeze` sends someone to fix
-			// the wrong thing.
-			//
-			// Two flags rather than one --send-disabled=true|false, matching
-			// `mailboxes update`: this is the destructive direction of an abuse
-			// control, and a mistyped value must not be able to mean its
-			// opposite.
-			if freeze && unfreeze {
-				return usageError(errors.New("--freeze and --unfreeze are mutually exclusive"))
-			}
-			if pause && resume {
-				return usageError(errors.New("--pause and --resume are mutually exclusive"))
-			}
-			// --freeze --pause together is NOT an error: core resolves it toward
-			// the freeze (the permanent answer wins), and an operator escalating a
-			// hold to a stop in one call is a reasonable thing to want. Saying so
-			// here rather than refusing keeps the CLI from inventing a rule core
-			// does not have.
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -375,12 +342,6 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 					return usageError(perr)
 				}
 				patch["maxMailboxes"] = v // nil marshals as JSON null = unlimited
-			}
-			if freeze || unfreeze {
-				patch["sendDisabled"] = freeze
-			}
-			if pause || resume {
-				patch["sendPaused"] = pause
 			}
 			// The account-tier VOLUME caps, which reuse the send-cap parser
 			// because they share its three states exactly: "default" inherits the
@@ -424,25 +385,14 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 				patch["vanityHosts"] = v
 			}
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --name, --max-mailboxes, --send-*-per-day, --vanity-hosts, --freeze/--unfreeze, or --pause/--resume"))
+				return usageError(errors.New("nothing to update — pass --name, --max-mailboxes, --send-*-per-day, --storage-limit or --vanity-hosts (to hold or stop sending: openemail admin hold account)"))
 			}
 			acc, err := client.UpdateAccount(cmd.Context(), args[0], patch)
 			if err != nil {
 				return err
 			}
 			a.out.Emit(acc, func(w io.Writer) {
-				switch {
-				case freeze:
-					a.out.Successf("Froze sending for account %s — queued mail will bounce", acc.ID)
-				case unfreeze:
-					a.out.Successf("Released the send freeze on account %s", acc.ID)
-				case pause:
-					a.out.Successf("Paused sending for account %s — queued mail is held, not bounced", acc.ID)
-				case resume:
-					a.out.Successf("Resumed sending for account %s", acc.ID)
-				default:
-					a.out.Successf("Updated account %s", acc.ID)
-				}
+				a.out.Successf("Updated account %s", acc.ID)
 				printAccount(w, a.out, acc)
 			})
 			return nil
@@ -450,10 +400,6 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "rename the account")
 	cmd.Flags().StringVar(&maxMailboxes, "max-mailboxes", "", "cap on mailboxes: a positive number, or 'unlimited' to clear it")
-	cmd.Flags().BoolVar(&freeze, "freeze", false, "stop ALL outbound mail for this account")
-	cmd.Flags().BoolVar(&unfreeze, "unfreeze", false, "release the account send freeze")
-	cmd.Flags().BoolVar(&pause, "pause", false, "HOLD all outbound mail for this account — reversible, queued mail is deferred not bounced")
-	cmd.Flags().BoolVar(&resume, "resume", false, "lift the account send hold")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns: a number, 'unlimited', or 'default' to drop the override")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
 	cmd.Flags().StringVar(&storageLimit, "storage-limit", "", "account-wide storage POOL across every mailbox it owns: a size like 50G, 'unlimited' (metered — overage billed, never refused), or 'default' for the platform pool")
@@ -517,7 +463,7 @@ func newAccountUsageCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(u, func(w io.Writer) {
 				printTable(w, a.out, []string{"FIELD", "VALUE"}, [][]string{
-					{"Sending", fmtAccountSendState(u.Disabled, u.Paused)},
+					{"Sending", fmtAccountSendState(u.SendHold)},
 					{"Window", fmt.Sprintf("rolling %dh", u.WindowSeconds/3600)},
 					{"Messages", fmt.Sprintf("%d of %s", u.Send.Messages, fmtSendLimit(u.Send.MsgsPerDay))},
 					{"Recipients", fmt.Sprintf("%d of %s", u.Send.Recipients, fmtSendLimit(u.Send.RcptsPerDay))},

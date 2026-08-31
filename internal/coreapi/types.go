@@ -62,18 +62,15 @@ type Account struct {
 	// is knowable before the first domain exists. Public by construction (it
 	// lives in DNS) — a claim capability, never an authentication credential.
 	VerificationToken *string `json:"verificationToken"`
-	// SendDisabled is the TENANT-SCALE send freeze: true stops every mailbox on
-	// every domain this account owns, at submission and in the already-queued
-	// relay backlog. Egress only — a frozen account still receives its mail.
-	// System-writable only.
-	SendDisabled bool `json:"sendDisabled"`
-	// SendPaused is the REVERSIBLE form of SendDisabled — a hold you intend to
-	// lift (non-payment, an investigation). Submissions answer 429
-	// sending_paused rather than 403, so SMTP submission gets a 451 and the
-	// sending MTA queues the mail, and the already-queued relay backlog is
-	// DEFERRED rather than bounced. SendDisabled wins if both are set. Egress
-	// only; system-writable only.
-	SendPaused bool `json:"sendPaused"`
+	// SendHold is the TENANT-SCALE send enforcement over every mailbox on every
+	// domain this account owns, at submission and in the already-queued relay
+	// backlog: nil = none, "paused" = the reversible hold (429 sending_paused —
+	// SMTP submission gets a 451, the sending MTA queues, the backlog is
+	// DEFERRED; for non-payment or an investigation), "disabled" = the
+	// permanent stop (403 — 550, the backlog bounced; the abuse response). One
+	// field, so there is no precedence to know. Egress only — a held account
+	// still receives its mail. System-writable only.
+	SendHold *string `json:"sendHold"`
 	// Account-tier daily caps. NIL = the platform default is in force; 0 =
 	// explicitly unlimited. Pointers because those are DIFFERENT states and
 	// collapsing them inverts the meaning in the direction that removes a bound.
@@ -148,12 +145,12 @@ type AccountDeleteResult struct {
 // per-mailbox send-usage call cannot give.
 type AccountSendUsage struct {
 	AccountID string `json:"accountId"`
-	Disabled  bool   `json:"disabled"`
-	// Paused is the reversible half: refused temporarily (429) rather than
-	// permanently. Reported apart from Disabled because the two are different
-	// answers for a support agent — "we disabled them" vs "we are holding them".
-	Paused bool `json:"paused"`
-	Send   struct {
+	// SendHold is the account's own hold, named: nil, "paused" (refused
+	// temporarily, 429) or "disabled" (refused permanently) — the two are
+	// different answers for a support agent, "we are holding them" vs "we
+	// disabled them".
+	SendHold *string `json:"sendHold"`
+	Send     struct {
 		Messages    int64  `json:"messages"`
 		Recipients  int64  `json:"recipients"`
 		MsgsPerDay  *int64 `json:"msgsPerDay"`
@@ -186,14 +183,14 @@ type Mailbox struct {
 	// the platform default applies; 0 = explicitly unlimited; n = that cap.
 	// Decoding null into 0 would read "inherit the default" as "unlimited",
 	// which is the one misreading that removes a bound instead of adding one.
-	SendDisabled bool `json:"sendDisabled"`
-	// SendPaused is the mailbox-scope reversible hold: 429 sending_paused at
-	// submission, DEFER in the relay. Independent of SendDisabled, which wins.
-	SendPaused       bool   `json:"sendPaused"`
-	SendMsgsPerDay   *int64 `json:"sendMsgsPerDay"`
-	SendRcptsPerDay  *int64 `json:"sendRcptsPerDay"`
-	SendMsgsPerHour  *int64 `json:"sendMsgsPerHour"`
-	SendRcptsPerHour *int64 `json:"sendRcptsPerHour"`
+	// SendHold is the mailbox-scope operator enforcement: nil, "paused" (429
+	// sending_paused at submission, DEFER in the relay) or "disabled" (403,
+	// the backlog bounced). One field, no precedence to know.
+	SendHold         *string `json:"sendHold"`
+	SendMsgsPerDay   *int64  `json:"sendMsgsPerDay"`
+	SendRcptsPerDay  *int64  `json:"sendRcptsPerDay"`
+	SendMsgsPerHour  *int64  `json:"sendMsgsPerHour"`
+	SendRcptsPerHour *int64  `json:"sendRcptsPerHour"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`
@@ -226,12 +223,11 @@ type SendUsage struct {
 	RecipientsHour int64  `json:"recipientsHour"`
 	MsgsPerHour    *int64 `json:"msgsPerHour"`
 	RcptsPerHour   *int64 `json:"rcptsPerHour"`
-	// Sending DISABLED: every submission is refused regardless of usage.
-	Disabled bool `json:"disabled"`
-	// Sending HELD: refused temporarily (429) rather than permanently.
-	Paused             bool  `json:"paused"`
-	WindowSeconds      int64 `json:"windowSeconds"`
-	BurstWindowSeconds int64 `json:"burstWindowSeconds"`
+	// SendHold is the mailbox's own hold: nil, "paused" (refused temporarily,
+	// 429) or "disabled" (refused permanently regardless of usage).
+	SendHold           *string `json:"sendHold"`
+	WindowSeconds      int64   `json:"windowSeconds"`
+	BurstWindowSeconds int64   `json:"burstWindowSeconds"`
 }
 
 // DeletedMailbox is a restorable tombstone (GET /mailboxes?state=deleted).

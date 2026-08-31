@@ -19,12 +19,12 @@ type VerifyResult struct {
 	Kind         string  `json:"kind"`
 	CanSend      bool    `json:"canSend"`
 	// SendHold says WHICH kind of no, and is present only when CanSend is false:
-	// "disabled" is permanent as far as the user is concerned (a domain that
-	// cannot send, or a disabled sender), "paused" is a hold that will be
-	// lifted. A UI
-	// needs the difference — "sending is not available" and "sending is paused"
-	// are different messages. Advisory, like CanSend; the submission gate is the
-	// authority.
+	// "unverified" is a domain whose send records were never published (the
+	// fix is DNS), "paused" is a hold that will be lifted, "disabled" is
+	// permanent as far as the user is concerned (a stop, or a login that cannot
+	// send at all). A UI needs the difference — "publish DNS", "sending is
+	// paused" and "sending is not available" are different messages.
+	// Advisory, like CanSend; the submission gate is the authority.
 	SendHold      string   `json:"sendHold,omitempty"`
 	PermittedFrom []string `json:"permittedFrom"`
 	// Facets lists the identity's bound stores ("mail", "pim").

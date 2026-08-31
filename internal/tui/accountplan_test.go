@@ -111,37 +111,42 @@ func TestAccountPlanPatchMailboxCapIsTwoState(t *testing.T) {
 	}
 }
 
-// The sending select collapses an ordered pair. Core resolves a row carrying
-// both toward the freeze, so the form must show "stopped" for it — and choosing
-// stopped must clear the now-meaningless hold rather than leave a state no
-// screen renders honestly.
+// The sending select mirrors core's one `sendHold` field: seeded from it,
+// re-sent only when it moves, and cleared with an explicit JSON null.
 func TestAccountPlanSendingIsOrdered(t *testing.T) {
-	both := baseAccount()
-	both.SendDisabled, both.SendPaused = true, true
-	if got := planFromAccount(both).sending; got != sendingStopped {
-		t.Fatalf("disabled must outrank paused, got %q", got)
+	disabled := "disabled"
+	stopped := baseAccount()
+	stopped.SendHold = &disabled
+	if got := planFromAccount(stopped).sending; got != sendingStopped {
+		t.Fatalf("a disabled hold must seed stopped, got %q", got)
 	}
-	patch, err := accountPlanPatch(both, planFromAccount(both))
+	patch, err := accountPlanPatch(stopped, planFromAccount(stopped))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if v, ok := patch["sendPaused"]; !ok || v != false {
-		t.Fatalf("choosing stopped must clear the redundant hold, got %v", patch)
-	}
-	if _, ok := patch["sendDisabled"]; ok {
-		t.Fatalf("sendDisabled was already true and must not be resent, got %v", patch)
+	if _, ok := patch["sendHold"]; ok {
+		t.Fatalf("an unchanged hold must not be resent, got %v", patch)
 	}
 
+	pausedHold := "paused"
 	paused := baseAccount()
-	paused.SendPaused = true
+	paused.SendHold = &pausedHold
 	p := planFromAccount(paused)
 	p.sending = sendingEnabled
 	patch, err = accountPlanPatch(paused, p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if v, ok := patch["sendPaused"]; !ok || v != false {
-		t.Fatalf("resuming must clear the hold, got %v", patch)
+	if v, ok := patch["sendHold"]; !ok || v != nil {
+		t.Fatalf("resuming must send sendHold: null, got %v", patch)
+	}
+	p.sending = sendingStopped
+	patch, err = accountPlanPatch(paused, p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v, ok := patch["sendHold"]; !ok || v != "disabled" {
+		t.Fatalf("escalating a hold must send sendHold: disabled, got %v", patch)
 	}
 }
 
@@ -198,13 +203,13 @@ func TestPlanChangeSummary(t *testing.T) {
 	got := planChangeSummary(map[string]any{
 		"vanityHosts":    true,
 		"sendMsgsPerDay": i64(500),
-		"sendDisabled":   true,
+		"sendHold":       "disabled",
 	})
 	if got != "sending, vanity hostnames, messages/day" {
 		t.Fatalf("want stops first, got %q", got)
 	}
 	// Both send fields in one patch must still read as one thing.
-	got = planChangeSummary(map[string]any{"sendDisabled": true, "sendPaused": false})
+	got = planChangeSummary(map[string]any{"sendHold": "disabled"})
 	if got != "sending" {
 		t.Fatalf("want a single 'sending', got %q", got)
 	}

@@ -716,16 +716,17 @@ openemail suppressions remove them@example.net
 openemail accounts send-usage ACC_01J…                 # how much have they spent today?
 openemail accounts traffic ACC_01J…                    # is the volume real, and where?
 openemail domains events example.com --outcome relayed # which mailbox is sending it
-openemail accounts update ACC_01J… --pause             # hold everything while you look
-openemail accounts update ACC_01J… --freeze            # or stop it outright
-openemail accounts update ACC_01J… --resume            # once it is sorted out
+openemail admin hold account ACC_01J… --pause          # hold everything while you look
+openemail admin hold account ACC_01J… --stop           # or stop it outright
+openemail admin release account ACC_01J…               # once it is sorted out
 ```
 
 **Reach for `--pause` first.** It refuses submissions temporarily (429 → a 451
 over SMTP, so the sender's own MTA holds the mail) and DEFERS the queued backlog
-instead of bouncing it, so nothing is destroyed while you investigate. `--freeze`
+instead of bouncing it, so nothing is destroyed while you investigate. `--stop`
 is the abuse stop: permanent (403 → 550) and the backlog is bounced. A hold can
-be upgraded to a freeze; bounced mail cannot be recalled.
+be escalated to a stop (run `admin hold` again with `--stop`); bounced mail
+cannot be recalled.
 
 Start at the ACCOUNT scope, because it is the only view that can see this shape.
 Per-mailbox and per-domain surfaces are keyed one at a time, so a tenant
@@ -753,9 +754,15 @@ widths, and all three reach the queued backlog:
 
 | scope | stop | hold |
 |---|---|---|
-| one mailbox | `mailboxes update <id> --freeze` | `mailboxes update <id> --pause` |
-| the whole tenant | `accounts update <id> --freeze` | `accounts update <id> --pause` |
-| one domain | `domains update <d> --can-send=false` | `domains update <d> --send-paused` |
+| one mailbox | `admin hold mailbox <id> --stop` | `admin hold mailbox <id> --pause` |
+| the whole tenant | `admin hold account <id> --stop` | `admin hold account <id> --pause` |
+| one domain | `admin hold domain <d> --stop` | `admin hold domain <d> --pause` |
+
+One verb, three scopes, because the API is one field (`sendHold: null | "paused" |
+"disabled"`) at every scope. `admin release <scope> <id>` lifts either. A domain has
+one more "no" that is nobody's enforcement: `sendVerified: false`, the state before
+its bounce + DKIM records were proven — the tenant fixes that with DNS, and `domains
+get` says which of the three it is.
 
 Reach for the ACCOUNT scope when you do not yet know how many mailboxes are
 involved: it covers mailboxes the tenant creates *after* you act, which a loop
@@ -769,15 +776,15 @@ Mode is the question "should this mail survive?":
   is destroyed. One caveat: a hold outliving the relay's ~3.2-day retry window
   dead-letters that backlog — it is preserved and redrivable, but no longer
   automatic, so resolve long holds before then.
-- **`--freeze`** — abuse. Submissions answer 403 and the client gives up; the
+- **`--stop`** — abuse. Submissions answer 403 and the client gives up; the
   backlog is bounced. This is what you want for a spammer, whose client should
   stop retrying against you.
 
-Both are **send-only**. A disabled or held account keeps receiving mail and every
+Both are **send-only**. A stopped or held account keeps receiving mail and every
 mailbox stays readable — which is what makes either safe to use before you have
-finished the investigation. Neither expires on its own; `--resume`/`--unfreeze`
-when you are done, and the very next submission goes through (there is no cache
-to wait out).
+finished the investigation. Neither expires on its own; `admin release` when you
+are done, and the very next submission goes through (there is no cache to wait
+out).
 
 Revoking credentials is the *narrower* tool, not the faster one: it stops the
 credential, so nothing new can be submitted with it, but it cannot reach mail

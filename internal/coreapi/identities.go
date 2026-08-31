@@ -20,8 +20,7 @@ type Identity struct {
 	// the Mailbox schema).
 	// Pointers for the reason Mailbox's copies are: null = the platform default
 	// applies, 0 = explicitly unlimited.
-	SendDisabled     bool           `json:"sendDisabled"`
-	SendPaused       bool           `json:"sendPaused"`
+	SendHold         *string        `json:"sendHold"`
 	SendMsgsPerDay   *int64         `json:"sendMsgsPerDay"`
 	SendRcptsPerDay  *int64         `json:"sendRcptsPerDay"`
 	SendMsgsPerHour  *int64         `json:"sendMsgsPerHour"`

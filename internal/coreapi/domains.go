@@ -24,23 +24,32 @@ type DNSStatus struct {
 // Domain mirrors the endpoint's present() output: booleans are real bools (core
 // converts the stored 0/1), dnsStatus is an object or null.
 type Domain struct {
-	Domain  string `json:"domain"`
-	Enabled bool   `json:"enabled"`
-	// CanSend is the RAW column an operator wrote, not effective sendability —
-	// Sending below is the lifecycle answer and folds SendPaused in.
-	CanSend bool `json:"canSend"`
-	// SendPaused is this domain's reversible send HOLD (core migration 0024):
-	// the companion to CanSend=false for one suspended or compromised domain of
-	// a tenant that has several. Submissions answer 429 sending_paused (451 at
-	// smtp-in, so the sending MTA queues) and the queued relay backlog is
-	// DEFERRED rather than bounced. System-writable in BOTH directions, unlike
-	// CanSend, whose false stays open to the owner. Egress only.
-	SendPaused bool    `json:"sendPaused"`
-	CanReceive bool    `json:"canReceive"`
-	AliasOf    *string `json:"aliasOf"`
-	FBL        bool    `json:"fbl"`
-	DMARC      bool    `json:"dmarc"`
-	JMAP       bool    `json:"jmap"`
+	Domain string `json:"domain"`
+	// The four send-state fields each have ONE author (core's
+	// docs/send-state-design.md): Enabled and SendOnly are the owner's,
+	// SendVerified is the DNS check's, SendHold is the operator's.
+	Enabled bool `json:"enabled"`
+	// SendOnly is the owner's MODE: the tenant sends as the domain while its
+	// inbound MX stays at another provider, so nothing on it is a local
+	// recipient — the platform relays mail for it there and asks for no MX
+	// record. Not an enforcement state.
+	SendOnly bool `json:"sendOnly"`
+	// SendVerified is the EARNED half of sendability: true once the bounce CNAME
+	// and both DKIM CNAMEs were proven live by `POST /domains`. false means
+	// "publish DNS", never "stopped". Only a system key may assert or revoke it.
+	SendVerified bool `json:"sendVerified"`
+	// SendHold is this domain's OWN operator enforcement: nil = none,
+	// "paused" = reversible hold (429 sending_paused — 451 at smtp-in, the
+	// sending MTA queues, the relay backlog is DEFERRED), "disabled" =
+	// permanent stop (403 sending_disabled — 550, the backlog bounced). One
+	// field rather than two booleans, so there is no precedence to know.
+	// System-writable in both directions. Egress only. The account's hold is
+	// reported on the Account, not folded in here.
+	SendHold *string `json:"sendHold"`
+	AliasOf  *string `json:"aliasOf"`
+	FBL      bool    `json:"fbl"`
+	DMARC    bool    `json:"dmarc"`
+	JMAP     bool    `json:"jmap"`
 	// DAV: RFC 6764 CalDAV/CardDAV autodiscovery opt-in (core migration 0018) —
 	// the DNS checklist gains _caldavs._tcp/_carddavs._tcp SRV + TXT records
 	// pointing at the DAV gateway.
@@ -60,13 +69,15 @@ type Domain struct {
 	AccountID    *string    `json:"accountId"`
 	CreatedAt    int64      `json:"createdAt"`
 
-	// Lifecycle view of the three booleans above, so a client rendering an
-	// onboarding checklist does not have to know which combination means what.
-	// There is deliberately no "verified" here: proving control of the domain
-	// is the precondition for core creating the row at all, so every domain
-	// that exists is verified.
+	// The derived answers, so a client rendering an onboarding checklist does
+	// not have to know which combination of the four fields means what. There
+	// is deliberately no "verified" here: proving control of the domain is the
+	// precondition for core creating the row at all, so every domain that
+	// exists is verified (SendVerified is a different fact — the SEND records).
+	// Receiving is enabled && !sendOnly.
 	Receiving bool `json:"receiving"`
-	// Sending is enabled && canSend && !sendPaused.
+	// Sending is enabled && sendVerified && sendHold == nil — this domain's own
+	// switches; the account's hold is the Account's to report.
 	Sending bool `json:"sending"`
 
 	// MailboxCount is how many mailboxes have their primary address on this
@@ -155,16 +166,19 @@ type DomainDNSCheck struct {
 }
 
 // DomainCreateInput is the POST /domains body; pointers so unset fields are
-// omitted and core applies its defaults (enabled/canReceive true, canSend/fbl
+// omitted and core applies its defaults (enabled true, sendOnly/sendVerified/fbl
 // false).
 type DomainCreateInput struct {
-	Domain     string  `json:"domain"`
-	Enabled    *bool   `json:"enabled,omitempty"`
-	CanSend    *bool   `json:"canSend,omitempty"`
-	CanReceive *bool   `json:"canReceive,omitempty"`
-	AliasOf    *string `json:"aliasOf,omitempty"`
-	FBL        *bool   `json:"fbl,omitempty"`
-	DMARC      *bool   `json:"dmarc,omitempty"`
+	Domain  string `json:"domain"`
+	Enabled *bool  `json:"enabled,omitempty"`
+	// SendVerified is honoured for a SYSTEM key only (a platform domain that
+	// never onboards); an account key's value is ignored, since sending is
+	// earned by this very call's DNS check.
+	SendVerified *bool   `json:"sendVerified,omitempty"`
+	SendOnly     *bool   `json:"sendOnly,omitempty"`
+	AliasOf      *string `json:"aliasOf,omitempty"`
+	FBL          *bool   `json:"fbl,omitempty"`
+	DMARC        *bool   `json:"dmarc,omitempty"`
 	// The three per-domain capability opt-ins. JMAP and DAV add their RFC 6764 /
 	// RFC 8620 SRV records to the DNS checklist; ITIP turns on inbound
 	// auto-filing of calendar invitations, which is a WRITE path arriving mail
@@ -433,8 +447,16 @@ func (c *Client) GetDomainEvents(ctx context.Context, domain, rng, outcome, sour
 // yet, or a Cloudflare state machine mid-flight, is normal seconds after a
 // claim. Only the row's VerifiedAt says whether the hostname is servable.
 type HostnameCheckStatus struct {
-	CNAME string   `json:"cname"`
+	// CNAME services only; absent for the NS-delegated mx slot.
+	CNAME string   `json:"cname,omitempty"`
 	Found []string `json:"found"`
+	// mx only: the NS set-equality verdict. A foreign nameserver beside ours
+	// reads as mismatch — split authority, surfaced rather than tolerated.
+	NS string `json:"ns,omitempty"`
+	// mx only, display: whether an address query through the delegation
+	// answers — proof the platform responder serves the name. Never gates
+	// verification.
+	Resolution string `json:"resolution,omitempty"`
 	// mail/smtp only. CAA "blocked" is the one value that refuses verification —
 	// an unknown answer never does.
 	CAA         string `json:"caa,omitempty"`
@@ -453,14 +475,18 @@ type HostnameCheckStatus struct {
 	} `json:"cf,omitempty"`
 }
 
-// DomainHostname is one service's vanity-hostname slot. Reported for ALL four
-// services, claimed or not, so a client renders the whole set (and the target
-// to CNAME at) without hard-coding the service list.
+// DomainHostname is one service's vanity-hostname slot. Reported for EVERY
+// service, claimed or not, so a client renders the whole set (and what to
+// publish) without hard-coding the service list.
 type DomainHostname struct {
 	Service  string  `json:"service"`
 	Domain   string  `json:"domain"`
 	Hostname *string `json:"hostname"`
 	Target   *string `json:"target"`
+	// NsTargets is the mx slot's counterpart of Target: the nameserver pair to
+	// publish as NS records at the claimed name (an MX target cannot be a
+	// CNAME, RFC 2181, so that slot is delegated instead).
+	NsTargets []string `json:"nsTargets,omitempty"`
 	// DirectOnly says the customer's CNAME must be a PLAIN record nothing
 	// intercepts. True for mail/smtp: our own fleets over ports no HTTP proxy
 	// carries, so a resolver must see the target — a customer on Cloudflare must

@@ -31,11 +31,9 @@ import (
 // ("platform default"), and huh edits text.
 type accountPlan struct {
 	name string
-	// sending is the three-way collapse of (sendDisabled, sendPaused). One
-	// control rather than two switches, because the pair has an ordering —
-	// disabled outranks paused — and two independent toggles let an operator
-	// build the meaningless "both" state and then read the wrong behavior off
-	// the screen.
+	// sending mirrors core's own `sendHold` (nil | "paused" | "disabled") as
+	// one select — the API is one field precisely so there is no pair to
+	// reconcile, and the form keeps it that way.
 	sending     string // enabled | paused | stopped
 	vanityHosts bool
 	maxMailboxes,
@@ -62,13 +60,10 @@ func planFromAccount(a coreapi.Account) accountPlan {
 		rcptsPerDay:  planCapText(a.SendRcptsPerDay),
 		storage:      planBytesText(a.StorageLimitBytes),
 	}
-	// Checked in core's own precedence order: a row carrying both resolves to
-	// the freeze, so seeding "paused" would show the operator a state the
-	// tenant is not actually in.
-	switch {
-	case a.SendDisabled:
+	switch sendHoldOf(a.SendHold) {
+	case "disabled":
 		p.sending = sendingStopped
-	case a.SendPaused:
+	case "paused":
 		p.sending = sendingPaused
 	}
 	return p
@@ -181,16 +176,14 @@ func accountPlanPatch(cur coreapi.Account, p accountPlan) (map[string]any, error
 		patch["name"] = name
 	}
 
-	// Both halves are compared independently, which is what makes picking
-	// "stopped" on a row that was ALSO paused clear the redundant hold instead
-	// of leaving a state no screen renders honestly.
-	wantDisabled := p.sending == sendingStopped
-	wantPaused := p.sending == sendingPaused
-	if wantDisabled != cur.SendDisabled {
-		patch["sendDisabled"] = wantDisabled
-	}
-	if wantPaused != cur.SendPaused {
-		patch["sendPaused"] = wantPaused
+	// One field on the wire: "" (enabled) marshals as JSON null, which is how
+	// core clears a hold.
+	if want := planSendHold(p.sending); want != sendHoldOf(cur.SendHold) {
+		if want == "" {
+			patch["sendHold"] = nil
+		} else {
+			patch["sendHold"] = want
+		}
 	}
 
 	if p.vanityHosts != cur.VanityHosts {
@@ -239,8 +232,7 @@ func planChangeSummary(patch map[string]any) string {
 	order := []struct {
 		key, label string
 	}{
-		{"sendDisabled", "sending"},
-		{"sendPaused", "sending"},
+		{"sendHold", "sending"},
 		{"vanityHosts", "vanity hostnames"},
 		{"maxMailboxes", "max mailboxes"},
 		{"sendMsgsPerDay", "messages/day"},
@@ -302,4 +294,23 @@ func accountPlanFormPane(ctx context.Context, ui *Options, cur coreapi.Account) 
 			return "updated " + planChangeSummary(patch) + " on " + cur.Name, nil, nil
 		},
 	})
+}
+
+// sendHoldOf dereferences a resource's `sendHold` (nil = none).
+func sendHoldOf(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// planSendHold maps the form's three-way select back to the wire value.
+func planSendHold(sending string) string {
+	switch sending {
+	case sendingStopped:
+		return "disabled"
+	case sendingPaused:
+		return "paused"
+	}
+	return ""
 }

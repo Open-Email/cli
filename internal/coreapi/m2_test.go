@@ -33,7 +33,7 @@ func TestPurgeMailboxHitsPurgePath(t *testing.T) {
 // return paced as a raw 0/1 integer. Decoding must honor both.
 func TestDomainDecodesBooleans(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`{"domains":[{"domain":"x.example","enabled":true,"canSend":false,"canReceive":true,"fbl":false,"aliasOf":null,"dnsStatus":{"mx":true,"spf":false},"dnsCheckedAt":null,"accountId":"a1","createdAt":10}],"nextCursor":""}`))
+		w.Write([]byte(`{"domains":[{"domain":"x.example","enabled":true,"sendVerified":false,"sendOnly":false,"sendHold":null,"fbl":false,"aliasOf":null,"dnsStatus":{"mx":true,"spf":false},"dnsCheckedAt":null,"accountId":"a1","createdAt":10}],"nextCursor":""}`))
 	}))
 	defer srv.Close()
 	pg, err := testClient(t, srv.URL).ListDomains(context.Background(), 0, "")
@@ -41,7 +41,7 @@ func TestDomainDecodesBooleans(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := pg.Items[0]
-	if !d.Enabled || d.CanSend || !d.CanReceive || d.FBL {
+	if !d.Enabled || d.SendVerified || d.SendOnly || d.SendHold != nil || d.FBL {
 		t.Fatalf("bad bools: %+v", d)
 	}
 	if d.DNSStatus == nil || d.DNSStatus.MX == nil || !*d.DNSStatus.MX || *d.DNSStatus.SPF {
