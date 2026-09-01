@@ -220,16 +220,21 @@ func createAccount(t *testing.T, label string) string {
 }
 
 type domainOpts struct {
-	accountID  string
-	enabled    *bool
-	canSend    *bool
-	canReceive *bool
-	aliasOf    string
+	accountID string
+	enabled   *bool
+	// sendVerified is the EARNED half of sendability (core 0062 replaced the old
+	// canSend). A system key may assert it outright, which is what lets a case
+	// here mint a domain that cannot send without going near a DNS check.
+	sendVerified *bool
+	// sendOnly is the INVERSE of the old canReceive: a send-only domain keeps
+	// its inbound MX elsewhere, so nothing on it is a local recipient.
+	sendOnly *bool
+	aliasOf  string
 }
 
 // createDomain provisions a throwaway `.test` domain. Booleans default to
-// enabled/canSend/canReceive = true (matching core's live harness), so the
-// caller only overrides what a case needs.
+// enabled/sendVerified = true and sendOnly = false (matching core's live
+// harness), so the caller only overrides what a case needs.
 func createDomain(t *testing.T, o domainOpts) string {
 	acct := o.accountID
 	if acct == "" {
@@ -239,8 +244,8 @@ func createDomain(t *testing.T, o domainOpts) string {
 	args := []string{
 		"domains", "create", domain, "--account", acct,
 		boolFlag("--enabled", boolOr(o.enabled, true)),
-		boolFlag("--can-send", boolOr(o.canSend, true)),
-		boolFlag("--can-receive", boolOr(o.canReceive, true)),
+		boolFlag("--send-verified", boolOr(o.sendVerified, true)),
+		boolFlag("--send-only", boolOr(o.sendOnly, false)),
 	}
 	if o.aliasOf != "" {
 		args = append(args, "--alias-of", o.aliasOf)

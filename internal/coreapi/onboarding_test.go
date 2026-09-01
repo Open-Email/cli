@@ -22,7 +22,7 @@ func TestCreateDomainReturnsDomainAndRecords(t *testing.T) {
 			t.Errorf("hit %s %s", r.Method, r.URL.Path)
 		}
 		w.Write([]byte(`{
-			"domain":"a.test","enabled":true,"canSend":false,"canReceive":true,
+			"domain":"a.test","enabled":true,"sendVerified":false,"sendOnly":false,"sendHold":null,
 			"aliasOf":null,"fbl":false,"dmarc":false,"jmap":false,
 			"dnsStatus":{"mx":true,"spf":false,"dkim":false,"dmarc":false},
 			"dnsCheckedAt":1700000000,"accountId":"ACC","createdAt":1700000000,

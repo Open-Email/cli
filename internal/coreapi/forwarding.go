@@ -96,9 +96,21 @@ func (c *Client) GetForwarding(ctx context.Context, mailboxID string) (*Forwardi
 // refusing, which is also how a destination the recipient revoked is re-proved
 // — so this is the resend verb too, and a caller need not tell the two apart.
 //
-// 409 when the address cannot be a destination (it is local, or it would loop),
-// 429 under the per-mailbox cooldown on mailing codes, 503 when the code could
-// not be sent — the last is the one to retry, since nothing was recorded.
+// 400 when the address cannot be a destination: destination_is_self /
+// destination_loops / destination_chain_too_long (it routes back here),
+// destination_not_permitted (the mailbox's allowlist refuses it), or
+// destination_fans_out — an address we host that reaches MORE than one party
+// (a group, an alias, a webhook, a route that forwards on). The last is a
+// CONSENT refusal, not a routing one: the code proves nothing on the other
+// members' behalf, and the disable link is a capability that stops this
+// mailbox's whole forwarding stream for whoever spends it first.
+//
+// 409 too_many_destinations at the per-mailbox cap, 429 either under the resend
+// cooldown or once the mailbox's daily budget of confirmation mails is spent —
+// deliberately not distinguishable, since part of that budget is per destination
+// address across the deployment and telling them apart would make this verb an
+// oracle for whether an address was recently solicited. 503 when the code could
+// not be sent — the one to retry, since nothing was recorded.
 func (c *Client) AddForwardingDestination(ctx context.Context, mailboxID, address string) (*ForwardingDestinationPending, error) {
 	var out ForwardingDestinationPending
 	err := c.doJSON(ctx, request{
@@ -141,6 +153,12 @@ func (c *Client) DeleteForwardingDestination(ctx context.Context, mailboxID, des
 
 // SetForwardAll points forward-everything at a VERIFIED destination.
 // 403 destination_not_verified when it has not proved a code.
+//
+// The five 400s AddForwardingDestination can answer are re-taken HERE too, on
+// an already-verified destination: this is the write that arms the forward, and
+// a route proved as a single mailbox may have been retargeted to a group, or
+// back at this mailbox, since the code was spent. So a client must not treat
+// "verified" as meaning this call cannot be refused.
 func (c *Client) SetForwardAll(ctx context.Context, mailboxID, destinationID string) (*Forwarding, error) {
 	var out Forwarding
 	err := c.doJSON(ctx, request{

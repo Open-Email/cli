@@ -489,6 +489,20 @@ a fresh code goes out, whether the last one expired or the recipient stopped the
 forwarding from their end (they can, using the disable link core puts in every
 forwarded message — such a destination reads as `stopped by recipient` here).
 
+The destination has to be **one person's address**. An address we host that reaches
+several — a group, an alias, a webhook, a route that forwards on again — is refused
+as `destination_fans_out`: nobody there can answer the code on the others' behalf,
+and the disable link in every forwarded message would stop this mailbox's forwarding
+for whoever clicked it first. The same check runs again at `forwarding all`, because
+a destination that proved a code as a single mailbox can be retargeted at a group
+afterwards.
+
+There is also a limit on how many confirmation mails a mailbox may send in a day.
+Past it, `add` answers 429 — the same answer as re-running it too soon for one
+address, deliberately, so the verb cannot be used to find out whether someone else
+recently solicited an address. Either way the fix is to wait, not to try another
+address.
+
 To stop for a while, `pause`; the destination stays verified, so `resume` costs no
 second ceremony. `off` gives up the setting but keeps the destination proven.
 Every command takes the address itself or the destination id.

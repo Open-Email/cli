@@ -46,6 +46,27 @@ func TestErrorHint(t *testing.T) {
 			want: "openemail login",
 		},
 		{
+			// The consent refusal, which is the one whose bare name tells a user
+			// nothing about their own address book. `target` — not `address`,
+			// which is a different key on a different family of errors.
+			name: "destination_fans_out names the address and why one person matters",
+			ae:   &coreapi.APIError{Status: 400, Code: "destination_fans_out", Extra: map[string]any{"target": "team@acme.dev"}},
+			want: "team@acme.dev reaches more than one recipient",
+		},
+		{
+			name: "destination_fans_out without a target still hints",
+			ae:   &coreapi.APIError{Status: 400, Code: "destination_fans_out"},
+			want: "more than one recipient",
+		},
+		{
+			// Core's shared loop vocabulary: the same code answers a route, a
+			// pattern, a group member and a filter rule, so the hint must read
+			// on any of them.
+			name: "destination_loops points at the printed chain",
+			ae:   &coreapi.APIError{Status: 400, Code: "destination_loops", Extra: map[string]any{"target": "a@x.test"}},
+			want: "routes back here",
+		},
+		{
 			name: "unrelated code gets no hint",
 			ae:   &coreapi.APIError{Status: 400, Code: "validation_failed"},
 			want: "",

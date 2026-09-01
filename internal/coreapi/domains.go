@@ -450,9 +450,19 @@ type HostnameCheckStatus struct {
 	// CNAME services only; absent for the NS-delegated mx slot.
 	CNAME string   `json:"cname,omitempty"`
 	Found []string `json:"found"`
-	// mx only: the NS set-equality verdict. A foreign nameserver beside ours
-	// reads as mismatch — split authority, surfaced rather than tolerated.
+	// mx only: the NS set-equality verdict. What it PROVES depends on
+	// DelegationSource — read the two together, never NS alone.
 	NS string `json:"ns,omitempty"`
+	// mx only: which side of the zone cut the compared NS set came from.
+	// "parent" is the delegation the customer published, read from their own
+	// nameservers, so an NS verdict of ok means the set matches ours exactly and
+	// a foreign nameserver beside ours reads as mismatch. "responder" means the
+	// parent zone could not be read (a Cloudflare-hosted zone is the common
+	// case) and our own responder answered instead: that proves the delegation
+	// REACHES us, not that the set is complete or exclusive. Decoded because a
+	// client that prints "NS records match" over a responder-sourced verdict is
+	// claiming a check that was never made.
+	DelegationSource string `json:"delegationSource,omitempty"`
 	// mx only, display: whether an address query through the delegation
 	// answers — proof the platform responder serves the name. Never gates
 	// verification.

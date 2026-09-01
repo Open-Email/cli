@@ -74,6 +74,13 @@ func contractPairings() []pairing {
 		{val: CreatedCredential{}, comp: "CredentialCreated"},
 		{val: VerifyResult{}, comp: "VerifyResult"},
 		{val: PickupSource{}, comp: "PickupSource"},
+		// Vanity hostnames. Pinned after `delegationSource` shipped unnoticed:
+		// this status object is the only place the CLI tells an operator WHY a
+		// hostname is not serving, and a field it stops decoding turns a
+		// qualified verdict into an unqualified one.
+		{val: DomainHostnameList{}, comp: "DomainHostnameList"},
+		{val: DomainHostname{}, comp: "DomainHostname"},
+		{val: HostnameCheckStatus{}, comp: "HostnameCheckStatus"},
 		{val: DomainTraffic{}, comp: "DomainTraffic"},
 		{val: AccountTraffic{}, comp: "AccountTraffic"},
 		{val: AccountSendUsage{}, comp: "AccountSendUsage"},

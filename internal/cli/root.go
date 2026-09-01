@@ -175,6 +175,9 @@ func errorHint(ae *coreapi.APIError) string {
 		return "this key is no longer valid — it may have been revoked, or it may have lapsed from disuse; run openemail login to get a new one"
 	}
 	addr, _ := ae.Extra["address"].(string)
+	// The loop/consent refusals name the offending address in `target`, not
+	// `address` — a different key because it is not always the one asked for.
+	tgt, _ := ae.Extra["target"].(string)
 	switch ae.Code {
 	case "address_taken":
 		// Create-and-bind: the address is already routed to some mailbox.
@@ -210,6 +213,33 @@ func errorHint(ae *coreapi.APIError) string {
 	case "verification_unavailable":
 		// A resolver outage, not the customer's DNS. Retrying is the whole fix.
 		return "DNS could not be queried just now — nothing was changed; try again shortly"
+	case "destination_is_self":
+		// The loop vocabulary below is core's, and the same four codes answer a
+		// route, a pattern, a group member and a filter rule as answer a
+		// forwarding destination — so these are worded for any of them. `target`
+		// is the address core refused, which on a chain is the far end rather
+		// than the one that was typed.
+		return "that address already delivers where the mail starts — it would arrive back where it came from"
+	case "destination_loops":
+		// The `chain` field is printed above by Detail(), so name it rather than
+		// repeating it.
+		return "that address routes back here — the chain above is the loop; break it at one end before pointing anything at it"
+	case "destination_chain_too_long":
+		return "that address forwards on again, too many hops deep — point at the address the mail actually lands in"
+	case "destination_not_permitted":
+		// The mailbox's permitted-recipients allowlist, which is an operator
+		// control: naming the remedy matters because nothing the user can run
+		// changes it.
+		return "an allowlist on this mailbox does not permit that address — an operator maintains it; have it added, or use an address already on it"
+	case "destination_fans_out":
+		// Consent, not routing: both halves of the ceremony are addressed to one
+		// person, so an address that reaches several cannot hold either. Named
+		// concretely, because "fans out" tells a user nothing about their own
+		// address book.
+		if tgt != "" {
+			return fmt.Sprintf("%s reaches more than one recipient here (a group, an alias, a webhook, or a route that forwards on) — nobody there can answer the code, and the disable link would stop your forwarding for whoever clicked it first; name one person's address", tgt)
+		}
+		return "that address reaches more than one recipient here (a group, an alias, a webhook, or a route that forwards on) — nobody there can answer the code, and the disable link would stop your forwarding for whoever clicked it first; name one person's address"
 	}
 	return ""
 }

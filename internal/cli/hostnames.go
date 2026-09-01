@@ -215,6 +215,15 @@ func printHostnames(w io.Writer, p *Printer, list *coreapi.DomainHostnameList) {
 		rows = append(rows, []string{h.Service, hostname, target, hostnameState(h)})
 	}
 	printTable(w, p, []string{"SERVICE", "HOSTNAME", "TARGET", "STATE"}, rows)
+	// The mx verdict carries a caveat the STATE column cannot: when the parent
+	// zone could not be read, the delegation was confirmed from OUR side, which
+	// proves it reaches us and nothing about what else is delegated beside us.
+	// Said plainly, because "verified" otherwise reads as a stronger check than
+	// the one that ran.
+	if delegationFromResponder(list) {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, p.Dim("the mx delegation was read from our own nameservers, not from your parent zone — that proves the delegation reaches us, not that ours are the only nameservers listed there"))
+	}
 	// Said after the table rather than instead of it: an operator may have
 	// provisioned rows with a system key on an account that cannot claim its
 	// own, and those are exactly the rows worth still showing.
@@ -222,6 +231,18 @@ func printHostnames(w io.Writer, p *Printer, list *coreapi.DomainHostnameList) {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, p.Dim("custom hostnames are not enabled on this account — a claim will be refused"))
 	}
+}
+
+// delegationFromResponder reports whether any slot's NS verdict came from the
+// platform responder rather than the customer's parent zone (core's
+// `delegationSource`) — the case where an `ok` is weaker than it looks.
+func delegationFromResponder(list *coreapi.DomainHostnameList) bool {
+	for _, h := range list.Hostnames {
+		if h.Status != nil && h.Status.DelegationSource == "responder" {
+			return true
+		}
+	}
+	return false
 }
 
 // hostnameState collapses the row into the one thing an operator wants to read

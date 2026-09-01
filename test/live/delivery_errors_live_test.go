@@ -36,14 +36,15 @@ func deliverErrSetup(t *testing.T) *deliverEnv {
 	qmbx := createMailbox(t, d.quotaAddr, mailboxOpts{quotaBytes: 2000})
 	createRoute(t, d.quotaAddr, qmbx)
 
-	// 2) Receive-disabled domain (canReceive:false), address routed.
-	rxDom := createDomain(t, domainOpts{canReceive: boolp(false)})
+	// 2) Send-only domain (sendOnly:true — the 0062 spelling of the old
+	//    canReceive:false), address routed.
+	rxDom := createDomain(t, domainOpts{sendOnly: boolp(true)})
 	d.rxDisabledAddr = "rx@" + rxDom
 	rxmbx := createMailbox(t, d.rxDisabledAddr, mailboxOpts{})
 	createRoute(t, d.rxDisabledAddr, rxmbx)
 
-	// 3) Disabled domain (enabled:false but canReceive:true), address routed.
-	disDom := createDomain(t, domainOpts{enabled: boolp(false), canReceive: boolp(true)})
+	// 3) Disabled domain (enabled:false but receiving), address routed.
+	disDom := createDomain(t, domainOpts{enabled: boolp(false), sendOnly: boolp(false)})
 	d.disabledAddr = "d@" + disDom
 	dmbx := createMailbox(t, d.disabledAddr, mailboxOpts{})
 	createRoute(t, d.disabledAddr, dmbx)
@@ -52,9 +53,10 @@ func deliverErrSetup(t *testing.T) *deliverEnv {
 	unkDom := createDomain(t, domainOpts{})
 	d.unknownAddr = "ghost-" + runID + "@" + unkDom
 
-	// 5) Send-disabled domain (canSend:false, canReceive:true), mailbox routed so
-	//    the sender resolves locally and reaches the send gate.
-	d.sendDisabledDom = createDomain(t, domainOpts{canSend: boolp(false), canReceive: boolp(true)})
+	// 5) Domain that cannot send (sendVerified:false), mailbox routed so the
+	//    sender resolves locally and reaches the send gate. Core folds every
+	//    reason a domain may not send into the one wire code sending_disabled.
+	d.sendDisabledDom = createDomain(t, domainOpts{sendVerified: boolp(false), sendOnly: boolp(false)})
 	sAddr := "s@" + d.sendDisabledDom
 	smbx := createMailbox(t, sAddr, mailboxOpts{})
 	createRoute(t, sAddr, smbx)
@@ -111,7 +113,7 @@ func TestLiveDeliveryErr_UnknownAddress(t *testing.T) {
 func TestLiveDeliveryErr_SendDisabled(t *testing.T) {
 	d := deliverErrSetup(t)
 	// System key: the ownership fence is skipped, so the request reaches the
-	// domain send-state gate (canSend:false) → sending_disabled. The gate precedes
+	// domain send-state gate (sendVerified:false) → sending_disabled. The gate precedes
 	// recipient resolution, so the external .invalid recipient is never touched.
 	from := "s@" + d.sendDisabledDom
 	external := "ext@external-" + runID + ".invalid"

@@ -171,9 +171,16 @@ func newForwardingAddCmd(a *app) *cobra.Command {
 		Short: "Name a destination and mail it a confirmation code",
 		Long: "Mails the address an eight-character code, good for 24 hours. Nothing is\n" +
 			"forwarded until you confirm it with `openemail forwarding verify`.\n\n" +
+			"It has to be ONE person's address. An address we host that reaches several —\n" +
+			"a group, an alias, a webhook, a route that forwards on again — is refused\n" +
+			"(`destination_fans_out`): nobody there can answer the code on the others'\n" +
+			"behalf, and the disable link in every forwarded message would stop this\n" +
+			"mailbox's forwarding for whoever clicked it first.\n\n" +
 			"Re-running this for an address that already exists mails a FRESH code rather\n" +
 			"than refusing, so it is also how you resend an expired one and how you\n" +
-			"re-prove a destination the recipient stopped.",
+			"re-prove a destination the recipient stopped. There is a limit on how much\n" +
+			"of that a mailbox may do in a day; past it this answers 429 and the fix is\n" +
+			"to wait, not to try another address.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, mbx, err := a.forwardingClient(cmd)
@@ -273,6 +280,10 @@ func newForwardingAllCmd(a *app) *cobra.Command {
 		Short: "Forward all mail to a verified destination",
 		Long: "Sends a copy of everything this mailbox receives to the named destination,\n" +
 			"which must already be verified — core refuses an unproven one.\n\n" +
+			"Verified is not the same as still usable: this is the write that arms the\n" +
+			"forward, so the destination is re-checked here as well. An address that has\n" +
+			"since been pointed back at this mailbox, dropped off the account's allowlist,\n" +
+			"or retargeted at a group is refused now even though it proved a code then.\n\n" +
 			"Mail is still delivered here as well; this is a copy, not a redirect.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
