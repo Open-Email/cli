@@ -25,7 +25,7 @@ import (
 type watchOpts struct {
 	until     []string // path.Match globs on the frame `type`; any match ends the watch (exit 0)
 	execCmd   string   // shell command run once per event, frame JSON on stdin
-	fetch     bool     // hydrate message.new/updated/restored frames with GET /messages/:id
+	fetch     bool     // hydrate message.new/imported/updated/restored frames with GET /messages/:id
 	reconnect bool
 	timeout   time.Duration // 0 = no deadline
 }
@@ -45,7 +45,7 @@ func newWatchCmd(a *app) *cobra.Command {
 			"  --timeout <dur>  overall deadline spanning reconnects; with --until, hitting it exits 1.\n" +
 			"  --exec <command> run `sh -c <command>` per event with the frame JSON on stdin\n" +
 			"                   (env adds OPENEMAIL_EVENT_TYPE / OPENEMAIL_MAILBOX).\n" +
-			"  --fetch          hydrate message.new/updated/restored frames with message metadata\n" +
+			"  --fetch          hydrate message.new/imported/updated/restored frames with message metadata\n" +
 			"                   (one REST call per event — prefer a plain watch on a hot mailbox).",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -129,7 +129,7 @@ func newWatchCmd(a *app) *cobra.Command {
 	cmd.Flags().StringArrayVar(&opts.until, "until", nil, "exit once a frame type matches this glob (repeatable = OR; e.g. 'message.*')")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 0, "overall deadline for the whole watch (spans reconnects)")
 	cmd.Flags().StringVar(&opts.execCmd, "exec", "", "run `sh -c <command>` per event with the frame JSON on stdin")
-	cmd.Flags().BoolVar(&opts.fetch, "fetch", false, "hydrate message.new/updated/restored frames with message metadata (one REST call each)")
+	cmd.Flags().BoolVar(&opts.fetch, "fetch", false, "hydrate message.new/imported/updated/restored frames with message metadata (one REST call each)")
 	return cmd
 }
 
@@ -259,7 +259,7 @@ func (a *app) processFrame(ctx context.Context, client *coreapi.Client, mbx stri
 
 func hydratable(eventType string) bool {
 	switch eventType {
-	case "message.new", "message.updated", "message.restored":
+	case "message.new", "message.imported", "message.updated", "message.restored":
 		return true
 	}
 	return false

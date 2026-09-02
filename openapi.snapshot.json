@@ -4203,7 +4203,7 @@
             "type": "integer"
           },
           "type": {
-            "description": "Event name. The vocabulary is ADDITIVE and shared with the live WebSocket feed (GET /mailboxes/{mailboxId}/events): message.new, message.updated, message.expunged, message.restored, message.purged, label.created, label.renamed, label.deleted, label.expunged, trash.emptied, thread.merged, state.changed, email.relayed, email.failed, webhook.test, ... Treat an unrecognized type as a generic 'something changed' nudge, never as an error",
+            "description": "Event name. The vocabulary is ADDITIVE and shared with the live WebSocket feed (GET /mailboxes/{mailboxId}/events): message.new, message.imported, message.updated, message.expunged, message.restored, message.purged, label.created, label.renamed, label.deleted, label.expunged, trash.emptied, thread.merged, state.changed, email.relayed, email.failed, webhook.test, ... Treat an unrecognized type as a generic 'something changed' nudge, never as an error",
             "type": "string"
           }
         },
@@ -6666,6 +6666,65 @@
         ],
         "type": "object"
       },
+      "PickupDispatch": {
+        "description": "State of the last attempt to hand this source to the fetcher, read from the scheduler. Null when that read was not made (it failed, or the page exceeded the fan-out bound) — never to mean 'nothing happened', which is an object with a null outcome. ABSENT on the operator listing, which is a deliberately DO-free cross-tenant scan",
+        "properties": {
+          "consecutiveFailures": {
+            "description": "Dispatch attempts failed in a row; 0 once one is accepted",
+            "format": "int64",
+            "type": "integer"
+          },
+          "detail": {
+            "description": "The refusal status, the transport error, or the name of the blank var — whichever the outcome implies",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastAttemptAt": {
+            "description": "When the fetcher was last called, epoch ms, or null if never",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nextRunAt": {
+            "description": "When the next attempt is armed for, epoch ms",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "outcome": {
+            "description": "dispatched = accepted; busy = a run was already in progress (also fine); rejected = the fetcher answered and said no; unreachable = no answer at all; decrypt_failed = the stored password would not decrypt (PICKUP_KEK); unconfigured = a required var is blank. Null when nothing has been dispatched yet",
+            "enum": [
+              "dispatched",
+              "busy",
+              "rejected",
+              "unreachable",
+              "decrypt_failed",
+              "unconfigured"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lastAttemptAt",
+          "outcome",
+          "detail",
+          "consecutiveFailures",
+          "nextRunAt"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
+      },
       "PickupHealthSource": {
         "allOf": [
           {
@@ -6720,6 +6779,9 @@
             "description": "True if messages should be deleted from remote server after fetching",
             "type": "boolean"
           },
+          "dispatch": {
+            "$ref": "#/components/schemas/PickupDispatch"
+          },
           "enabled": {
             "description": "True if automatic polling is enabled",
             "type": "boolean"
@@ -6737,10 +6799,25 @@
             "format": "int64",
             "type": "integer"
           },
+          "labelName": {
+            "description": "Label (folder) fetched mail files into; null = INBOX. Created on first use if missing. An explicit destination is not spam-scored; a Sieve fileinto still wins; a blocked sender still files to Junk",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lastError": {
             "description": "Error message from most recent failed run, or null",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "lastImportedCount": {
+            "description": "Messages the fetcher uploaded on the most recent completed run (its report's uploadedCount). Null until a run has reported; 0 is a run that found nothing waiting",
+            "format": "int64",
+            "type": [
+              "integer",
               "null"
             ]
           },
@@ -6804,11 +6881,13 @@
           "username",
           "intervalMinutes",
           "deleteAfterFetch",
+          "labelName",
           "enabled",
           "lastRunAt",
           "lastStatus",
           "lastError",
           "consecutiveFailures",
+          "lastImportedCount",
           "createdAt"
         ],
         "type": "object"
@@ -33914,6 +33993,11 @@
                     "minimum": 5,
                     "type": "integer"
                   },
+                  "labelName": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "name": {
                     "maxLength": 128,
                     "type": "string"
@@ -34003,6 +34087,16 @@
               }
             },
             "description": "duplicate_source — same host and username already configured for this mailbox"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "pickup_not_configured — this deployment has no PICKUP_KEK, so a source password cannot be stored"
           }
         },
         "summary": "Create POP3 pickup source",
@@ -34186,6 +34280,15 @@
                     "minimum": 5,
                     "type": "integer"
                   },
+                  "labelName": {
+                    "description": "Label (folder) fetched mail files into; null clears it back to INBOX",
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "name": {
                     "description": "Optional display name for this pickup source",
                     "maxLength": 128,
@@ -34267,6 +34370,16 @@
               }
             },
             "description": "Not found or not accessible"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "pickup_not_configured — a password change needs PICKUP_KEK, which this deployment has not set"
           }
         },
         "summary": "Update a POP3 pickup source",

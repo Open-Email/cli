@@ -9,21 +9,37 @@ import (
 // write-only and never appears in any response. deleteAfterFetch and enabled are
 // real JSON booleans.
 type PickupSource struct {
-	ID                  string  `json:"id"`
-	MailboxID           string  `json:"mailboxId"`
-	Name                *string `json:"name"`
-	Host                string  `json:"host"`
-	Port                int64   `json:"port"`
-	TLS                 string  `json:"tls"` // tls | starttls
-	Username            string  `json:"username"`
-	IntervalMinutes     int64   `json:"intervalMinutes"`
-	DeleteAfterFetch    bool    `json:"deleteAfterFetch"`
-	Enabled             bool    `json:"enabled"`
-	LastRunAt           *int64  `json:"lastRunAt"`
-	LastStatus          *string `json:"lastStatus"` // ok | partial | auth_failed | error
-	LastError           *string `json:"lastError"`
+	ID                  string          `json:"id"`
+	MailboxID           string          `json:"mailboxId"`
+	Name                *string         `json:"name"`
+	Host                string          `json:"host"`
+	Port                int64           `json:"port"`
+	TLS                 string          `json:"tls"` // tls | starttls
+	Username            string          `json:"username"`
+	IntervalMinutes     int64           `json:"intervalMinutes"`
+	DeleteAfterFetch    bool            `json:"deleteAfterFetch"`
+	LabelName           *string         `json:"labelName"` // destination folder; nil = INBOX
+	Enabled             bool            `json:"enabled"`
+	LastRunAt           *int64          `json:"lastRunAt"`
+	LastStatus          *string         `json:"lastStatus"` // ok | partial | auth_failed | error
+	LastError           *string         `json:"lastError"`
+	ConsecutiveFailures int64           `json:"consecutiveFailures"`
+	LastImportedCount   *int64          `json:"lastImportedCount"` // last completed run's uploadedCount; nil = none reported
+	CreatedAt           int64           `json:"createdAt"`
+	Dispatch            *PickupDispatch `json:"dispatch,omitempty"`
+}
+
+// PickupDispatch is the scheduler's own record of its last hand-off to the
+// fetcher — distinct from LastStatus, which the fetcher reports only when a run
+// FINISHES. A source whose job is never accepted has no run to report, so this
+// is the only field that can say why nothing is arriving. Nil when the read was
+// not made (the operator listing, or a scheduler briefly unreachable).
+type PickupDispatch struct {
+	LastAttemptAt       *int64  `json:"lastAttemptAt"`
+	Outcome             *string `json:"outcome"` // dispatched | busy | rejected | unreachable | decrypt_failed | unconfigured
+	Detail              *string `json:"detail"`
 	ConsecutiveFailures int64   `json:"consecutiveFailures"`
-	CreatedAt           int64   `json:"createdAt"`
+	NextRunAt           *int64  `json:"nextRunAt"`
 }
 
 // PickupCreateInput is the POST body. Password is required and write-only. TLS
@@ -38,6 +54,7 @@ type PickupCreateInput struct {
 	TLS              string  `json:"tls,omitempty"`
 	IntervalMinutes  *int64  `json:"intervalMinutes,omitempty"`
 	DeleteAfterFetch *bool   `json:"deleteAfterFetch,omitempty"`
+	LabelName        *string `json:"labelName,omitempty"` // destination folder, created on first use
 }
 
 func (c *Client) pickupsPath(mailboxID string) string {

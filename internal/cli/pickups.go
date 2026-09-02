@@ -111,9 +111,9 @@ func newPickupGetCmd(a *app) *cobra.Command {
 
 func newPickupCreateCmd(a *app) *cobra.Command {
 	var (
-		host, username, password, name, tls string
-		port, interval                      int64
-		deleteAfterFetch                    bool
+		host, username, password, name, tls, label string
+		port, interval                             int64
+		deleteAfterFetch                           bool
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -159,6 +159,9 @@ func newPickupCreateCmd(a *app) *cobra.Command {
 			if cmd.Flags().Changed("delete-after-fetch") {
 				in.DeleteAfterFetch = &deleteAfterFetch
 			}
+			if cmd.Flags().Changed("label") {
+				in.LabelName = &label
+			}
 			p, err := client.CreatePickup(cmd.Context(), mbx, in)
 			if err != nil {
 				return err
@@ -178,15 +181,16 @@ func newPickupCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&tls, "tls", "", "transport security: tls|starttls (default tls)")
 	cmd.Flags().Int64Var(&interval, "interval", 0, "poll interval in minutes (5–1440, default 15)")
 	cmd.Flags().BoolVar(&deleteAfterFetch, "delete-after-fetch", false, "delete messages from the server after fetching (default true)")
+	cmd.Flags().StringVar(&label, "label", "", "folder to file fetched mail into (created on first use; default INBOX)")
 	return cmd
 }
 
 func newPickupUpdateCmd(a *app) *cobra.Command {
 	var (
-		host, username, password, name, tls string
-		port, interval                      int64
-		deleteAfterFetch, enabled, disabled bool
-		clearName                           bool
+		host, username, password, name, tls, label string
+		port, interval                             int64
+		deleteAfterFetch, enabled, disabled        bool
+		clearName, clearLabel                      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "update <pickupId>",
@@ -230,6 +234,11 @@ func newPickupUpdateCmd(a *app) *cobra.Command {
 			} else if cmd.Flags().Changed("name") {
 				patch["name"] = name
 			}
+			if clearLabel {
+				patch["labelName"] = nil
+			} else if cmd.Flags().Changed("label") {
+				patch["labelName"] = label
+			}
 			if enabled {
 				patch["enabled"] = true
 			}
@@ -260,6 +269,8 @@ func newPickupUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&password, "password", "", "new POP3 password (omit to keep the current one)")
 	cmd.Flags().StringVar(&name, "name", "", "human label")
 	cmd.Flags().BoolVar(&clearName, "clear-name", false, "clear the display name")
+	cmd.Flags().StringVar(&label, "label", "", "folder to file fetched mail into (created on first use)")
+	cmd.Flags().BoolVar(&clearLabel, "clear-label", false, "file fetched mail into INBOX again")
 	cmd.Flags().StringVar(&tls, "tls", "", "transport security: tls|starttls")
 	cmd.Flags().Int64Var(&interval, "interval", 0, "poll interval in minutes (5–1440)")
 	cmd.Flags().BoolVar(&deleteAfterFetch, "delete-after-fetch", false, "delete messages from the server after fetching")
@@ -336,6 +347,14 @@ func pickupStatus(p coreapi.PickupSource) string {
 	return *p.LastStatus
 }
 
+// int64PtrOr renders a nullable count, dash when nothing has been reported.
+func int64PtrOr(v *int64, dash string) string {
+	if v == nil {
+		return dash
+	}
+	return fmt.Sprintf("%d", *v)
+}
+
 func printPickup(w io.Writer, p *Printer, s *coreapi.PickupSource) {
 	rows := [][]string{
 		{"ID", s.ID},
@@ -345,14 +364,26 @@ func printPickup(w io.Writer, p *Printer, s *coreapi.PickupSource) {
 		{"TLS", s.TLS},
 		{"Interval", fmt.Sprintf("%d min", s.IntervalMinutes)},
 		{"Delete after fetch", boolYN(s.DeleteAfterFetch)},
+		{"Files into", strOr(s.LabelName, "INBOX")},
 		{"Enabled", boolYN(s.Enabled)},
 		{"Last run", fmtEpochPtr(s.LastRunAt)},
 		{"Last status", strOr(s.LastStatus, "—")},
+		{"Last imported", int64PtrOr(s.LastImportedCount, "—")},
 		{"Consecutive failures", fmt.Sprintf("%d", s.ConsecutiveFailures)},
 		{"Created", fmtEpoch(s.CreatedAt)},
 	}
 	if s.LastError != nil && *s.LastError != "" {
 		rows = append(rows, []string{"Last error", *s.LastError})
+	}
+	// The scheduler's own last attempt — the only line that can explain a
+	// source that never reports a run at all (nothing is being dispatched).
+	if d := s.Dispatch; d != nil {
+		rows = append(rows, []string{"Last dispatch", fmtEpochPtr(d.LastAttemptAt)})
+		rows = append(rows, []string{"Dispatch outcome", strOr(d.Outcome, "—")})
+		if d.Detail != nil && *d.Detail != "" {
+			rows = append(rows, []string{"Dispatch detail", *d.Detail})
+		}
+		rows = append(rows, []string{"Next run", fmtEpochPtr(d.NextRunAt)})
 	}
 	printTable(w, p, []string{"FIELD", "VALUE"}, rows)
 }
