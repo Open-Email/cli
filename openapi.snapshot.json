@@ -11747,11 +11747,12 @@
             "type": "string"
           },
           "sendHold": {
-            "description": "Why canSend is false, present only then: 'unverified' = the domain's send records were never published (publish DNS), 'paused' = a reversible hold at some scope, 'disabled' = a permanent stop or a login that cannot send at all",
+            "description": "Why canSend is false, present only then: 'unverified' = the domain's send records were never published (publish DNS), 'receive_only' = the domain is configured to receive here and send through another provider, so those records are never asked for, 'paused' = a reversible hold at some scope, 'disabled' = a permanent stop or a login that cannot send at all. Advisory and cached by consumers; the submission gate is the authority. Treat an unrecognized value as permanent",
             "enum": [
               "disabled",
               "paused",
-              "unverified"
+              "unverified",
+              "receive_only"
             ],
             "type": "string"
           }
