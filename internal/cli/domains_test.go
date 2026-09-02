@@ -143,7 +143,10 @@ func TestDomainWritesUseOnlyFieldsTheStrictBodyAccepts(t *testing.T) {
 
 	srv, rec := fakeDomainCore(t)
 	cmd := newDomainCreateCmd(domainTestApp(srv.URL))
-	cmd.SetArgs([]string{"acme.dev", "--send-only", "--send-verified", "--fbl", "--dmarc", "--jmap", "--dav", "--itip", "--alias-of", "old.dev", "--platform"})
+	// --receive-only is passed as an explicit FALSE: `boolPtrIfChanged` emits the
+	// key on any change, so the wire shape is covered without asking for the one
+	// combination core refuses (send-only AND receive-only together).
+	cmd.SetArgs([]string{"acme.dev", "--send-only", "--receive-only=false", "--send-verified", "--fbl", "--dmarc", "--jmap", "--dav", "--itip", "--subaddressing=false", "--alias-of", "old.dev", "--platform"})
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("create: %v", err)
@@ -152,7 +155,7 @@ func TestDomainWritesUseOnlyFieldsTheStrictBodyAccepts(t *testing.T) {
 
 	srv, rec = fakeDomainCore(t)
 	cmd = newDomainUpdateCmd(domainTestApp(srv.URL))
-	cmd.SetArgs([]string{"acme.dev", "--enabled", "--send-only", "--fbl", "--dmarc", "--jmap", "--dav", "--itip", "--alias-of", "old.dev"})
+	cmd.SetArgs([]string{"acme.dev", "--enabled", "--send-only", "--receive-only=false", "--fbl", "--dmarc", "--jmap", "--dav", "--itip", "--subaddressing=false", "--alias-of", "old.dev"})
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("update: %v", err)

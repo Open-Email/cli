@@ -34,6 +34,13 @@ type Domain struct {
 	// recipient — the platform relays mail for it there and asks for no MX
 	// record. Not an enforcement state.
 	SendOnly bool `json:"sendOnly"`
+	// ReceiveOnly is the MIRROR mode (core migration 0067): the domain receives
+	// here and its outbound mail goes through somebody else, so the two records
+	// authorizing our relays to bounce and sign as it — the oe-bounce. CNAME and
+	// both DKIM CNAMEs — leave the DNS checklist AND the verdict, and sending is
+	// never activated. Also not an enforcement state, and mutually exclusive
+	// with SendOnly (400 send_receive_exclusive).
+	ReceiveOnly bool `json:"receiveOnly"`
 	// SendVerified is the EARNED half of sendability: true once the bounce CNAME
 	// and both DKIM CNAMEs were proven live by `POST /domains`. false means
 	// "publish DNS", never "stopped". Only a system key may assert or revoke it.
@@ -57,6 +64,10 @@ type Domain struct {
 	// ITIP: inbound iTIP auto-apply (core migration 0015) — arriving
 	// text/calendar invitations are filed into recipients' calendars.
 	ITIP bool `json:"itip"`
+	// Subaddressing: whether `+` is a tag delimiter on the domain (core
+	// migration 0068, default true) — `alice+x@` reaches `alice@` and the
+	// `alice+*@` sender family is permitted. Owner-writable in both directions.
+	Subaddressing bool `json:"subaddressing"`
 	// SRS: this domain's SRS0=/SRS1= local-part NAMESPACE is the platform's
 	// forwarding bounce-return path (core migration 0043). System-managed and
 	// shape-gated — every local part outside the namespace routes normally, so
@@ -176,6 +187,7 @@ type DomainCreateInput struct {
 	// earned by this very call's DNS check.
 	SendVerified *bool   `json:"sendVerified,omitempty"`
 	SendOnly     *bool   `json:"sendOnly,omitempty"`
+	ReceiveOnly  *bool   `json:"receiveOnly,omitempty"`
 	AliasOf      *string `json:"aliasOf,omitempty"`
 	FBL          *bool   `json:"fbl,omitempty"`
 	DMARC        *bool   `json:"dmarc,omitempty"`
@@ -183,10 +195,12 @@ type DomainCreateInput struct {
 	// RFC 8620 SRV records to the DNS checklist; ITIP turns on inbound
 	// auto-filing of calendar invitations, which is a WRITE path arriving mail
 	// can reach, hence off by default.
-	JMAP      *bool   `json:"jmap,omitempty"`
-	DAV       *bool   `json:"dav,omitempty"`
-	ITIP      *bool   `json:"itip,omitempty"`
-	AccountID *string `json:"accountId,omitempty"`
+	JMAP *bool `json:"jmap,omitempty"`
+	DAV  *bool `json:"dav,omitempty"`
+	ITIP *bool `json:"itip,omitempty"`
+	// Subaddressing defaults to true when omitted (core migration 0068).
+	Subaddressing *bool   `json:"subaddressing,omitempty"`
+	AccountID     *string `json:"accountId,omitempty"`
 	// Platform marks a platform-owned domain (no tenant): marshals as an
 	// explicit `"accountId": null`, which core's system-caller contract
 	// requires — an omitted accountId answers 400 account_required so an

@@ -73,18 +73,20 @@ func boolField(title, desc string, v *bool) huh.Field {
 
 func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) pane {
 	var (
-		domain   string
-		owner    string
-		enabled  = true
-		sendOnly = false
-		fbl      = false
-		dmarc    = false
-		aliasOf  string
+		domain      string
+		owner       string
+		enabled     = true
+		sendOnly    = false
+		receiveOnly = false
+		fbl         = false
+		dmarc       = false
+		aliasOf     string
 	)
 	title := "New domain"
 	if existing != nil {
 		domain = existing.Domain
 		enabled, sendOnly, fbl = existing.Enabled, existing.SendOnly, existing.FBL
+		receiveOnly = existing.ReceiveOnly
 		dmarc = existing.DMARC
 		aliasOf = strOr(existing.AliasOf, "")
 		title = "Edit domain " + existing.Domain
@@ -111,6 +113,10 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 			// Sending is EARNED from DNS and held/stopped by an operator
 			// (`openemail admin hold`); neither is a toggle on this form.
 			boolField("Send-only", "yes = the domain's inbound MX stays with another provider; the platform relays mail for it there and asks for no MX record", &sendOnly),
+			// The mirror, and exclusive with it: core answers 400
+			// send_receive_exclusive if both are set, since together they describe
+			// a domain the platform does nothing for.
+			boolField("Receive-only", "yes = mail arrives here and outbound goes through another provider; the bounce and DKIM records leave the DNS checklist and sending is never activated", &receiveOnly),
 			boolField("FBL ingestion", "parse DSN/ARF feedback reports delivered to this domain", &fbl),
 			boolField("DMARC ingestion", "parse aggregate (RUA) reports delivered to this domain — not the _dmarc DNS record", &dmarc),
 			huh.NewInput().Title("Alias of").
@@ -124,7 +130,7 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 		if existing == nil {
 			in := coreapi.DomainCreateInput{
 				Domain: strings.TrimSpace(domain), Enabled: &enabled,
-				SendOnly: &sendOnly, FBL: &fbl, DMARC: &dmarc,
+				SendOnly: &sendOnly, ReceiveOnly: &receiveOnly, FBL: &fbl, DMARC: &dmarc,
 			}
 			if o := strings.TrimSpace(owner); o != "" {
 				in.AccountID = &o
@@ -140,7 +146,10 @@ func domainFormPane(ctx context.Context, ui *Options, existing *coreapi.Domain) 
 			}
 			return "domain " + d.Domain + " created", nil, nil
 		}
-		patch := map[string]any{"enabled": enabled, "sendOnly": sendOnly, "fbl": fbl, "dmarc": dmarc}
+		patch := map[string]any{
+			"enabled": enabled, "sendOnly": sendOnly, "receiveOnly": receiveOnly,
+			"fbl": fbl, "dmarc": dmarc,
+		}
 		if alias == "" {
 			patch["aliasOf"] = nil
 		} else {

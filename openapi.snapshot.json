@@ -2622,6 +2622,34 @@
         ],
         "type": "object"
       },
+      "DmarcIngestionState": {
+        "description": "Whether the DMARC rua domain is hosted and carries the ingestion flag",
+        "properties": {
+          "domain": {
+            "description": "The configured DMARC_RUA_DOMAIN",
+            "type": "string"
+          },
+          "flagged": {
+            "description": "True if that domain carries the dmarc ingestion flag",
+            "type": "boolean"
+          },
+          "hosted": {
+            "description": "True if the rua domain exists in the directory",
+            "type": "boolean"
+          },
+          "ok": {
+            "description": "True if reports addressed to the rua domain would be accepted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "domain",
+          "hosted",
+          "flagged",
+          "ok"
+        ],
+        "type": "object"
+      },
       "DmarcReadiness": {
         "description": "Policy enforcement readiness analysis",
         "properties": {
@@ -3140,6 +3168,10 @@
               "null"
             ]
           },
+          "receiveOnly": {
+            "description": "True for the RECEIVE-ONLY mode, the mirror of sendOnly: the domain receives here and its outbound mail goes through somebody else, so the send-authentication records (bounce CNAME + both DKIM CNAMEs) leave the DNS checklist AND the verdict and sending is never activated. The owner's choice, not an enforcement state; mutually exclusive with sendOnly",
+            "type": "boolean"
+          },
           "receiving": {
             "description": "This domain receives here (enabled && !sendOnly)",
             "type": "boolean"
@@ -3160,7 +3192,7 @@
             "type": "boolean"
           },
           "sendVerified": {
-            "description": "True once the send records (bounce CNAME + both DKIM CNAMEs) were proven live by POST /domains — the EARNED half of sendability; false means 'publish DNS', never 'stopped'",
+            "description": "True once the send records (bounce CNAME + both DKIM CNAMEs) were proven live by POST /domains — the EARNED half of sendability; false means 'publish DNS', never 'stopped'. Always false for a receiveOnly domain, which is never offered those records",
             "type": "boolean"
           },
           "sending": {
@@ -3169,6 +3201,10 @@
           },
           "srs": {
             "description": "True if the SRS0=/SRS1= local-part namespace at this domain is the platform's forwarding bounce-return path (system-managed)",
+            "type": "boolean"
+          },
+          "subaddressing": {
+            "description": "Whether `+` is a tag delimiter on this domain (default true): mail to `alice+anything@` reaches `alice@`, and `alice+*@` is a permitted sender family. False makes `+` an ordinary character — no stripping, no tag recorded, no `+*` family advertised",
             "type": "boolean"
           },
           "usageAt": {
@@ -3190,6 +3226,7 @@
           "domain",
           "enabled",
           "sendOnly",
+          "receiveOnly",
           "sendVerified",
           "sendHold",
           "aliasOf",
@@ -3198,6 +3235,7 @@
           "jmap",
           "dav",
           "itip",
+          "subaddressing",
           "srs",
           "dnsStatus",
           "dnsCheckedAt",
@@ -7777,7 +7815,9 @@
             "description": "Platform DNS record kind",
             "enum": [
               "dmarc_report_authorization",
-              "verp_spf"
+              "dmarc_rua_mx",
+              "verp_spf",
+              "verp_mx"
             ],
             "type": "string"
           },
@@ -7792,7 +7832,8 @@
           "type": {
             "description": "DNS record type",
             "enum": [
-              "TXT"
+              "TXT",
+              "MX"
             ],
             "type": "string"
           }
@@ -10510,6 +10551,9 @@
       },
       "SystemPlatformDns": {
         "properties": {
+          "dmarcIngestion": {
+            "$ref": "#/components/schemas/DmarcIngestionState"
+          },
           "ok": {
             "description": "Overall status of platform DNS records",
             "type": "boolean"
@@ -18047,6 +18091,10 @@
                     "description": "Enable JMAP autodiscovery DNS checks",
                     "type": "boolean"
                   },
+                  "receiveOnly": {
+                    "description": "The RECEIVE-ONLY mode (default false), the mirror of `sendOnly`: the domain receives here and its outbound mail goes through somebody else, so `/dns/check` omits the bounce CNAME and both DKIM records — from the checklist AND the verdict — and sending can never be activated. Mutually exclusive with `sendOnly`.",
+                    "type": "boolean"
+                  },
                   "sendOnly": {
                     "description": "The SEND-ONLY mode (default false): the tenant sends as the domain while its inbound MX stays at another provider — every locality decision treats the domain as external (mail from the platform to it relays to its own MX, group members there are remote forwards, `/dns/check` omits the MX record), and mail arriving at our MX for it is refused `receiving_disabled`.",
                     "type": "boolean"
@@ -18057,6 +18105,10 @@
                   },
                   "srs": {
                     "description": "SRS bounce-return namespace domain — SRS0=/SRS1= local parts relay DSNs back through the forwarding cluster (system callers only)",
+                    "type": "boolean"
+                  },
+                  "subaddressing": {
+                    "description": "Whether `+` is a tag delimiter on this domain (default true): mail to `alice+anything@` reaches `alice@` and `alice+*@` is a permitted sender family. False makes `+` an ordinary character — no stripping, no tag recorded, no `+*` family advertised. Read from the canonical domain: inert on an alias",
                     "type": "boolean"
                   }
                 },
@@ -18106,7 +18158,7 @@
                 }
               }
             },
-            "description": "validation_failed — the body is strict, so an UNRECOGNIZED field (a retired spelling such as the pre-0062 `canSend`/`canReceive`) is refused rather than ignored; domain_not_verified — the response's `record` field is the exact ownership TXT to publish, so publish it and POST again; account_required or unknown_account (system caller naming the owner); or an invalid aliasOf: alias_self, unknown_domain, alias_cross_account, alias_chain, alias_fbl_exclusive"
+            "description": "validation_failed — the body is strict, so an UNRECOGNIZED field (a retired spelling such as the pre-0062 `canSend`/`canReceive`) is refused rather than ignored; domain_not_verified — the response's `record` field is the exact ownership TXT to publish, so publish it and POST again; account_required or unknown_account (system caller naming the owner); send_receive_exclusive (sendOnly and receiveOnly together describe a domain the platform does nothing for); or an invalid aliasOf: alias_self, unknown_domain, alias_cross_account, alias_chain, alias_fbl_exclusive"
           },
           "401": {
             "content": {
@@ -18350,6 +18402,10 @@
                     "description": "Enable JMAP autodiscovery checks",
                     "type": "boolean"
                   },
+                  "receiveOnly": {
+                    "description": "The RECEIVE-ONLY mode — see the create description. `true` drops the send-authentication records from this domain's checklist and verdict; `false` asks for them again. Mutually exclusive with `sendOnly`.",
+                    "type": "boolean"
+                  },
                   "sendHold": {
                     "description": "Operator enforcement (system callers only). 'disabled' STOPS sending: 403 sending_disabled, a permanent 550 at smtp-in, the queued backlog bounced. 'paused' HOLDS it: 429 sending_paused + Retry-After, a 451 the sending MTA queues, the backlog deferred. null lifts either. Egress only: a held domain still receives",
                     "enum": [
@@ -18371,6 +18427,10 @@
                   },
                   "srs": {
                     "description": "SRS bounce-return namespace (enabling is system-only)",
+                    "type": "boolean"
+                  },
+                  "subaddressing": {
+                    "description": "Whether `+` is a tag delimiter on this domain. Owner-writable in both directions. Read from the canonical domain: inert on an alias",
                     "type": "boolean"
                   }
                 },
@@ -18399,7 +18459,7 @@
                 }
               }
             },
-            "description": "validation_failed (the body is strict: an unrecognized field is refused, never silently dropped), empty_patch, alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
+            "description": "validation_failed (the body is strict: an unrecognized field is refused, never silently dropped), empty_patch, send_receive_exclusive (the post-patch state would be both sendOnly and receiveOnly), alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
           },
           "401": {
             "content": {

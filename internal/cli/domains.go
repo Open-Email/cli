@@ -89,7 +89,8 @@ func newDomainListCmd(a *app) *cobra.Command {
 func newDomainCreateCmd(a *app) *cobra.Command {
 	var (
 		enabled, sendVerified, fbl, dmarc, platform bool
-		jmap, dav, itip, sendOnly                   bool
+		jmap, dav, itip, sendOnly, receiveOnly      bool
+		subaddressing                               bool
 		aliasOf, account                            string
 	)
 	cmd := &cobra.Command{
@@ -118,16 +119,18 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 				return usageError(errors.New("--account and --platform are mutually exclusive"))
 			}
 			in := coreapi.DomainCreateInput{
-				Domain:       args[0],
-				Enabled:      boolPtrIfChanged(cmd, "enabled", enabled),
-				SendVerified: boolPtrIfChanged(cmd, "send-verified", sendVerified),
-				SendOnly:     boolPtrIfChanged(cmd, "send-only", sendOnly),
-				FBL:          boolPtrIfChanged(cmd, "fbl", fbl),
-				DMARC:        boolPtrIfChanged(cmd, "dmarc", dmarc),
-				JMAP:         boolPtrIfChanged(cmd, "jmap", jmap),
-				DAV:          boolPtrIfChanged(cmd, "dav", dav),
-				ITIP:         boolPtrIfChanged(cmd, "itip", itip),
-				Platform:     platform,
+				Domain:        args[0],
+				Enabled:       boolPtrIfChanged(cmd, "enabled", enabled),
+				SendVerified:  boolPtrIfChanged(cmd, "send-verified", sendVerified),
+				SendOnly:      boolPtrIfChanged(cmd, "send-only", sendOnly),
+				ReceiveOnly:   boolPtrIfChanged(cmd, "receive-only", receiveOnly),
+				FBL:           boolPtrIfChanged(cmd, "fbl", fbl),
+				DMARC:         boolPtrIfChanged(cmd, "dmarc", dmarc),
+				JMAP:          boolPtrIfChanged(cmd, "jmap", jmap),
+				DAV:           boolPtrIfChanged(cmd, "dav", dav),
+				ITIP:          boolPtrIfChanged(cmd, "itip", itip),
+				Subaddressing: boolPtrIfChanged(cmd, "subaddressing", subaddressing),
+				Platform:      platform,
 			}
 			if cmd.Flags().Changed("alias-of") {
 				if aliasOf == "" {
@@ -169,11 +172,13 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&enabled, "enabled", true, "domain is enabled")
 	cmd.Flags().BoolVar(&sendVerified, "send-verified", false, "(system keys) mark the send records as already proven — for a platform domain that never onboards; account keys earn it from DNS and this flag is ignored")
 	cmd.Flags().BoolVar(&sendOnly, "send-only", false, "SEND-ONLY domain: mailboxes stay with another provider, only sending moves here — the platform relays mail for it to its own MX, asks for no MX record, and refuses mail reaching our MX for it")
+	cmd.Flags().BoolVar(&receiveOnly, "receive-only", false, "RECEIVE-ONLY domain: mail arrives here, outbound goes through another provider — the bounce and DKIM records leave the DNS checklist and the verdict, and sending is never activated. Mutually exclusive with --send-only")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "FBL ingestion domain (parses DSN/ARF reports; mutually exclusive with alias)")
 	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "DMARC report-ingestion domain: swallows every local part and parses arriving aggregate (RUA) reports — NOT the _dmarc DNS record")
 	cmd.Flags().BoolVar(&jmap, "jmap", false, "JMAP autodiscovery: adds the _jmap._tcp SRV record to this domain's DNS checklist")
 	cmd.Flags().BoolVar(&dav, "dav", false, "CalDAV/CardDAV autodiscovery: adds the _caldavs._tcp/_carddavs._tcp SRV + TXT records to the checklist")
 	cmd.Flags().BoolVar(&itip, "itip", false, "inbound iTIP auto-apply: file arriving invitations into the recipient's calendar (off by default — it makes the calendar a write surface for arriving mail)")
+	cmd.Flags().BoolVar(&subaddressing, "subaddressing", true, "plus-addressing (on by default): mail to alice+anything@ reaches alice@, and alice+*@ is a permitted sender family; --subaddressing=false makes + an ordinary character on this domain")
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system keys; account keys always own their domains)")
 	cmd.Flags().BoolVar(&platform, "platform", false, "platform domain owned by no account (system keys only; invisible to tenants)")
@@ -246,11 +251,12 @@ func newDomainGetCmd(a *app) *cobra.Command {
 
 func newDomainUpdateCmd(a *app) *cobra.Command {
 	var (
-		enabled, fbl, dmarc bool
-		jmap, dav, itip     bool
-		sendOnly            bool
-		aliasOf             string
-		clearAlias          bool
+		enabled, fbl, dmarc   bool
+		jmap, dav, itip       bool
+		subaddressing         bool
+		sendOnly, receiveOnly bool
+		aliasOf               string
+		clearAlias            bool
 	)
 	cmd := &cobra.Command{
 		Use:   "update <domain>",
@@ -277,6 +283,11 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 			if cmd.Flags().Changed("send-only") {
 				patch["sendOnly"] = sendOnly
 			}
+			// Its mirror: --receive-only stops asking for the send records (and
+			// stops sending being activated), --receive-only=false asks again.
+			if cmd.Flags().Changed("receive-only") {
+				patch["receiveOnly"] = receiveOnly
+			}
 			if cmd.Flags().Changed("fbl") {
 				patch["fbl"] = fbl
 			}
@@ -291,6 +302,9 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 			}
 			if cmd.Flags().Changed("itip") {
 				patch["itip"] = itip
+			}
+			if cmd.Flags().Changed("subaddressing") {
+				patch["subaddressing"] = subaddressing
 			}
 			if clearAlias {
 				patch["aliasOf"] = nil
@@ -316,11 +330,13 @@ func newDomainUpdateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "set enabled")
 	cmd.Flags().BoolVar(&sendOnly, "send-only", false, "make the domain SEND-ONLY: mailboxes stay with another provider, only sending is here — the platform relays mail for it to its own MX and drops the MX record from the DNS checklist. --send-only=false turns receiving here back on")
+	cmd.Flags().BoolVar(&receiveOnly, "receive-only", false, "make the domain RECEIVE-ONLY: mail arrives here, outbound goes through another provider — the bounce and DKIM records leave the DNS checklist and the verdict. --receive-only=false asks for them again")
 	cmd.Flags().BoolVar(&fbl, "fbl", false, "set the FBL ingestion flag")
 	cmd.Flags().BoolVar(&dmarc, "dmarc", false, "set the DMARC report-ingestion flag (aggregate/RUA parsing — NOT the _dmarc DNS record)")
 	cmd.Flags().BoolVar(&jmap, "jmap", false, "set JMAP autodiscovery (adds the _jmap._tcp SRV record to the DNS checklist)")
 	cmd.Flags().BoolVar(&dav, "dav", false, "set CalDAV/CardDAV autodiscovery (adds the _caldavs._tcp/_carddavs._tcp SRV + TXT records)")
 	cmd.Flags().BoolVar(&itip, "itip", false, "set inbound iTIP auto-apply: file arriving invitations into the recipient's calendar (off by default — it makes the calendar a write surface for arriving mail)")
+	cmd.Flags().BoolVar(&subaddressing, "subaddressing", true, "set plus-addressing: whether mail to alice+anything@ reaches alice@ and alice+*@ may send (on by default); --subaddressing=false makes + an ordinary character on this domain")
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().BoolVar(&clearAlias, "clear-alias", false, "clear the alias (make it a normal domain)")
 	return cmd
@@ -465,6 +481,7 @@ func printDomain(w io.Writer, p *Printer, d *coreapi.Domain) {
 		{"JMAP autodiscovery", boolYN(d.JMAP)},
 		{"DAV autodiscovery", boolYN(d.DAV)},
 		{"Inbound iTIP", boolYN(d.ITIP)},
+		{"Plus-addressing", boolYN(d.Subaddressing)},
 		{"Alias of", strOr(d.AliasOf, "—")},
 		{"Account", strOr(d.AccountID, "platform (no account)")},
 		{"Created", fmtEpoch(d.CreatedAt)},
@@ -584,6 +601,11 @@ func sendingMode(d *coreapi.Domain) string {
 		return "no — DISABLED by operator (submissions refused permanently; queued mail bounced at the relay)"
 	case hold(d.SendHold) == "paused":
 		return "no — PAUSED by operator (submissions deferred; queued mail held, not bounced)"
+	case d.ReceiveOnly:
+		// The mirror of receiveMode's send-only line, and the reason the flag
+		// exists: without it this domain reads "publish DNS" forever for records
+		// it is never offered.
+		return "no — receive-only (outbound goes through another provider; no send records are asked for)"
 	case !d.SendVerified:
 		return "no — send records not yet verified (publish the bounce + DKIM records, then re-run `domains create`)"
 	}
