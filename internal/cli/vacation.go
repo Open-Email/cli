@@ -61,6 +61,7 @@ func (v *vacationContent) register(cmd *cobra.Command) {
 	f.StringVar(&v.subject, "subject", "", "reply subject (empty clears it)")
 	f.StringVar(&v.text, "text", "", "plain-text reply body (empty clears it)")
 	f.StringVar(&v.textFile, "text-file", "", "read the plain-text body from a file (- for stdin)")
+	f.StringVar(&v.textFile, "body-file", "", "alias for --text-file")
 	f.StringVar(&v.html, "html", "", "HTML reply body (empty clears it)")
 	f.StringVar(&v.htmlFile, "html-file", "", "read the HTML body from a file (- for stdin)")
 	f.StringVar(&v.from, "from", "", "start of the absence (RFC3339, YYYY-MM-DD, or unix seconds; empty clears it)")

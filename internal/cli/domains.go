@@ -182,6 +182,11 @@ func newDomainCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&aliasOf, "alias-of", "", "make this domain an alias of another")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system keys; account keys always own their domains)")
 	cmd.Flags().BoolVar(&platform, "platform", false, "platform domain owned by no account (system keys only; invisible to tenants)")
+	if eagerProfileRole() != coreapi.PrincipalSystem {
+		_ = cmd.Flags().MarkHidden("send-verified")
+		_ = cmd.Flags().MarkHidden("account")
+		_ = cmd.Flags().MarkHidden("platform")
+	}
 	return cmd
 }
 

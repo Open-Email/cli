@@ -48,6 +48,10 @@ func newKeysCreateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&role, "role", "", "system|account (system callers only; default account)")
 	cmd.Flags().StringVar(&account, "account", "", "account id to own the key (system callers only)")
+	if eagerProfileRole() != coreapi.PrincipalSystem {
+		_ = cmd.Flags().MarkHidden("role")
+		_ = cmd.Flags().MarkHidden("account")
+	}
 	return cmd
 }
 

@@ -13,20 +13,34 @@ import (
 )
 
 func newAccountsCmd(a *app) *cobra.Command {
+	short := "Manage tenant accounts (system callers only for create/list)"
+	if eagerProfileRole() != coreapi.PrincipalSystem {
+		short = "Show tenant account details and sending usage"
+	}
 	cmd := &cobra.Command{
 		Use:     "accounts",
 		Aliases: []string{"account"},
-		Short:   "Manage tenant accounts (system callers only for create/list)",
+		Short:   short,
+	}
+	createCmd := newAccountCreateCmd(a)
+	listCmd := newAccountListCmd(a)
+	updateCmd := newAccountUpdateCmd(a)
+	restoreCmd := newAccountRestoreCmd(a)
+	if eagerProfileRole() != coreapi.PrincipalSystem {
+		createCmd.Hidden = true
+		listCmd.Hidden = true
+		updateCmd.Hidden = true
+		restoreCmd.Hidden = true
 	}
 	cmd.AddCommand(
-		newAccountCreateCmd(a),
-		newAccountListCmd(a),
+		createCmd,
+		listCmd,
 		newAccountGetCmd(a),
-		newAccountUpdateCmd(a),
+		updateCmd,
 		newAccountTrafficCmd(a),
 		newAccountUsageCmd(a),
 		newAccountDeleteCmd(a),
-		newAccountRestoreCmd(a),
+		restoreCmd,
 		newRetentionCmd(a, retentionAccount),
 	)
 	return cmd
@@ -217,6 +231,9 @@ func newAccountDeleteCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&purge, "purge", false, "waive the grace window and purge now (system only, irreversible)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm --purge")
+	if eagerProfileRole() != coreapi.PrincipalSystem {
+		_ = cmd.Flags().MarkHidden("purge")
+	}
 	return cmd
 }
 

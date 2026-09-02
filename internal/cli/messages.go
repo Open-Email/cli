@@ -760,7 +760,7 @@ func newMessageDeleteCmd(a *app) *cobra.Command {
 			a.out.Emit(res, func(w io.Writer) {
 				switch {
 				case res.Purged:
-					a.out.Successf("Purged message %s (blobOrphaned=%v)", id, res.BlobOrphaned)
+					a.out.Successf("Purged message %s", id)
 				case res.RemovedFromLabel != nil:
 					if res.Expunged {
 						a.out.Successf("Detached message %s from %s — no labels left, moved to trash", id, *res.RemovedFromLabel)

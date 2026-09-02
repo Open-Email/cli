@@ -15,12 +15,12 @@ func newUICmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "ui",
 		Aliases: []string{"console"},
-		Short:   "Browse the platform in an interactive console (read-only)",
+		Short:   "Interactive full-screen console for mailboxes, directory, and live mail",
 		Long: "Open a full-screen console: a sidebar of directory resources (mailboxes,\n" +
-			"domains, routes, patterns, API keys) with tables, detail views, and a live\n" +
-			"per-mailbox message list fed by the events WebSocket.\n\n" +
-			"v1 is read-only — mutations stay with the flag commands. Requires an\n" +
-			"account or system key; mailbox app passwords cannot browse the directory.",
+			"domains, routes, patterns, API keys) with tables, detail views, interactive\n" +
+			"forms, and a live per-mailbox message list fed by the events WebSocket with\n" +
+			"compose, reply, search, previews, and invitation RSVP.\n\n" +
+			"Requires an account or system key; mailbox app passwords cannot browse the directory.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {

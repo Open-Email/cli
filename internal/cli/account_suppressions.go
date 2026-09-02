@@ -83,6 +83,9 @@ func suppressionScope(ctx context.Context, a *app, client *coreapi.Client, flagA
 
 func accountFlag(cmd *cobra.Command, dest *string) {
 	cmd.Flags().StringVar(dest, "account", "", "account id to act on (defaults to the key's own account; required for system keys)")
+	if eagerProfileRole() != coreapi.PrincipalSystem {
+		_ = cmd.Flags().MarkHidden("account")
+	}
 }
 
 // doNotSendList finds the account's seeded do-not-send list. `create` decides

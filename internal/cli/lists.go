@@ -78,7 +78,7 @@ func listFamily(ctx context.Context, a *app, client *coreapi.Client, flagAccount
 
 func listScopeFlags(cmd *cobra.Command, account, mailbox *string) {
 	accountFlag(cmd, account)
-	cmd.Flags().StringVar(mailbox, "mailbox", "", "act on ONE mailbox's own lists instead of the account's (the only family a mailbox credential can use)")
+	cmd.Flags().StringVarP(mailbox, "mailbox", "m", "", "act on ONE mailbox's own lists instead of the account's (the only family a mailbox credential can use)")
 }
 
 func listRows(items []coreapi.AddressList) [][]string {
@@ -503,8 +503,12 @@ func newListsCheckCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			targetMbx := scope
+			if targetMbx == "" && mailbox != "" {
+				targetMbx = mailbox
+			}
 			v, err := client.EvaluateAddressLists(ctx, fam, coreapi.AddressListEvaluateInput{
-				Direction: direction, Address: args[0], Domain: domain, MailboxID: scope,
+				Direction: direction, Address: args[0], Domain: domain, MailboxID: targetMbx,
 			})
 			if err != nil {
 				return err
