@@ -22,3 +22,57 @@ jobs:
         run: go build ./...
       - name: test
         run: go test -race ./...
+
+  # The vendored openapi.snapshot.json is a COPY of core's, and the Go wire
+  # structs in internal/coreapi are pinned to it by TestWireStructsMatchOpenAPI-
+  # Snapshot. That test cannot notice this: it compares the structs against the
+  # VENDORED file, so a stale snapshot and stale structs agree with each other
+  # perfectly — which is how `retentionDays` was missing from three structs
+  # while `go test ./...` stayed green. CORE_REF names the core commit the
+  # snapshot came from; this job checks core out AT that ref and compares, so a
+  # bump has to carry its `make sync-spec` in the same commit.
+  #
+  # SETUP REQUIRED: Open-Email/core is private and THIS REPO IS PUBLIC, so the
+  # automatic GITHUB_TOKEN cannot read core. Access rides a GitHub App
+  # (Repository permissions → Contents: Read-only, installed on core only) —
+  # the same app openemail-dav's CI uses. Add its numeric id and .pem contents
+  # to this repo's Actions secrets as CORE_READER_APP_ID / CORE_READER_APP_KEY.
+  # Every minted token is scoped to reading core and expires within the hour.
+  # UNTIL THOSE SECRETS EXIST THIS JOB FAILS; the test job above is unaffected.
+  #
+  # Skipped for FORK pull requests, which get no secrets by design: an outside
+  # contributor must not face a check they cannot run, and the push to main
+  # re-runs it.
+  spec:
+    name: vendored spec matches the pinned core
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read the pinned core ref
+        id: core
+        run: echo "ref=$(tr -d '[:space:]' < CORE_REF)" >> "$GITHUB_OUTPUT"
+
+      - name: Mint a short-lived core-read token
+        id: core-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CORE_READER_APP_ID }}
+          private-key: ${{ secrets.CORE_READER_APP_KEY }}
+          owner: Open-Email
+          repositories: core
+
+      # `.core` rather than a sibling path: actions/checkout cannot write
+      # outside the workspace, and Go's `./...` walk skips dot-directories, so
+      # the core tree cannot perturb gofmt/vet/build in the job above.
+      - name: Check out core at the pinned ref
+        uses: actions/checkout@v5
+        with:
+          repository: Open-Email/core
+          ref: ${{ steps.core.outputs.ref }}
+          token: ${{ steps.core-token.outputs.token }}
+          path: .core
+
+      - name: Vendored snapshot is in sync
+        run: make sync-spec-check CORE_DIR=.core

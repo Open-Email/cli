@@ -83,6 +83,13 @@
               "null"
             ]
           },
+          "retentionDays": {
+            "description": "The account DEFAULT time-based retention window in days, applied to every mailbox with no window of its own (null = none, the default). Outside the plan system",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "sendHold": {
             "description": "Operator enforcement over every mailbox on every domain this account owns: 'disabled' = permanent stop, 'paused' = reversible hold, null = neither",
             "enum": [
@@ -161,6 +168,7 @@
           "noticeMailboxId",
           "plan",
           "storageLimitBytes",
+          "retentionDays",
           "vanityHosts",
           "recoverySelfService",
           "createdAt",
@@ -368,6 +376,112 @@
           "mailboxShare",
           "windowSeconds",
           "topMailboxes"
+        ],
+        "type": "object"
+      },
+      "AccountRetention": {
+        "properties": {
+          "accountId": {
+            "description": "Account ULID",
+            "type": "string"
+          },
+          "mailboxes": {
+            "description": "This page of the account's mailboxes",
+            "items": {
+              "$ref": "#/components/schemas/AccountRetentionRow"
+            },
+            "type": "array"
+          },
+          "minDays": {
+            "description": "The platform floor",
+            "type": "integer"
+          },
+          "nextCursor": {
+            "description": "Cursor for the next page, present only when one exists",
+            "type": "string"
+          },
+          "retentionDays": {
+            "description": "The account default window (null = none)",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "unreadable": {
+            "description": "Mailbox ids on this page whose store could not be read; their rows are omitted rather than reported as zero",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accountId",
+          "retentionDays",
+          "minDays",
+          "mailboxes",
+          "unreadable"
+        ],
+        "type": "object"
+      },
+      "AccountRetentionRow": {
+        "properties": {
+          "effectiveDays": {
+            "description": "The window in force for this mailbox after resolution",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Mailbox ULID",
+            "type": "string"
+          },
+          "preview": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetentionPreview"
+              },
+              {
+                "description": "What the previewed window (?days=, else the effective one) would expunge; null when there is no window to preview",
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "primaryAddress": {
+            "description": "Primary address, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retentionDays": {
+            "description": "The mailbox's OWN window (null = inherits the account default, if any)",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Where the effective window came from",
+            "enum": [
+              "own",
+              "account",
+              "none"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "primaryAddress",
+          "retentionDays",
+          "effectiveDays",
+          "source",
+          "preview"
         ],
         "type": "object"
       },
@@ -5316,6 +5430,13 @@
               "null"
             ]
           },
+          "retentionDays": {
+            "description": "The mailbox's OWN time-based retention window in days (null = none; the account default applies if one is set). The window in force, with a preview, is GET /mailboxes/:id/retention",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "sendHold": {
             "description": "This mailbox's own operator enforcement: 'disabled' = permanent stop (403 sending_disabled), 'paused' = reversible hold (429 sending_paused), null = neither. System-written only",
             "enum": [
@@ -5370,7 +5491,8 @@
           "sendMsgsPerDay",
           "sendRcptsPerDay",
           "sendMsgsPerHour",
-          "sendRcptsPerHour"
+          "sendRcptsPerHour",
+          "retentionDays"
         ],
         "type": "object"
       },
@@ -5528,6 +5650,14 @@
           },
           {
             "properties": {
+              "databaseSize": {
+                "description": "Sampled size of the store's own metadata database in bytes — the axis the store_metadata_full ceiling guards (metadata + search index, not message bytes); null when the sample predates this measure",
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "messageCount": {
                 "description": "Total number of active messages",
                 "format": "int64",
@@ -8817,6 +8947,102 @@
         ],
         "type": "object"
       },
+      "Retention": {
+        "properties": {
+          "accountRetentionDays": {
+            "description": "The owning account's default window (null = none)",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "minDays": {
+            "description": "The platform floor (RETENTION_MIN_DAYS): no window may be shorter",
+            "type": "integer"
+          },
+          "nextRunAt": {
+            "description": "Epoch seconds at which the oldest live message becomes due under the window in force — the duty's next scheduled wake; null when no window is in force or nothing is live",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "oldestReceivedAt": {
+            "description": "Arrival time (epoch seconds) of the oldest live message, or null on an empty mailbox",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ownRetentionDays": {
+            "description": "The mailbox's own window (null = none set; the account default applies if any)",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "previews": {
+            "description": "What each previewed window would expunge: the windows named by ?days=, else the window in force (one entry), else empty",
+            "items": {
+              "$ref": "#/components/schemas/RetentionPreview"
+            },
+            "type": "array"
+          },
+          "retentionDays": {
+            "description": "The window in force: the mailbox's own, else the account default, else null (off)",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Where the window in force came from: the mailbox's own setting, the account default, or none",
+            "enum": [
+              "own",
+              "account",
+              "none"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "retentionDays",
+          "source",
+          "ownRetentionDays",
+          "accountRetentionDays",
+          "minDays",
+          "oldestReceivedAt",
+          "nextRunAt",
+          "previews"
+        ],
+        "type": "object"
+      },
+      "RetentionPreview": {
+        "properties": {
+          "bytes": {
+            "description": "Their stored size in bytes (quota keeps counting them until the trash purge)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "days": {
+            "description": "The window previewed, in days",
+            "type": "integer"
+          },
+          "messages": {
+            "description": "Live messages older than the window — what the duty would expunge",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "days",
+          "messages",
+          "bytes"
+        ],
+        "type": "object"
+      },
       "RevokedResult": {
         "properties": {
           "revoked": {
@@ -9998,6 +10224,96 @@
         ],
         "type": "object"
       },
+      "StorageWatermark": {
+        "properties": {
+          "limitBytes": {
+            "description": "The per-store ceiling (DO_STORAGE_LIMIT_BYTES)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "minPercent": {
+            "description": "The threshold applied",
+            "type": "number"
+          },
+          "nextCursor": {
+            "description": "Opaque cursor for the next page of accounts",
+            "type": "string"
+          },
+          "rows": {
+            "description": "Stores at or above the threshold, largest first",
+            "items": {
+              "$ref": "#/components/schemas/StorageWatermarkRow"
+            },
+            "type": "array"
+          },
+          "unreadable": {
+            "description": "Accounts whose ledger would not answer on this page",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "minPercent",
+          "limitBytes",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "StorageWatermarkRow": {
+        "properties": {
+          "accountId": {
+            "description": "Account owning the store",
+            "type": "string"
+          },
+          "databaseSize": {
+            "description": "The store's own metadata database size in bytes, as last sampled",
+            "format": "int64",
+            "type": "integer"
+          },
+          "domain": {
+            "description": "Domain of the store's primary address, or null for an address-less identity",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limitBytes": {
+            "description": "The per-store ceiling this size is measured against",
+            "format": "int64",
+            "type": "integer"
+          },
+          "mailboxId": {
+            "description": "Mailbox/identity ULID of the store",
+            "type": "string"
+          },
+          "percent": {
+            "description": "databaseSize as a percentage of the ceiling, rounded to one decimal",
+            "type": "number"
+          },
+          "sampledAt": {
+            "description": "When this store's row was last stamped by a sweep, epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "stale": {
+            "description": "True when the size was CARRIED from an earlier sweep rather than read — the least trustworthy kind of reading, on exactly the store most likely to produce it",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accountId",
+          "mailboxId",
+          "domain",
+          "databaseSize",
+          "limitBytes",
+          "percent",
+          "stale",
+          "sampledAt"
+        ],
+        "type": "object"
+      },
       "Suppression": {
         "properties": {
           "address": {
@@ -11041,6 +11357,14 @@
               "null"
             ]
           },
+          "maxDatabaseSize": {
+            "description": "The account's LARGEST single store's metadata database size in bytes that day (MAX across mailboxes, not a sum — the figure that measures distance to the per-store store_metadata_full ceiling), or null when not measured",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "outboundBytes": {
             "description": "Total size of outbound mail relayed in bytes, or null",
             "format": "int64",
@@ -11162,6 +11486,7 @@
           "mailboxes",
           "calendarObjects",
           "contactObjects",
+          "maxDatabaseSize",
           "estimated",
           "inboundDeliveries",
           "inboundBytes",
@@ -12563,7 +12888,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch (no recognized field supplied), or notice_mailbox_not_owned (the incident-notice mailbox must belong to this account)"
+            "description": "validation_failed, empty_patch (no recognized field supplied), notice_mailbox_not_owned (the incident-notice mailbox must belong to this account)"
           },
           "401": {
             "content": {
@@ -12810,7 +13135,10 @@
                 "blob_missing",
                 "rate_limited",
                 "limiter_unavailable",
-                "auth_failed"
+                "auth_failed",
+                "storage_warning",
+                "mail_refused",
+                "mail_accepted"
               ],
               "type": "string"
             }
@@ -12839,7 +13167,9 @@
                 "api",
                 "check",
                 "read",
-                "auth"
+                "auth",
+                "store",
+                "platform_mail"
               ],
               "type": "string"
             }
@@ -14547,6 +14877,237 @@
           }
         },
         "summary": "Restore deleted account",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/retention": {
+      "delete": {
+        "description": "Clears the account DEFAULT retention window; mailboxes with a window of their own keep it, every other mailbox stops enforcing one on the next walk. Answers the same view as GET. Nothing already in the trash tier is restored by this: restore messages explicitly.",
+        "operationId": "delete_AccountRetentionDelete",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRetention"
+                }
+              }
+            },
+            "description": "The account with no default in force, with the first page of per-mailbox state"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Clear account default retention window",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "get": {
+        "description": "Pages the account's mailboxes with each one's own window, the window in force after resolution against the account default, and a preview of what a window would expunge — the window named by ?days= (what an account default WOULD do, before setting one), else each mailbox's effective window. One store read per mailbox; a store that could not be read is listed in `unreadable` rather than reported as zero.",
+        "operationId": "get_AccountRetentionGet",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One window in days to preview on every mailbox (e.g. the account default you are about to set)",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "description": "One window in days to preview on every mailbox (e.g. the account default you are about to set)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRetention"
+                }
+              }
+            },
+            "description": "One page of mailboxes with their retention state and previews"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — malformed ?days= (an integer 1–36500)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Preview retention across an account's mailboxes",
+        "tags": [
+          "Accounts"
+        ]
+      },
+      "put": {
+        "description": "Sets the account DEFAULT retention window in days — the window every mailbox the account owns enforces unless it has one of its own, EXISTING mailboxes included, pushed to each store by a background walk. The owning account key or a system key. Refused below the platform floor. Answers the same view as GET — the default now in force and one page of per-mailbox previews of it — read it. Mail expunged under the window is restorable for 14 days; to recover from a wrong window, clear or raise it FIRST, then restore.",
+        "operationId": "put_AccountRetentionPut",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "retentionDays": {
+                    "description": "The account DEFAULT window in days, applied to every mailbox the account owns that has no window of its own — EXISTING mailboxes included (it is read at resolution time, not copied at create), so preview it first with GET ?days=. Refused below the platform floor (400 retention_too_short). Pushed to the account's stores by a paged background walk; deliberately outside the plan system, so a plan change never touches it",
+                    "exclusiveMinimum": 0,
+                    "maximum": 36500,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "retentionDays"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRetention"
+                }
+              }
+            },
+            "description": "The default now in force, with the first page of per-mailbox previews"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or retention_too_short (the window is below the platform floor; the body carries minDays)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "Set account default retention window",
         "tags": [
           "Accounts"
         ]
@@ -16354,7 +16915,7 @@
                 }
               }
             },
-            "description": "receiving_paused or forward_rate_limited (retry after specified delay)",
+            "description": "Temporary — retry after the specified delay: receiving_paused (the recipient account is inside its deletion window; a restore receives the backlog) or rate_limited (the domain's forwarding budget is exhausted — the wire code is rate_limited; forward_rate_limited is the traffic log's detail, never the response body's error).",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -16392,7 +16953,7 @@
                 }
               }
             },
-            "description": "Temporary — out of room, so the MTA queues. TWO codes, and the difference is which limit to raise: over_quota is THIS mailbox's own quota, account_over_quota is the tenant's shared storage pool (a mailbox well under its quota can still be refused). A client that cannot tell them apart tells the customer to raise the wrong one."
+            "description": "Temporary — out of room, so the MTA queues. THREE codes, and the difference is the remedy: over_quota is THIS mailbox's own quota, account_over_quota is the tenant's shared storage pool (a mailbox well under its quota can still be refused) — both are numbers an operator can raise — while store_metadata_full is the store's own metadata ceiling, which no number clears: only purging messages does. A client that cannot tell them apart tells the customer the wrong remedy."
           }
         },
         "summary": "Deliver inbound email message",
@@ -16556,7 +17117,7 @@
                 }
               }
             },
-            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (the sender's outbound recipient allowlist excludes this recipient), receiving_disabled (a local recipient is not accepting mail), posting_denied (a members-only group refused this poster). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses (see isPermanentHold in src/db/sendhold.ts, which excludes it deliberately), so the backlog must be held rather than bounced."
+            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (the sender's outbound recipient allowlist excludes this recipient), receiving_disabled (a local recipient is not accepting mail), posting_denied (a members-only group refused this poster), too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear and must bounce). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses (see isPermanentHold in src/db/sendhold.ts, which excludes it deliberately), so the backlog must be held rather than bounced."
           },
           "404": {
             "content": {
@@ -16596,7 +17157,7 @@
                 }
               }
             },
-            "description": "rate_limited — sender exceeded daily send quota (retry after specified delay)",
+            "description": "TEMPORARY — retry, never bounce; every code carries `Retry-After`. rate_limited (the sender is over a send allowance), sending_paused (a reversible hold on the sender — non-payment, an investigation — at any of the three scopes), from_sending_paused (the same hold, found via the RFC5322 From address's domain), receiving_paused (a LOCAL recipient's account is inside its deletion window; the message must be retried so a restore receives what arrived meanwhile).",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -16624,7 +17185,7 @@
                 }
               }
             },
-            "description": "temporary_failure — retry with the same delivery ID"
+            "description": "Temporary — retry with the same delivery ID: temporary_failure (staging or infrastructure fault), superseded / reaped (this attempt lost its pending intent; a keyed retry converges), staging_missing (the staged upload vanished before the recipient leg ran; a retry re-stages)."
           },
           "507": {
             "content": {
@@ -16634,7 +17195,7 @@
                 }
               }
             },
-            "description": "store_full — recipient storage quota exceeded"
+            "description": "Temporary — out of room, so the MTA queues. THREE codes, and the difference is the remedy: over_quota is the recipient mailbox's own quota, account_over_quota is the recipient tenant's shared storage pool (a mailbox well under its own quota can still be refused) — both are numbers an operator can raise — while store_metadata_full is the recipient store's own metadata ceiling, which no number clears: only purging messages does. A client that cannot tell them apart tells the customer the wrong remedy."
           }
         },
         "summary": "Submit outbound email message",
@@ -16769,7 +17330,7 @@
                 }
               }
             },
-            "description": "over_quota (mailbox quota) or account_over_quota (the account storage pool) — either way the message stays on the remote server until space appears"
+            "description": "over_quota (mailbox quota), account_over_quota (the account storage pool), or store_metadata_full (the store's metadata ceiling; the remedy is purging messages) — either way the message stays on the remote server until space appears"
           }
         },
         "summary": "Deliver message fetched from POP3 pickup",
@@ -18697,7 +19258,10 @@
                 "blob_missing",
                 "rate_limited",
                 "limiter_unavailable",
-                "auth_failed"
+                "auth_failed",
+                "storage_warning",
+                "mail_refused",
+                "mail_accepted"
               ],
               "type": "string"
             }
@@ -18726,7 +19290,9 @@
                 "api",
                 "check",
                 "read",
-                "auth"
+                "auth",
+                "store",
+                "platform_mail"
               ],
               "type": "string"
             }
@@ -19919,12 +20485,12 @@
             }
           },
           {
-            "description": "Also return each row's SAMPLED storage (`usedBytes`, `trashBytes`, `pimBytes`, `messageCount`, `usageAt`) from the daily usage ledger — ONE call for the whole page, never a per-row stat read. These are as of `usageAt`, not live: a mailbox the sweep has not reached yet omits them entirely, and a client must render that as blank rather than as zero. Live figures are GET /mailboxes/:id. Live listing only",
+            "description": "Also return each row's SAMPLED storage (`usedBytes`, `trashBytes`, `pimBytes`, `messageCount`, `databaseSize`, `usageAt`, `usageStale`) from the daily usage ledger — ONE call for the whole page, never a per-row stat read. These are as of `usageAt`, not live: a mailbox the sweep has not reached yet omits them entirely, and a client must render that as blank rather than as zero. Live figures are GET /mailboxes/:id. Live listing only",
             "in": "query",
             "name": "usage",
             "required": false,
             "schema": {
-              "description": "Also return each row's SAMPLED storage (`usedBytes`, `trashBytes`, `pimBytes`, `messageCount`, `usageAt`) from the daily usage ledger — ONE call for the whole page, never a per-row stat read. These are as of `usageAt`, not live: a mailbox the sweep has not reached yet omits them entirely, and a client must render that as blank rather than as zero. Live figures are GET /mailboxes/:id. Live listing only",
+              "description": "Also return each row's SAMPLED storage (`usedBytes`, `trashBytes`, `pimBytes`, `messageCount`, `databaseSize`, `usageAt`, `usageStale`) from the daily usage ledger — ONE call for the whole page, never a per-row stat read. These are as of `usageAt`, not live: a mailbox the sweep has not reached yet omits them entirely, and a client must render that as blank rather than as zero. Live figures are GET /mailboxes/:id. Live listing only",
               "enum": [
                 "true",
                 "false"
@@ -25590,7 +26156,7 @@
                 }
               }
             },
-            "description": "recovery_mail_unavailable: this deployment cannot send mail, so the code could never arrive"
+            "description": "recovery_mail_unavailable: the code could not be sent for a reason on the platform's side (the mail binding is unconfigured, or the sending service refused the message), so nothing was stored and the call may be retried. A refusal that concerns the recipient's own address is deliberately indistinguishable from a sent code"
           }
         },
         "summary": "Invite a mailbox user to set their own password",
@@ -26657,7 +27223,7 @@
                 }
               }
             },
-            "description": "recovery_mail_unavailable: this deployment cannot send mail, so a confirmation code could never arrive. Refused rather than stored, because a permanently pending address is worse than no address"
+            "description": "recovery_mail_unavailable: the confirmation code could not be sent for a reason on the platform's side (the mail binding is unconfigured, or the sending service refused the message), so nothing was stored and the call may be retried. Refused rather than stored, because a permanently pending address is worse than no address. A refusal that concerns the recipient's own address is deliberately indistinguishable from a sent code"
           }
         },
         "summary": "Set the mailbox's recovery address",
@@ -28177,7 +28743,7 @@
                 }
               }
             },
-            "description": "forwarding_mail_unavailable — this deployment cannot send confirmation mail, so no pending row is stored"
+            "description": "forwarding_mail_unavailable — the confirmation could not be sent for a reason on the platform's side (the mail binding is unconfigured, or the sending service refused the message), so no pending row is stored and the request may be retried. A refusal that concerns the destination address itself is deliberately indistinguishable from a sent code"
           }
         },
         "summary": "Add a forwarding destination",
@@ -30926,7 +31492,7 @@
                 }
               }
             },
-            "description": "over_quota (mailbox storage limit) or account_over_quota (the account storage pool) — distinct so the client knows which limit to raise"
+            "description": "over_quota (mailbox storage limit), account_over_quota (the account storage pool), or store_metadata_full (the store's own metadata ceiling — no limit to raise; purging messages is the remedy) — distinct so the client knows which remedy applies"
           }
         },
         "summary": "Append raw MIME message to mailbox",
@@ -31467,7 +32033,7 @@
                 }
               }
             },
-            "description": "over_quota (mailbox storage limit) or account_over_quota (the account storage pool) — distinct so the client knows which limit to raise"
+            "description": "over_quota (mailbox storage limit), account_over_quota (the account storage pool), or store_metadata_full (the store's own metadata ceiling — no limit to raise; purging messages is the remedy) — distinct so the client knows which remedy applies"
           }
         },
         "summary": "Save structured message to mailbox",
@@ -33968,6 +34534,235 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/retention": {
+      "delete": {
+        "description": "Clears this mailbox's OWN retention window. The account default, if any, then applies — the response says which window is now in force, which is why this answers the GET view rather than a bare deleted flag. Nothing already in the trash tier is restored by this: restore messages explicitly.",
+        "operationId": "delete_RetentionDelete",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Retention"
+                }
+              }
+            },
+            "description": "The policy now in force (the account default, or none)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "insufficient_scope (an app password may read this policy but not clear it)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Clear retention window",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "get": {
+        "description": "Returns the time-based retention window in force for this mailbox (its own, else the account default, else none), where it came from, the platform floor, when the next message becomes due, and a PREVIEW of what a window would expunge — count and bytes of live messages older than it. Pass ?days= to preview windows that are not enabled. Retention expunges into the trash tier (restorable for 14 days), aged by the stored arrival time, never by the Date header.",
+        "operationId": "get_RetentionGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated windows in days to preview (at most 8), e.g. `30,90,365`. Omitted: the window in force is previewed, if any",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated windows in days to preview (at most 8), e.g. `30,90,365`. Omitted: the window in force is previewed, if any",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Retention"
+                }
+              }
+            },
+            "description": "The policy in force and the requested previews"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — malformed ?days= (integers 1–36500, at most 8)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get retention policy and preview",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "put": {
+        "description": "Sets this mailbox's OWN retention window in days — the owning account key or a system key; an app password may read the policy but not set it. Live messages older than it are expunged into the trash tier on the mailbox's next wake (restorable for 14 days; the trash purge frees storage after that), aged by the stored arrival time. Refused below the platform floor. Answers the same view as GET, including the preview of what the window will expunge — read it. To recover from a wrong window: clear or raise it FIRST, then restore; a message restored under the same window is due again at once.",
+        "operationId": "put_RetentionPut",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "retentionDays": {
+                    "description": "The mailbox's own window in days. Refused below the platform floor (400 retention_too_short). Live messages older than it are expunged into the trash tier on the mailbox's next wake, restorable for 14 days",
+                    "exclusiveMinimum": 0,
+                    "maximum": 36500,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "retentionDays"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Retention"
+                }
+              }
+            },
+            "description": "The policy now in force and its preview"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or retention_too_short (the window is below the platform floor; the body carries minDays)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "insufficient_scope (an app password may read this policy but not set it)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Set retention window",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/rules": {
       "delete": {
         "description": "Removes all JSON filter rules and deactivates the rules script from incoming delivery.",
@@ -35353,7 +36148,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | mailbox_gone (the sending mailbox was torn down mid-submission)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
           },
           "404": {
             "content": {
@@ -35441,7 +36236,7 @@
                 }
               }
             },
-            "description": "over_quota or account_over_quota — a SCHEDULED send only: the draft it must store has nowhere to live. An immediate send is never refused for storage; a Sent copy that cannot be stored degrades to `sentCopy: \"over_quota\"` in the result instead"
+            "description": "over_quota, account_over_quota, or store_metadata_full (the store's metadata ceiling; the remedy is purging messages) — a SCHEDULED send only: the draft it must store has nowhere to live. An immediate send is never refused for storage; a Sent copy that cannot be stored degrades to `sentCopy: \"over_quota\"` in the result instead (one collapsed word for every storage refusal)"
           }
         },
         "summary": "Send an email message",
@@ -40383,7 +41178,10 @@
                 "blob_missing",
                 "rate_limited",
                 "limiter_unavailable",
-                "auth_failed"
+                "auth_failed",
+                "storage_warning",
+                "mail_refused",
+                "mail_accepted"
               ],
               "type": "string"
             }
@@ -40412,7 +41210,9 @@
                 "api",
                 "check",
                 "read",
-                "auth"
+                "auth",
+                "store",
+                "platform_mail"
               ],
               "type": "string"
             }
@@ -41656,6 +42456,75 @@
           }
         },
         "summary": "Get platform storage status (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/storage/watermark": {
+      "get": {
+        "description": "Every mailbox store whose sampled metadata database size is at or above `minPercent` of the per-store ceiling, largest first, paged by account. Sizes are the daily sweep's current levels, not live reads — `stale: true` marks a size that was CARRIED rather than measured on its last sweep, and a full store is exactly the one most likely to carry, so treat stale rows as candidates to confirm via `GET /mailboxes/{mailboxId}` rather than facts. Accounts whose ledger would not answer are listed in `unreadable`; their absence from `rows` must never be read as \"under the threshold\".",
+        "operationId": "get_SystemStorageWatermarkGet",
+        "parameters": [
+          {
+            "description": "Threshold as a percentage of the per-store ceiling (default 80 — the do_storage_warning threshold)",
+            "in": "query",
+            "name": "minPercent",
+            "required": false,
+            "schema": {
+              "description": "Threshold as a percentage of the per-store ceiling (default 80 — the do_storage_warning threshold)",
+              "maximum": 100,
+              "minimum": 0,
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageWatermark"
+                }
+              }
+            },
+            "description": "Stores at or above the threshold for a page of accounts"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "List stores above a storage-ceiling watermark (system only)",
         "tags": [
           "System"
         ]

@@ -6,3 +6,6 @@
 # Local scratch
 *.out
 bin/openemail
+
+# Ephemeral core checkout used by the CI spec job (see .github/workflows/ci.yml)
+/.core/

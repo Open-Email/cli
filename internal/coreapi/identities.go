@@ -20,12 +20,15 @@ type Identity struct {
 	// the Mailbox schema).
 	// Pointers for the reason Mailbox's copies are: null = the platform default
 	// applies, 0 = explicitly unlimited.
-	SendHold         *string        `json:"sendHold"`
-	SendMsgsPerDay   *int64         `json:"sendMsgsPerDay"`
-	SendRcptsPerDay  *int64         `json:"sendRcptsPerDay"`
-	SendMsgsPerHour  *int64         `json:"sendMsgsPerHour"`
-	SendRcptsPerHour *int64         `json:"sendRcptsPerHour"`
-	Facets           IdentityFacets `json:"facets"`
+	SendHold         *string `json:"sendHold"`
+	SendMsgsPerDay   *int64  `json:"sendMsgsPerDay"`
+	SendRcptsPerDay  *int64  `json:"sendRcptsPerDay"`
+	SendMsgsPerHour  *int64  `json:"sendMsgsPerHour"`
+	SendRcptsPerHour *int64  `json:"sendRcptsPerHour"`
+	// RetentionDays is the identity's OWN age window (nil = the account default
+	// applies, if any) — see Mailbox.RetentionDays.
+	RetentionDays *int64         `json:"retentionDays"`
+	Facets        IdentityFacets `json:"facets"`
 }
 
 // IdentityFacets maps each bound store to its usage. A key is present iff a

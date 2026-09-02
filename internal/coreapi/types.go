@@ -84,6 +84,11 @@ type Account struct {
 	// backstop, not a plan axis: over it inbound is DEFERRED, never bounced.
 	RecvMsgsPerDay  *int64 `json:"recvMsgsPerDay"`
 	RecvBytesPerDay *int64 `json:"recvBytesPerDay"`
+	// RetentionDays is the account DEFAULT time-based age window, applied to
+	// every mailbox with no window of its own; nil = none, which is the
+	// default. Deliberately OUTSIDE the plan system, and written only through
+	// PUT/DELETE /accounts/:id/retention — never the operator PATCH.
+	RetentionDays *int64 `json:"retentionDays"`
 	// NoticeMailboxID is where limit notices land as local postmaster mail
 	// (core migration 0049); nil = console-only.
 	NoticeMailboxID *string `json:"noticeMailboxId"`
@@ -191,6 +196,11 @@ type Mailbox struct {
 	SendRcptsPerDay  *int64  `json:"sendRcptsPerDay"`
 	SendMsgsPerHour  *int64  `json:"sendMsgsPerHour"`
 	SendRcptsPerHour *int64  `json:"sendRcptsPerHour"`
+	// RetentionDays is the mailbox's OWN age window; nil = none of its own, so
+	// the account default applies if one is set. Nil therefore does NOT mean
+	// "no retention" — GET /mailboxes/:id/retention reports the window in
+	// force, with a preview of what a given window would expunge.
+	RetentionDays *int64 `json:"retentionDays"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`
