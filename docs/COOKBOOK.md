@@ -255,6 +255,34 @@ openemail sieve active                             # which script is active
 openemail sieve scripts get main -o backup.sieve
 ```
 
+## Delete old mail on a schedule (retention)
+
+Retention is OFF everywhere until somebody sets a window, and the first thing
+to do is preview — the count and size core measured, not a guess.
+
+```sh
+# What would 30, 90 and 365 days each move to trash in this mailbox?
+openemail mailboxes retention get -m jo@acme.example --days 30,90,365
+
+# Keep 90 days. Older mail moves to trash on the mailbox's next wake, where it
+# stays restorable for 14 days; the answer previews what goes first.
+openemail mailboxes retention set 90 -m jo@acme.example
+
+# Stop: the account default, if any, applies again.
+openemail mailboxes retention clear -m jo@acme.example --yes
+
+# An ACCOUNT default applies to every mailbox without a window of its own —
+# existing mailboxes included — so preview it per mailbox before setting it.
+openemail accounts retention get --days 365
+openemail accounts retention set 365
+```
+
+A window below the platform floor (30 days unless the operator raised it) is
+refused with `retention_too_short`; the floor is on `retention get`. To undo a
+wrong window, clear or raise it FIRST, then restore from trash — a message
+restored under the same window is due again at once. Writes take the account
+key; an app password may read the window but never set one.
+
 ## Rotate a webhook route's URL (keep the secret)
 
 ```sh

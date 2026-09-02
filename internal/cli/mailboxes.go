@@ -31,6 +31,7 @@ func newMailboxesCmd(a *app) *cobra.Command {
 		newMailboxSharesCmd(a),
 		newSharedMailboxesCmd(a),
 		newEventWebhookCmd(a, eventWebhookMailbox),
+		newRetentionCmd(a, retentionMailbox),
 	)
 	return cmd
 }

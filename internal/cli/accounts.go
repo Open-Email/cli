@@ -27,6 +27,7 @@ func newAccountsCmd(a *app) *cobra.Command {
 		newAccountUsageCmd(a),
 		newAccountDeleteCmd(a),
 		newAccountRestoreCmd(a),
+		newRetentionCmd(a, retentionAccount),
 	)
 	return cmd
 }

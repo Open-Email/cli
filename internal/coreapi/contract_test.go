@@ -141,6 +141,13 @@ func contractPairings() []pairing {
 		// Event webhooks (docs/events-design.md §XIV).
 		{val: EventWebhook{}, comp: "EventWebhook"},
 		{val: EventWebhookTestResult{}, comp: "EventWebhookTestResult"},
+		// Time-based retention (store-capacity Part B). Pinned because the preview
+		// is the rail that makes enabling deletion a decision: a client that
+		// stopped decoding `previews` or `minDays` would offer a window blind.
+		{val: Retention{}, comp: "Retention"},
+		{val: RetentionPreview{}, comp: "RetentionPreview"},
+		{val: AccountRetention{}, comp: "AccountRetention"},
+		{val: AccountRetentionRow{}, comp: "AccountRetentionRow"},
 		// Staged uploads + the structured send.
 		{val: UploadResult{}, comp: "UploadResult"},
 		{val: SendResult{}, comp: "SendResult"},
