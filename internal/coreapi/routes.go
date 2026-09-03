@@ -22,6 +22,11 @@ type Route struct {
 	// for other destination kinds.
 	Posting     string `json:"posting,omitempty"`
 	MemberCount *int64 `json:"memberCount,omitempty"`
+	// PersonaMailboxID is the group's PERSONA — the address-less mailbox that
+	// keeps the group's archive and may send as the group address (core's
+	// docs/group-persona-design.md). Group-only, single-route answers and the
+	// type=group listing; nil while the group's delete is in flight.
+	PersonaMailboxID *string `json:"personaMailboxId,omitempty"`
 }
 
 // RouteMember is one group member.

@@ -19,6 +19,7 @@ type PickupSource struct {
 	IntervalMinutes     int64           `json:"intervalMinutes"`
 	DeleteAfterFetch    bool            `json:"deleteAfterFetch"`
 	LabelName           *string         `json:"labelName"` // destination folder; nil = INBOX
+	MarkRead            bool            `json:"markRead"`  // every import lands read; off = backlog read, new mail unread
 	Enabled             bool            `json:"enabled"`
 	LastRunAt           *int64          `json:"lastRunAt"`
 	LastStatus          *string         `json:"lastStatus"` // ok | partial | auth_failed | error
@@ -55,6 +56,7 @@ type PickupCreateInput struct {
 	IntervalMinutes  *int64  `json:"intervalMinutes,omitempty"`
 	DeleteAfterFetch *bool   `json:"deleteAfterFetch,omitempty"`
 	LabelName        *string `json:"labelName,omitempty"` // destination folder, created on first use
+	MarkRead         *bool   `json:"markRead,omitempty"`  // every import lands read (server default: backlog only)
 }
 
 func (c *Client) pickupsPath(mailboxID string) string {

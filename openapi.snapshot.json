@@ -5519,6 +5519,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "groupAddress": {
+            "description": "When this identity is a GROUP PERSONA, the group address whose archive it keeps and which it may send as; null for every other identity. A persona has no primaryAddress, cannot be a route target, refuses its own DELETE (delete the group route instead) and its Sieve/rules writes, and is exempt from max_mailboxes",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "description": "Unique mailbox ULID",
             "type": "string"
@@ -5600,7 +5607,8 @@
           "sendRcptsPerDay",
           "sendMsgsPerHour",
           "sendRcptsPerHour",
-          "retentionDays"
+          "retentionDays",
+          "groupAddress"
         ],
         "type": "object"
       },
@@ -6916,6 +6924,10 @@
             "description": "Destination mailbox ULID where fetched mail is deposited",
             "type": "string"
           },
+          "markRead": {
+            "description": "True if every imported message lands read. False (the default): messages dated before the source was added — the backlog — land read, newer ones unread; POP3 itself carries no read state",
+            "type": "boolean"
+          },
           "name": {
             "description": "User-assigned label for this remote account (e.g. 'Old Gmail'), or null",
             "type": [
@@ -6952,6 +6964,7 @@
           "intervalMinutes",
           "deleteAfterFetch",
           "labelName",
+          "markRead",
           "enabled",
           "lastRunAt",
           "lastStatus",
@@ -9450,6 +9463,13 @@
             "description": "True if inbound delivery to this route is rate-paced",
             "type": "boolean"
           },
+          "personaMailboxId": {
+            "description": "Group routes only: the ULID of the group's PERSONA — the address-less mailbox that keeps the group's archive (a copy of every message the group admits) and holds the credential that may send as the group address. Read it with GET /identities/:id (which reports groupAddress back). Null only while the group's delete is in flight",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "posting": {
             "description": "Group posting policy (open = anyone may post, members = only members may post)",
             "enum": [
@@ -10116,6 +10136,110 @@
           "sendHold",
           "windowSeconds",
           "burstWindowSeconds"
+        ],
+        "type": "object"
+      },
+      "SenderByDomain": {
+        "properties": {
+          "accountId": {
+            "description": "The owning account — the live row, else the deletion tombstone — or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "description": "Bytes submitted (counted once per submission, not per relay leg)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "domain": {
+            "description": "The sending domain (the traffic log's canonical local-party domain)",
+            "type": "string"
+          },
+          "failed": {
+            "description": "Refused at submission, refused by the remote MX, or bounced — either leg",
+            "format": "int64",
+            "type": "integer"
+          },
+          "relayed": {
+            "description": "Relay legs the remote MX accepted",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sent": {
+            "description": "Messages the platform accepted from this sender in the window (submissions, per recipient) — sampled estimate",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domain",
+          "accountId",
+          "sent",
+          "relayed",
+          "failed",
+          "bytes"
+        ],
+        "type": "object"
+      },
+      "SenderByMailbox": {
+        "properties": {
+          "accountId": {
+            "description": "The owning account, or null when unknown",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "description": "Its primary address now, or null when the directory no longer knows the id (deleted since)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "description": "Bytes submitted (counted once per submission, not per relay leg)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "domain": {
+            "description": "The domain of that address, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failed": {
+            "description": "Refused at submission, refused by the remote MX, or bounced — either leg",
+            "format": "int64",
+            "type": "integer"
+          },
+          "mailboxId": {
+            "description": "The sending mailbox's ULID, as the traffic log recorded it",
+            "type": "string"
+          },
+          "relayed": {
+            "description": "Relay legs the remote MX accepted",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sent": {
+            "description": "Messages the platform accepted from this sender in the window (submissions, per recipient) — sampled estimate",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mailboxId",
+          "address",
+          "domain",
+          "accountId",
+          "sent",
+          "relayed",
+          "failed",
+          "bytes"
         ],
         "type": "object"
       },
@@ -10840,6 +10964,82 @@
         ],
         "type": "object"
       },
+      "SystemSenders": {
+        "properties": {
+          "byDomain": {
+            "description": "Domains ranked by messages sent, most first",
+            "items": {
+              "$ref": "#/components/schemas/SenderByDomain"
+            },
+            "type": "array"
+          },
+          "byMailbox": {
+            "description": "Mailboxes ranked by messages sent, most first",
+            "items": {
+              "$ref": "#/components/schemas/SenderByMailbox"
+            },
+            "type": "array"
+          },
+          "estimated": {
+            "description": "Always true: the source is the sampled Analytics Engine aggregate",
+            "type": "boolean"
+          },
+          "platform": {
+            "description": "Deployment-wide totals for the window, from the domain fold",
+            "properties": {
+              "bytes": {
+                "description": "Bytes submitted (counted once per submission, not per relay leg)",
+                "format": "int64",
+                "type": "integer"
+              },
+              "failed": {
+                "description": "Refused at submission, refused by the remote MX, or bounced — either leg",
+                "format": "int64",
+                "type": "integer"
+              },
+              "relayed": {
+                "description": "Relay legs the remote MX accepted",
+                "format": "int64",
+                "type": "integer"
+              },
+              "sent": {
+                "description": "Messages the platform accepted from this sender in the window (submissions, per recipient) — sampled estimate",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sent",
+              "relayed",
+              "failed",
+              "bytes"
+            ],
+            "type": "object"
+          },
+          "range": {
+            "description": "Time range queried",
+            "type": "string"
+          },
+          "retentionDays": {
+            "description": "Analytics retention window in days",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "True when a grouped query hit its row bound, so senders past it were not folded and the ranking may be incomplete. Narrow the range.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "range",
+          "estimated",
+          "retentionDays",
+          "truncated",
+          "platform",
+          "byMailbox",
+          "byDomain"
+        ],
+        "type": "object"
+      },
       "SystemStatus": {
         "properties": {
           "enforcement": {
@@ -10985,6 +11185,13 @@
           },
           {
             "properties": {
+              "domain": {
+                "description": "The row's attributed local-party domain, or null for a leg with no local party. Present on the system view only — the tenant views are scoped by it and omit it",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "meta": {
                 "additionalProperties": {},
                 "description": "Internal operator metadata object, or null",
@@ -10995,7 +11202,8 @@
               }
             },
             "required": [
-              "meta"
+              "meta",
+              "domain"
             ],
             "type": "object"
           }
@@ -21213,6 +21421,16 @@
               }
             },
             "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "mailbox_is_group_persona — this identity is a group's persona (its archive and sending identity); delete the group route instead, which tears the persona down with it"
           }
         },
         "summary": "Delete a mailbox",
@@ -26670,7 +26888,7 @@
     },
     "/api/v1/identities/{identityId}/password/reset": {
       "post": {
-        "description": "Sets a new password on every password credential the mailbox has, creating one if it has none, and revokes every expiring credential (browser sessions) so nothing minted before the reset survives it. App passwords are kept unless revokeAppPasswords is set. The mailbox is notified. Callable with an account key or a system key; a mailbox's own bearer uses PUT /password instead, which proves the current password.",
+        "description": "Sets a new password on every password credential the mailbox has, creating one if it has none (named after the primary address, or the group address for a group persona), and revokes every expiring credential (browser sessions) so nothing minted before the reset survives it. App passwords are kept unless revokeAppPasswords is set. The mailbox is notified. Callable with an account key or a system key; a mailbox's own bearer uses PUT /password instead, which proves the current password.",
         "operationId": "post_MailboxPasswordReset",
         "parameters": [
           {
@@ -26749,6 +26967,16 @@
               }
             },
             "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_username — the identity has no password credential to rotate and no address (primary or group) to name a new one after; nothing was changed. Create the login with POST /credentials and an explicit username"
           }
         },
         "summary": "Reset a mailbox password as an administrator",
@@ -34436,6 +34664,9 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "markRead": {
+                    "type": "boolean"
+                  },
                   "name": {
                     "maxLength": 128,
                     "type": "string"
@@ -34726,6 +34957,10 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "markRead": {
+                    "description": "Whether every imported message lands read; false = the backlog heuristic (older than the source → read, newer → unread)",
+                    "type": "boolean"
                   },
                   "name": {
                     "description": "Optional display name for this pickup source",
@@ -35554,7 +35789,7 @@
                 }
               }
             },
-            "description": "too_many_scripts"
+            "description": "too_many_scripts; or mailbox_is_group_persona — a group persona's archive runs no rules"
           },
           "413": {
             "content": {
@@ -37304,6 +37539,16 @@
               }
             },
             "description": "No such script, or mailbox not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "mailbox_is_group_persona — a group persona's archive runs no script"
           }
         },
         "summary": "Activate a Sieve filter script",
@@ -37793,7 +38038,7 @@
                 }
               }
             },
-            "description": "too_many_scripts or name_exists"
+            "description": "too_many_scripts, name_exists, or mailbox_is_group_persona (a group persona's archive runs no script)"
           },
           "422": {
             "content": {
@@ -37922,7 +38167,7 @@
                 }
               }
             },
-            "description": "A script with the new name already exists"
+            "description": "name_exists — a script with the new name already exists; or mailbox_is_group_persona (a group persona's archive runs no script)"
           }
         },
         "summary": "Rename a Sieve filter script",
@@ -40043,7 +40288,25 @@
                 }
               }
             },
-            "description": "route_exists — the address is bound to a DIFFERENT destination"
+            "description": "route_exists — the address is bound to a DIFFERENT destination; mailbox_is_group_persona — the mailbox target is a group's persona, which nothing may route to; group_delete_in_flight — this group's delete is still running (retry the DELETE, then re-create)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited — the account's daily address or mailbox creation limit (a group also mints its persona)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Create a routing rule",
@@ -40054,7 +40317,7 @@
     },
     "/api/v1/routes/{address}": {
       "delete": {
-        "description": "Removes an email address routing rule.",
+        "description": "Removes an email address routing rule. Deleting a GROUP also soft-deletes its persona mailbox (the archive and sending identity) — restorable by its ULID for the usual window through POST /identities/:id/restore; re-creating the address mints a fresh persona.",
         "operationId": "delete_RouteDelete",
         "parameters": [
           {
@@ -40282,7 +40545,25 @@
                 }
               }
             },
-            "description": "group_has_members — empty the member list before changing type"
+            "description": "group_has_persona — a group never changes shape in place (DELETE the route instead: its persona's archive and credential would otherwise be orphaned); mailbox_is_group_persona — the mailbox target is a group's persona"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited — converting into a group mints its persona and spends a mailbox-create slot",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "Update email route",
@@ -42236,6 +42517,18 @@
             }
           },
           {
+            "description": "Only rows with this envelope recipient — everything sent TO an address",
+            "in": "query",
+            "name": "envelopeTo",
+            "required": false,
+            "schema": {
+              "description": "Only rows with this envelope recipient — everything sent TO an address",
+              "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
             "description": "Only rows with this outcome detail code",
             "in": "query",
             "name": "detail",
@@ -43354,6 +43647,111 @@
           }
         },
         "summary": "Get outbound relay IP health (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/senders": {
+      "get": {
+        "description": "Ranks mailboxes and domains by messages submitted over a window, with what was relayed, what failed, and bytes — from the sampled Analytics Engine aggregate (90-day retention), joined to the directory for addresses and owning accounts. A lead, not a bill: the per-mailbox events stream is the exact drill-down.",
+        "operationId": "get_SystemSendersGet",
+        "parameters": [
+          {
+            "description": "Time window ('1h', '6h', '24h', '7d', '30d')",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "description": "Time window ('1h', '6h', '24h', '7d', '30d')",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows per ranking (default 25, max 200)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Rows per ranking (default 25, max 200)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemSenders"
+                }
+              }
+            },
+            "description": "Two rankings — by mailbox and by domain — plus platform totals"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — unknown range or limit out of bounds"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_query_failed — upstream Analytics Engine error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_unavailable — no analytics token configured"
+          }
+        },
+        "summary": "Rank outbound senders by volume (system only)",
         "tags": [
           "System"
         ]

@@ -62,6 +62,7 @@ func pickupsDesc(mbx coreapi.Mailbox) resourceDesc {
 				// The destructive one: with it on, a fetched message is gone from
 				// the remote server and this mailbox is the only copy.
 				{k: "delete after fetch", v: yn(p.DeleteAfterFetch)},
+				{k: "mark read", v: yn(p.MarkRead)},
 				{k: "enabled", v: yn(p.Enabled)},
 				{},
 				{v: "Last run"},
@@ -209,6 +210,7 @@ func pickupFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cur *
 		tls      = "tls"
 		interval = "15"
 		delAfter = true
+		markRead = false
 		enabled  = true
 	)
 	editing := cur != nil
@@ -218,7 +220,7 @@ func pickupFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cur *
 		port = strconv.FormatInt(cur.Port, 10)
 		tls = cur.TLS
 		interval = strconv.FormatInt(cur.IntervalMinutes, 10)
-		delAfter, enabled = cur.DeleteAfterFetch, cur.Enabled
+		delAfter, markRead, enabled = cur.DeleteAfterFetch, cur.MarkRead, cur.Enabled
 	}
 	title := "New pickup source — " + mailboxLabel(&mbx)
 	if editing {
@@ -242,6 +244,9 @@ func pickupFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cur *
 				huh.NewInput().Title("Interval (minutes)").Value(&interval),
 				huh.NewConfirm().Title("Delete from the server after fetching").Value(&delAfter).
 					Affirmative("yes").Negative("no"),
+				huh.NewConfirm().Title("Mark every imported message read").Value(&markRead).
+					Description("no = only mail older than this source lands read; POP3 carries no read state").
+					Affirmative("yes").Negative("no"),
 				huh.NewConfirm().Title("Enabled").Value(&enabled).Affirmative("yes").Negative("no"),
 			))
 		},
@@ -258,7 +263,7 @@ func pickupFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cur *
 				patch := map[string]any{
 					"host": strings.TrimSpace(host), "port": portN, "tls": tls,
 					"username": strings.TrimSpace(username), "intervalMinutes": ivN,
-					"deleteAfterFetch": delAfter, "enabled": enabled,
+					"deleteAfterFetch": delAfter, "markRead": markRead, "enabled": enabled,
 				}
 				// An explicit null clears the display name; an empty string is
 				// not the same thing to core.
@@ -281,7 +286,7 @@ func pickupFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cur *
 			in := coreapi.PickupCreateInput{
 				Host: strings.TrimSpace(host), Port: portN, TLS: tls,
 				Username: strings.TrimSpace(username), Password: password,
-				IntervalMinutes: &ivN, DeleteAfterFetch: &delAfter,
+				IntervalMinutes: &ivN, DeleteAfterFetch: &delAfter, MarkRead: &markRead,
 			}
 			if n := strings.TrimSpace(name); n != "" {
 				in.Name = &n

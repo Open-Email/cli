@@ -112,6 +112,7 @@ func newPickupGetCmd(a *app) *cobra.Command {
 func newPickupCreateCmd(a *app) *cobra.Command {
 	var (
 		host, username, password, name, tls, label string
+		markRead                                   bool
 		port, interval                             int64
 		deleteAfterFetch                           bool
 	)
@@ -162,6 +163,9 @@ func newPickupCreateCmd(a *app) *cobra.Command {
 			if cmd.Flags().Changed("label") {
 				in.LabelName = &label
 			}
+			if cmd.Flags().Changed("mark-read") {
+				in.MarkRead = &markRead
+			}
 			p, err := client.CreatePickup(cmd.Context(), mbx, in)
 			if err != nil {
 				return err
@@ -182,12 +186,14 @@ func newPickupCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().Int64Var(&interval, "interval", 0, "poll interval in minutes (5–1440, default 15)")
 	cmd.Flags().BoolVar(&deleteAfterFetch, "delete-after-fetch", false, "delete messages from the server after fetching (default true)")
 	cmd.Flags().StringVar(&label, "label", "", "folder to file fetched mail into (created on first use; default INBOX)")
+	cmd.Flags().BoolVar(&markRead, "mark-read", false, "mark every imported message read (default: only mail older than the source)")
 	return cmd
 }
 
 func newPickupUpdateCmd(a *app) *cobra.Command {
 	var (
 		host, username, password, name, tls, label string
+		markRead                                   bool
 		port, interval                             int64
 		deleteAfterFetch, enabled, disabled        bool
 		clearName, clearLabel                      bool
@@ -239,6 +245,9 @@ func newPickupUpdateCmd(a *app) *cobra.Command {
 			} else if cmd.Flags().Changed("label") {
 				patch["labelName"] = label
 			}
+			if cmd.Flags().Changed("mark-read") {
+				patch["markRead"] = markRead
+			}
 			if enabled {
 				patch["enabled"] = true
 			}
@@ -274,6 +283,7 @@ func newPickupUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&tls, "tls", "", "transport security: tls|starttls")
 	cmd.Flags().Int64Var(&interval, "interval", 0, "poll interval in minutes (5–1440)")
 	cmd.Flags().BoolVar(&deleteAfterFetch, "delete-after-fetch", false, "delete messages from the server after fetching")
+	cmd.Flags().BoolVar(&markRead, "mark-read", false, "mark every imported message read (--mark-read=false: only mail older than the source)")
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "enable the source")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "disable the source")
 	return cmd
@@ -365,6 +375,7 @@ func printPickup(w io.Writer, p *Printer, s *coreapi.PickupSource) {
 		{"Interval", fmt.Sprintf("%d min", s.IntervalMinutes)},
 		{"Delete after fetch", boolYN(s.DeleteAfterFetch)},
 		{"Files into", strOr(s.LabelName, "INBOX")},
+		{"Mark read", boolYN(s.MarkRead)},
 		{"Enabled", boolYN(s.Enabled)},
 		{"Last run", fmtEpochPtr(s.LastRunAt)},
 		{"Last status", strOr(s.LastStatus, "—")},

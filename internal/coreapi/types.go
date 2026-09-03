@@ -201,6 +201,11 @@ type Mailbox struct {
 	// "no retention" — GET /mailboxes/:id/retention reports the window in
 	// force, with a preview of what a given window would expunge.
 	RetentionDays *int64 `json:"retentionDays"`
+	// GroupAddress is set iff this identity is a group's PERSONA: the group
+	// address whose archive it keeps and which it may send as. Such an
+	// identity has no primary address, refuses its own DELETE (delete the
+	// group route instead) and is exempt from max_mailboxes.
+	GroupAddress *string `json:"groupAddress"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`

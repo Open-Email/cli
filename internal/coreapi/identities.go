@@ -27,8 +27,11 @@ type Identity struct {
 	SendRcptsPerHour *int64  `json:"sendRcptsPerHour"`
 	// RetentionDays is the identity's OWN age window (nil = the account default
 	// applies, if any) — see Mailbox.RetentionDays.
-	RetentionDays *int64         `json:"retentionDays"`
-	Facets        IdentityFacets `json:"facets"`
+	RetentionDays *int64 `json:"retentionDays"`
+	// GroupAddress — see Mailbox.GroupAddress: non-nil iff this identity is a
+	// group's persona.
+	GroupAddress *string        `json:"groupAddress"`
+	Facets       IdentityFacets `json:"facets"`
 }
 
 // IdentityFacets maps each bound store to its usage. A key is present iff a
