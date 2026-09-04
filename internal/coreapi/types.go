@@ -104,6 +104,11 @@ type Account struct {
 	// our own fleets, or a billable Cloudflare custom hostname. It gates CLAIMING
 	// only — clearing it never revokes hostnames already serving clients.
 	VanityHosts bool `json:"vanityHosts"`
+	// Semantic is the PLAN GATE for meaning-based search: whether this account's
+	// mailboxes may turn it on at all. System-written only. Clearing it stops
+	// new opt-ins and darkens the semantic read routes (409
+	// semantic_not_enabled) without deleting embeddings already built.
+	Semantic bool `json:"semantic"`
 	// RecoverySelfService is whether mailbox users in this account may recover
 	// their OWN password, via recovery codes. False is the admin_only policy,
 	// under which existing codes and addresses are KEPT rather than destroyed:
@@ -206,6 +211,17 @@ type Mailbox struct {
 	// identity has no primary address, refuses its own DELETE (delete the
 	// group route instead) and is exempt from max_mailboxes.
 	GroupAddress *string `json:"groupAddress"`
+	// Semantic is whether MEANING-BASED search is on for this mailbox: messages
+	// are embedded after delivery and the semantic read routes answer.
+	// Tenant-set but gated by the account's Semantic plan flag; off by default.
+	// Turning it OFF deletes the mailbox's embeddings.
+	Semantic bool `json:"semantic"`
+	// SemanticFloor is the earliest arrival time (epoch SECONDS) the backfill
+	// embeds — mail older than it stays lexically searchable only. 0 means
+	// everything; nil means semantic search is off, so it is a pointer: 0 and
+	// "not applicable" are different answers and collapsing them would report
+	// full coverage for a mailbox that has none. GET-only alongside the stats.
+	SemanticFloor *int64 `json:"semanticFloor,omitempty"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`

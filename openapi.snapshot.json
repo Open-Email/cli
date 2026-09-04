@@ -90,6 +90,10 @@
               "null"
             ]
           },
+          "semantic": {
+            "description": "True if this account's mailboxes may enable SEMANTIC search (the plan gate for embedding). System-written only; clearing it stops new opt-ins and darkens the semantic read routes (409 semantic_not_enabled) without deleting existing embeddings",
+            "type": "boolean"
+          },
           "sendHold": {
             "description": "Operator enforcement over every mailbox on every domain this account owns: 'disabled' = permanent stop, 'paused' = reversible hold, null = neither",
             "enum": [
@@ -170,6 +174,7 @@
           "storageLimitBytes",
           "retentionDays",
           "vanityHosts",
+          "semantic",
           "recoverySelfService",
           "createdAt",
           "deletedAt",
@@ -4046,6 +4051,11 @@
             },
             "type": "array"
           },
+          "scanWindow": {
+            "description": "The cap that clipped: the collapsed results were drawn from the newest this-many matching messages. Present only beside `truncated`, so a client can say \"more than N matches\" with the N the server applied.",
+            "format": "int64",
+            "type": "integer"
+          },
           "snippets": {
             "description": "List of search term highlighted snippets for results",
             "items": {
@@ -4057,6 +4067,10 @@
             "description": "Total number of matching messages (when calculateTotal was true)",
             "format": "int64",
             "type": "integer"
+          },
+          "truncated": {
+            "description": "Present (true) only on a collapseThreads query whose scan hit the server's row cap: the collapsed result set covers the newest matches, not all of them, and positional paging ends when that set does even though `total` (when requested) counts the whole match set. Present on EVERY page of such a query, not only the last, so a client can say so from page one.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4090,6 +4104,42 @@
           "id",
           "subject",
           "preview"
+        ],
+        "type": "object"
+      },
+      "EmailSearchSnippetsRequest": {
+        "properties": {
+          "filter": {
+            "$ref": "#/components/schemas/EmailSearchFilter"
+          },
+          "ids": {
+            "description": "Message ULIDs to excerpt — the `id` of each result row, at most 50 per call (each excerpt is a body read). An id the caller cannot see is omitted from the answer, never named.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "filter"
+        ],
+        "type": "object"
+      },
+      "EmailSearchSnippetsResult": {
+        "properties": {
+          "snippets": {
+            "description": "One per visible id, in request order. A field is null when nothing in it matched — render the stored value.",
+            "items": {
+              "$ref": "#/components/schemas/EmailSearchSnippet"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "snippets"
         ],
         "type": "object"
       },
@@ -4864,6 +4914,48 @@
         ],
         "type": "object"
       },
+      "HeadBatch": {
+        "properties": {
+          "heads": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HeadEntry"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Map of message ID to its header block, one entry per distinct requested id. Null means the message is unknown, not live (pending or in the trash tier), outside the caller's folder scope, or its blob is unreadable — in every case, read the whole message instead.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "heads"
+        ],
+        "type": "object"
+      },
+      "HeadEntry": {
+        "properties": {
+          "header": {
+            "description": "Base64 of the message's raw header block as stored — every header line byte-for-byte, line endings preserved, up to and including the blank separator line (what IMAP BODY[HEADER] returns). The separator is the first empty line, LF or CRLF on either side; a message with no blank line at all is all headers and is returned whole. Null when truncated.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "True when the header block runs past the 64 KB head window this read is bounded to; the caller must read the whole message (/raw) for it. Header is null in that case.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "header",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "HostnameCheckStatus": {
         "description": "Verification details from the latest check",
         "properties": {
@@ -5552,6 +5644,10 @@
               "null"
             ]
           },
+          "semantic": {
+            "description": "Whether SEMANTIC (meaning-based) search is enabled for this mailbox: messages are embedded after delivery and GET /mailboxes/:id/search/semantic and …/messages/:id/similar answer. Tenant-set, gated by the account's plan; off by default. Turning it off DELETES the mailbox's embeddings",
+            "type": "boolean"
+          },
           "sendHold": {
             "description": "This mailbox's own operator enforcement: 'disabled' = permanent stop (403 sending_disabled), 'paused' = reversible hold (429 sending_paused), null = neither. System-written only",
             "enum": [
@@ -5608,7 +5704,8 @@
           "sendMsgsPerHour",
           "sendRcptsPerHour",
           "retentionDays",
-          "groupAddress"
+          "groupAddress",
+          "semantic"
         ],
         "type": "object"
       },
@@ -5737,6 +5834,14 @@
                 "description": "Total number of active messages",
                 "format": "int64",
                 "type": "integer"
+              },
+              "semanticFloor": {
+                "description": "When semantic search is on: the earliest arrival time (epoch seconds) the backfill embeds — mail received before it is lexically searchable only. 0 = everything. Lower it with PATCH /identities/:id { semanticFloor } (\"index older mail\"); null when semantic search is off",
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "socketCapacity": {
                 "description": "Maximum allowed simultaneous WebSocket connections",
@@ -9980,6 +10085,170 @@
         ],
         "type": "object"
       },
+      "SemanticCoverage": {
+        "properties": {
+          "complete": {
+            "description": "True once every message at or above `since` is embedded (no backfill in flight, nothing owed). False while a backfill or catch-up chain is still running — results are partial meanwhile",
+            "type": "boolean"
+          },
+          "since": {
+            "description": "The earliest arrival time (epoch seconds) semantic results can cover — the backfill floor; 0 = the whole store. Mail received before it is lexically searchable only. Lower it with PATCH /identities/:id { semanticFloor }",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "since",
+          "complete"
+        ],
+        "type": "object"
+      },
+      "SemanticRebalanceResult": {
+        "properties": {
+          "moved": {
+            "description": "Mailboxes re-assigned; each re-embeds into its new shard and drains the old namespace in two passes",
+            "items": {
+              "properties": {
+                "from": {
+                  "type": "integer"
+                },
+                "mailboxId": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "mailboxId",
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "description": "Mailboxes not moved, with why (busy = a move or drain already in flight; off = not opted in)",
+            "items": {
+              "properties": {
+                "mailboxId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mailboxId",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "moved",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "SemanticSearchResult": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/SemanticCoverage"
+          },
+          "fused": {
+            "description": "True when the lexical (BM25) ranking was fused in by reciprocal rank (hybrid): the default, and FORCED whenever a DO-side filter such as `label` is given, because the semantic candidate list is bounded at 100 before that filter and a narrow scope would otherwise starve",
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "description": "Opaque cursor for the next page; absent on the last page",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/MessageMeta"
+            },
+            "type": "array"
+          },
+          "scoped": {
+            "description": "Present when a post-filter (`label`) narrowed a candidate list that is bounded at 100 before filtering: the semantic half may have missed matches that rank past 100; the fused lexical half is what keeps the answer honest",
+            "enum": [
+              "candidate-bounded"
+            ],
+            "type": "string"
+          },
+          "snippets": {
+            "description": "Highlighted excerpts (snippet=true)",
+            "items": {
+              "$ref": "#/components/schemas/EmailSearchSnippet"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results",
+          "coverage",
+          "fused"
+        ],
+        "type": "object"
+      },
+      "SemanticShard": {
+        "properties": {
+          "cap": {
+            "description": "The operating mailbox cap (VEC_SHARD_CAP)",
+            "type": "integer"
+          },
+          "mailboxes": {
+            "description": "Mailboxes ASSIGNED to this shard (a directory count)",
+            "type": "integer"
+          },
+          "shard": {
+            "description": "The shard index — `VEC_<n>` binding or `<prefix><n>` index name",
+            "type": "integer"
+          },
+          "state": {
+            "description": "open = accepts new assignment; closed = at the mailbox cap, the vector soft bound, or closed by the operator (existing mailboxes keep ingesting); draining = past the vector high bound (rebalance mailboxes out); unreachable = the index could not be described",
+            "enum": [
+              "open",
+              "closed",
+              "draining",
+              "unreachable"
+            ],
+            "type": "string"
+          },
+          "vectorHigh": {
+            "description": "Vectors at which the shard is reported draining",
+            "type": "integer"
+          },
+          "vectorSoft": {
+            "description": "Vectors at which the shard closes to new assignment",
+            "type": "integer"
+          },
+          "vectors": {
+            "description": "The index's own vector count, or null when unreachable",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "shard",
+          "state",
+          "mailboxes",
+          "vectors",
+          "cap",
+          "vectorSoft",
+          "vectorHigh"
+        ],
+        "type": "object"
+      },
       "SendRecipientResult": {
         "properties": {
           "address": {
@@ -10496,6 +10765,25 @@
         ],
         "type": "object"
       },
+      "SimilarMessagesResult": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/SemanticCoverage"
+          },
+          "results": {
+            "description": "Nearest messages by meaning, most similar first; the message itself is excluded",
+            "items": {
+              "$ref": "#/components/schemas/MessageMeta"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results",
+          "coverage"
+        ],
+        "type": "object"
+      },
       "StoragePrefix": {
         "properties": {
           "empty": {
@@ -10961,6 +11249,89 @@
           "truncated",
           "poolSource",
           "ips"
+        ],
+        "type": "object"
+      },
+      "SystemSemantic": {
+        "properties": {
+          "configured": {
+            "description": "False when no shard is DECLARED (no VEC_n binding and no REST credentials): every opt-in answers 503 semantic_capacity and nothing embeds. Reachability is per shard, in `shards[].state`",
+            "type": "boolean"
+          },
+          "inflightMaxHours": {
+            "description": "The ingest queue's in-flight bound in hours: the wake duty's staleness bound and the opt-out drain's second-pass spacing",
+            "type": "number"
+          },
+          "model": {
+            "description": "The embedding model stamped on every embedded row",
+            "type": "string"
+          },
+          "optedInMailboxes": {
+            "description": "Mailboxes with the switch on, deployment-wide",
+            "type": "integer"
+          },
+          "orphans": {
+            "description": "Namespaces a deleted mailbox's wipe could not remove (a PERMANENT Vectorize refusal past the strike bound; transient faults never abandon). Each is recorded in D1 before the store is deleted; `DELETE /system/vec/orphans/:mailboxId` retires one once the operator has removed the vectors by hand",
+            "properties": {
+              "count": {
+                "description": "Recorded orphaned namespaces, deployment-wide",
+                "type": "integer"
+              },
+              "entries": {
+                "description": "The 100 most recent",
+                "items": {
+                  "properties": {
+                    "abandonedAt": {
+                      "description": "When the store gave up (epoch seconds)",
+                      "type": "integer"
+                    },
+                    "mailboxId": {
+                      "description": "The deleted mailbox whose namespace could not be wiped",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "description": "The permanent refusal the wipe met",
+                      "type": "string"
+                    },
+                    "shards": {
+                      "description": "The shards its vectors may still sit in",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "mailboxId",
+                    "shards",
+                    "reason",
+                    "abandonedAt"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "count",
+              "entries"
+            ],
+            "type": "object"
+          },
+          "shards": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticShard"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "configured",
+          "model",
+          "shards",
+          "optedInMailboxes",
+          "inflightMaxHours",
+          "orphans"
         ],
         "type": "object"
       },
@@ -12122,6 +12493,10 @@
             ],
             "type": "string"
           },
+          "semantic": {
+            "description": "True if this identity's mailbox has semantic search enabled — whether a client should offer the meaning-based search box",
+            "type": "boolean"
+          },
           "sendHold": {
             "description": "Why canSend is false, present only then: 'unverified' = the domain's send records were never published (publish DNS), 'receive_only' = the domain is configured to receive here and send through another provider, so those records are never asked for, 'paused' = a reversible hold at some scope, 'disabled' = a permanent stop or a login that cannot send at all. Advisory and cached by consumers; the submission gate is the authority. Treat an unrecognized value as permanent",
             "enum": [
@@ -12140,6 +12515,7 @@
           "credentialId",
           "kind",
           "canSend",
+          "semantic",
           "permittedFrom",
           "facets"
         ],
@@ -13236,6 +13612,10 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "semantic": {
+                    "description": "May this account's mailboxes enable SEMANTIC search (docs/semantic-search-design.md §VI)? Off by default: embedding spends a platform-shared model budget and keeps a derived copy of every message in a third store, so this is the paid-plan gate. Clearing it stops NEW opt-ins and answers the semantic read routes 409 semantic_not_enabled; it never un-embeds a mailbox by itself (that is the tenant's opt-out, or a deletion)",
+                    "type": "boolean"
                   },
                   "sendHold": {
                     "description": "Operator enforcement over ALL outbound mail for this account. 'disabled' STOPS it — the abuse response: refusals answer 403 sending_disabled, permanent, so SMTP submission gets a 550 rather than a queue-and-retry, and the queued relay backlog is bounced. 'paused' HOLDS it — the reversible form, for non-payment or an investigation you intend to conclude: refusals answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sending MTA queues the mail; the queued relay backlog is DEFERRED rather than bounced. null lifts either. Egress only: a held account still receives",
@@ -15996,7 +16376,8 @@
                       "dav",
                       "gateway",
                       "webmail",
-                      "console"
+                      "console",
+                      "mcp"
                     ],
                     "type": "string"
                   }
@@ -21221,6 +21602,18 @@
                       "null"
                     ]
                   },
+                  "semantic": {
+                    "description": "SEMANTIC (meaning-based) search for this mailbox (docs/semantic-search-design.md). true embeds every new message after delivery and, on an existing mailbox, backfills a recent window (the later of 12 months and the 20,000 most recent messages; older mail on request via semanticFloor); false DELETES the mailbox's embeddings. Requires the account's plan gate (403 semantic_not_enabled) and an open shard (503 semantic_capacity). Off by default",
+                    "type": "boolean"
+                  },
+                  "semanticFloor": {
+                    "description": "'Index older mail': LOWERS the semantic backfill floor to this epoch second (null = the whole store). Never raises it. Requires semantic search to be on (409 semantic_not_enabled); refused on create, where the floor is the creation instant",
+                    "format": "int64",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "sendHold": {
                     "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading",
                     "enum": [
@@ -21314,7 +21707,7 @@
                 }
               }
             },
-            "description": "mailbox_limit_reached — the account's maximum mailbox limit has been reached; or address_blocked — the primary address, its tag-stripped form, or its domain is on the platform blocklist (migration 0070)"
+            "description": "mailbox_limit_reached — the account's maximum mailbox limit has been reached; address_blocked — the primary address, its tag-stripped form, or its domain is on the platform blocklist (migration 0070); or semantic_not_enabled — semantic: true was asked for without the account's plan gate"
           },
           "409": {
             "content": {
@@ -21343,6 +21736,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_capacity — semantic: true was asked for but every vector shard is closed to new assignment; nothing was created, retry without the flag or once a shard is open"
           }
         },
         "summary": "Create a mailbox",
@@ -21536,6 +21939,18 @@
                       "null"
                     ]
                   },
+                  "semantic": {
+                    "description": "SEMANTIC (meaning-based) search for this mailbox (docs/semantic-search-design.md). true embeds every new message after delivery and, on an existing mailbox, backfills a recent window (the later of 12 months and the 20,000 most recent messages; older mail on request via semanticFloor); false DELETES the mailbox's embeddings. Requires the account's plan gate (403 semantic_not_enabled) and an open shard (503 semantic_capacity). Off by default",
+                    "type": "boolean"
+                  },
+                  "semanticFloor": {
+                    "description": "'Index older mail': LOWERS the semantic backfill floor to this epoch second (null = the whole store). Never raises it. Requires semantic search to be on (409 semantic_not_enabled); refused on create, where the floor is the creation instant",
+                    "format": "int64",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "sendHold": {
                     "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading",
                     "enum": [
@@ -21609,7 +22024,7 @@
                 }
               }
             },
-            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, or address_not_routed"
+            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request)"
           },
           "401": {
             "content": {
@@ -21621,6 +22036,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required (a send-policy field from a non-system caller); or semantic_not_enabled — semantic: true, or semanticFloor, without the account's plan gate. Every semantic refusal is decided BEFORE any other field is written"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -21630,6 +22055,26 @@
               }
             },
             "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_not_enabled — semanticFloor given while semantic search is off"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_capacity — every vector shard is closed to new assignment; nothing changed; Retry-After carries an hour"
           }
         },
         "summary": "Update mailbox settings",
@@ -26449,7 +26894,8 @@
                           "dav",
                           "gateway",
                           "webmail",
-                          "console"
+                          "console",
+                          "mcp"
                         ],
                         "type": "string"
                       },
@@ -30373,6 +30819,20 @@
               "minimum": 1,
               "type": "integer"
             }
+          },
+          {
+            "description": "UID order within the page (default asc). `desc` pages from the newest end, for a client that must keep the NEWEST N under a row cap.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "description": "UID order within the page (default asc). `desc` pages from the newest end, for a client that must keep the NEWEST N under a row cap.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -32848,6 +33308,96 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/messages/heads": {
+      "post": {
+        "description": "Returns each message's raw header block (base64, byte-exact, separator line included) from one bounded head read per message — the projection an IMAP folder sync fetches, without downloading whole messages. A header block longer than 64 KB is reported truncated rather than served partially.",
+        "operationId": "post_MessageHeadBatch",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ids": {
+                    "description": "Array of message IDs (ULIDs)",
+                    "items": {
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ids"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeadBatch"
+                }
+              }
+            },
+            "description": "Map of message ID to header block"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible"
+          }
+        },
+        "summary": "Batch get raw header blocks",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/messages/learn": {
       "post": {
         "description": "Submits spam or ham training feedback for a batch of messages in a single request.",
@@ -34365,6 +34915,158 @@
           }
         },
         "summary": "Restore an expunged message from trash",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/similar": {
+      "get": {
+        "description": "'More like this': the message's own embedding is the query. The message must already be embedded (semantic search on, and the backfill has reached it) — otherwise 409 not_embedded with the current floor, which is the prompt to lower it (PATCH /identities/:id { semanticFloor }). The read path never embeds inline.",
+        "operationId": "get_MessageSimilar",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Message ULID",
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "description": "Message ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum messages to return (default 10, max 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Maximum messages to return (default 10, max 50)",
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only mail received at or after this epoch second",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "Only mail received at or after this epoch second",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only mail received before this epoch second",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "description": "Only mail received before this epoch second",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimilarMessagesResult"
+                }
+              }
+            },
+            "description": "Nearest messages by meaning"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — a malformed limit, since or before"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or message not found, or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_not_enabled — the mailbox has not opted in, or its account lacks the plan gate; or not_embedded — the message has no vector yet (below the floor, or the backfill has not reached it); the body carries semanticFloor"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_unavailable (transient, with Retry-After) or semantic_misconfigured (permanent, without)"
+          }
+        },
+        "summary": "Messages similar to one message",
         "tags": [
           "Messages"
         ]
@@ -36427,12 +37129,20 @@
                       },
                       "type": "array"
                     },
+                    "scanWindow": {
+                      "description": "The ranking window's size: the results were drawn from the newest this-many matching messages. Present only beside `truncated`, so a client can say \"more than N matches\" with the N the server applied.",
+                      "type": "integer"
+                    },
                     "snippets": {
                       "description": "Highlighted search excerpts",
                       "items": {
                         "$ref": "#/components/schemas/EmailSearchSnippet"
                       },
                       "type": "array"
+                    },
+                    "total": {
+                      "description": "Exact number of matching messages, under the same label and flag filters as the results. Absent when `truncated` (the ranking window clipped, so the count would describe the window rather than the match set) or when the page is past the end; absent also on grouped (`group=thread`) responses, whose conversation count is not known. Absent means unknown, never zero.",
+                      "type": "integer"
                     },
                     "truncated": {
                       "description": "True if query matched more messages than maximum ranking window",
@@ -36657,6 +37367,281 @@
           }
         },
         "summary": "Structured filter and query messages",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/search/semantic": {
+      "get": {
+        "description": "Finds the messages whose MEANING is closest to the query, ranked by similarity — 'the invoice from the Berlin supplier' finds it whether or not those words appear. Hybrid by default: the lexical BM25 ranking is fused in by reciprocal rank, which is what makes exact identifiers (invoice numbers, names) findable too. Requires the mailbox to have semantic search enabled (PATCH /identities/:id { semantic: true }). Bounded at the 100 most relevant candidates before filtering: this is 'the most relevant', never 'every match ranked' — deep paging is /search's job. Results are the same MessageMeta rows /search returns.",
+        "operationId": "get_MailboxSemanticSearch",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The query, in natural language",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "The query, in natural language",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum messages to return (default 25, max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Maximum messages to return (default 25, max 100)",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination cursor for the next page — an offset into the re-issued query's list",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Pagination cursor for the next page — an offset into the re-issued query's list",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only mail received at or after this epoch second (an ANN pre-filter, cheap)",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "description": "Only mail received at or after this epoch second (an ANN pre-filter, cheap)",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only mail received before this epoch second",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "description": "Only mail received before this epoch second",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Restrict to one label or folder. A POST-filter over a candidate list bounded at 100, so it forces hybrid fusion and the answer carries scoped: candidate-bounded",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "description": "Restrict to one label or folder. A POST-filter over a candidate list bounded at 100, so it forces hybrid fusion and the answer carries scoped: candidate-bounded",
+              "type": "string"
+            }
+          },
+          {
+            "description": "lexical (default) fuses the BM25 ranking in — hybrid; none answers the semantic ranking alone (ignored when label is given)",
+            "in": "query",
+            "name": "fuse",
+            "required": false,
+            "schema": {
+              "description": "lexical (default) fuses the BM25 ranking in — hybrid; none answers the semantic ranking alone (ignored when label is given)",
+              "enum": [
+                "lexical",
+                "none"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Whether to include highlighted excerpts",
+            "in": "query",
+            "name": "snippet",
+            "required": false,
+            "schema": {
+              "description": "Whether to include highlighted excerpts",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticSearchResult"
+                }
+              }
+            },
+            "description": "Ranked results with coverage"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, empty_query, or invalid_cursor"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found, not accessible to this principal, or the caller is a folder-scoped viewer"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_not_enabled — the mailbox has not opted in, or its account lacks the plan gate"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "rate_limited — the credential's semantic-search budget; Retry-After carries the wait",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_unavailable — a transient model or index fault; Retry-After carries the wait. Or semantic_misconfigured — a permanent refusal or an unconfigured shard, with NO Retry-After: retrying never resolves it, an operator does"
+          }
+        },
+        "summary": "Semantic (meaning-based) search of a mailbox",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/search/snippets": {
+      "post": {
+        "description": "Builds the same highlighted <mark> excerpts (subject + body preview) the search surfaces return inline under `snippet`, for up to 50 result ids the caller already holds, so a client can paint a results page first and fill the highlights in afterwards. `filter` is the filter the results were found with (for the ranked GET, `{ text: q }`). Ids the caller cannot see are omitted.",
+        "operationId": "post_MailboxSearchSnippets",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailSearchSnippetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailSearchSnippetsResult"
+                }
+              }
+            },
+            "description": "One excerpt per visible id, in request order"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, unsupported_filter, or invalid_filter"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Highlighted excerpts for search results",
         "tags": [
           "Messages"
         ]
@@ -44164,6 +45149,216 @@
           }
         },
         "summary": "Mark accounts' usage day reported (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/vec": {
+      "get": {
+        "description": "Every Vectorize shard's state — open, closed, draining, unreachable — with its assigned-mailbox count, the index's own vector count and the bounds in force, plus the model and the in-flight bound. `configured: false` means no shard is reachable and every opt-in answers 503.",
+        "operationId": "get_SystemSemanticGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemSemantic"
+                }
+              }
+            },
+            "description": "Shard states"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Semantic retrieval: shard states and configuration (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/vec/orphans/{mailboxId}": {
+      "delete": {
+        "description": "A deleted mailbox whose vector wipe met a permanent Vectorize refusal past the strike bound recorded its namespace in `vec_orphans` before its store was deleted (`GET /system/vec` lists them). Once the operator has removed the vectors — `wrangler vectorize list-vectors` filtered on the `ns` metadata, then a delete by id — this retires the record. Nothing is deleted from Vectorize here: the store that knew the ids is gone.",
+        "operationId": "delete_SystemSemanticOrphanDelete",
+        "parameters": [
+          {
+            "description": "The deleted mailbox's id, as listed under `orphans` on GET /system/vec",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "The deleted mailbox's id, as listed under `orphans` on GET /system/vec",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "retired": {
+                      "enum": [
+                        true
+                      ],
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "retired"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Retired"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — no such record"
+          }
+        },
+        "summary": "Retire an orphaned-namespace record (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/vec/rebalance": {
+      "post": {
+        "description": "Re-assigns up to `moves` mailboxes (or exactly the `mailboxIds` given) from `shard` to the least-loaded OPEN shard. Each move re-embeds the mailbox into its new shard and drains the old namespace in two passes; a mailbox already moving or draining is skipped as busy.",
+        "operationId": "post_SystemSemanticRebalance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mailboxIds": {
+                    "description": "Exactly these mailboxes, which must be assigned to `shard`",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "moves": {
+                    "description": "How many mailboxes to move (default 10) when mailboxIds is not given",
+                    "maximum": 100,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "shard": {
+                    "description": "The source shard",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "to": {
+                    "description": "A target shard (default: the least-loaded open shard other than the source)",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "shard"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticRebalanceResult"
+                }
+              }
+            },
+            "description": "What moved and what did not"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, unknown_shard, no_open_shard, or shard_not_open (an explicit `to` that is closed, draining or unreachable)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Move mailboxes off a shard (system only)",
         "tags": [
           "System"
         ]

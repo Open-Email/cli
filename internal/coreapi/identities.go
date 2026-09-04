@@ -30,8 +30,12 @@ type Identity struct {
 	RetentionDays *int64 `json:"retentionDays"`
 	// GroupAddress — see Mailbox.GroupAddress: non-nil iff this identity is a
 	// group's persona.
-	GroupAddress *string        `json:"groupAddress"`
-	Facets       IdentityFacets `json:"facets"`
+	GroupAddress *string `json:"groupAddress"`
+	// Semantic — see Mailbox.Semantic: whether meaning-based search is on for
+	// this identity's mail store. The Identity component composes Mailbox, so
+	// this field is always present.
+	Semantic bool           `json:"semantic"`
+	Facets   IdentityFacets `json:"facets"`
 }
 
 // IdentityFacets maps each bound store to its usage. A key is present iff a

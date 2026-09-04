@@ -66,6 +66,15 @@ type EmailSearchResult struct {
 	Total    *int64               `json:"total,omitempty"`
 	Limit    *int64               `json:"limit,omitempty"`
 	Snippets []EmailSearchSnippet `json:"snippets,omitempty"`
+	// Truncated is set (true) only on a collapseThreads query whose scan hit the
+	// server's row cap: the collapsed set covers the NEWEST matches rather than
+	// all of them, and positional paging ends where that set does even though
+	// Total (when asked for) counts the whole match set. Core sends it on EVERY
+	// page of such a query, not just the last, so a client can say so from page
+	// one. ScanWindow is the cap that clipped — the N in "more than N matches" —
+	// and is present only beside Truncated.
+	Truncated  *bool  `json:"truncated,omitempty"`
+	ScanWindow *int64 `json:"scanWindow,omitempty"`
 }
 
 // SearchQuery runs a structured search. Offset-paged (Position), not

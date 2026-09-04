@@ -27,6 +27,10 @@ type VerifyResult struct {
 	// Advisory, like CanSend; the submission gate is the authority.
 	SendHold      string   `json:"sendHold,omitempty"`
 	PermittedFrom []string `json:"permittedFrom"`
+	// Semantic reports whether this identity's mailbox has meaning-based search
+	// enabled — i.e. whether a client should offer the semantic search box at
+	// all. Advisory, like CanSend.
+	Semantic bool `json:"semantic"`
 	// Facets lists the identity's bound stores ("mail", "pim").
 	Facets []string `json:"facets"`
 	// SecondFactor ("webauthn") is present when the matched credential is a
