@@ -1227,7 +1227,7 @@
           {
             "properties": {
               "deliveryId": {
-                "description": "Delivery identifier",
+                "description": "The STORED delivery key: any supplied X-Delivery-Id namespaced into the `append:` import family (so an append is never mistaken for an arrival). Correlates with the traffic log's delivery_id; retry with the ORIGINAL X-Delivery-Id, not this value.",
                 "type": "string"
               },
               "redirected": {
@@ -32668,12 +32668,12 @@
             }
           },
           {
-            "description": "Optional client idempotency key to prevent duplicate imports",
+            "description": "Optional client idempotency key to prevent duplicate imports. Stored NAMESPACED as `append:<your id>` (an append is the mailbox's own side writing its own row, announced as `message.imported`, not `message.new`), so the traffic log and the filtered response show that form — retry with your original value.",
             "in": "header",
             "name": "x-delivery-id",
             "required": false,
             "schema": {
-              "description": "Optional client idempotency key to prevent duplicate imports",
+              "description": "Optional client idempotency key to prevent duplicate imports. Stored NAMESPACED as `append:<your id>` (an append is the mailbox's own side writing its own row, announced as `message.imported`, not `message.new`), so the traffic log and the filtered response show that form — retry with your original value.",
               "type": "string"
             }
           },
@@ -33042,12 +33042,12 @@
             }
           },
           {
-            "description": "Optional client idempotency key",
+            "description": "Optional client idempotency key to prevent duplicate imports. Stored NAMESPACED as `append:<your id>` (an append is the mailbox's own side writing its own row, announced as `message.imported`, not `message.new`), so the traffic log and the filtered response show that form — retry with your original value.",
             "in": "header",
             "name": "x-delivery-id",
             "required": false,
             "schema": {
-              "description": "Optional client idempotency key",
+              "description": "Optional client idempotency key to prevent duplicate imports. Stored NAMESPACED as `append:<your id>` (an append is the mailbox's own side writing its own row, announced as `message.imported`, not `message.new`), so the traffic log and the filtered response show that form — retry with your original value.",
               "type": "string"
             }
           }
