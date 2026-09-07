@@ -40549,7 +40549,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_domain, domain_is_alias, invalid_pattern, pattern_limit, unknown_mailbox, invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
+            "description": "validation_failed, unknown_domain, domain_is_alias, invalid_pattern, pattern_limit, unknown_mailbox, webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
           },
           "401": {
             "content": {
@@ -40733,7 +40733,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch, destination_requires_type, unknown_mailbox, invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
+            "description": "validation_failed, empty_patch, destination_requires_type, unknown_mailbox, webhook_format_unavailable, invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
           },
           "401": {
             "content": {
@@ -41486,7 +41486,7 @@
                 }
               }
             },
-            "description": "Created route — or, when the binding is identical, the EXISTING route unchanged (idempotent create: the replay's paced/webhookSecret are not applied)"
+            "description": "Created route — or, when the binding is identical, the EXISTING route unchanged (idempotent create: the replay's paced/webhookSecret/webhookFormat are not applied — PATCH is the verb that edits an existing route)"
           },
           "400": {
             "content": {
@@ -41496,7 +41496,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_domain, domain_is_alias, unknown_mailbox, or destination_is_self / destination_loops / destination_chain_too_long when the forward target routes back to this address"
+            "description": "validation_failed, unknown_domain, domain_is_alias, unknown_mailbox, webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), or destination_is_self / destination_loops / destination_chain_too_long when the forward target routes back to this address"
           },
           "401": {
             "content": {
@@ -41761,7 +41761,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch, destination_requires_type, posting_requires_group, no_webhook, unknown_mailbox, or destination_is_self / destination_loops / destination_chain_too_long"
+            "description": "validation_failed, empty_patch, destination_requires_type, posting_requires_group, no_webhook, webhook_format_unavailable, unknown_mailbox, or destination_is_self / destination_loops / destination_chain_too_long"
           },
           "401": {
             "content": {
