@@ -91,7 +91,7 @@
             ]
           },
           "semantic": {
-            "description": "True if this account's mailboxes may enable SEMANTIC search (the plan gate for embedding). System-written only; clearing it stops new opt-ins and darkens the semantic read routes (409 semantic_not_enabled) without deleting existing embeddings",
+            "description": "True if this account's mailboxes may enable SEMANTIC search (the plan gate for embedding). System-written only. Clearing it is refused 409 semantic_mailboxes_opted_in while any mailbox is opted in — paid with vectors does not become free; the tenant opts out (which deletes the embeddings) or the account is deleted (which wipes them). Once none is opted in, clearing stops new opt-ins and darkens the semantic read routes (409 semantic_not_enabled)",
             "type": "boolean"
           },
           "sendHold": {
@@ -1028,6 +1028,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "domains": {
+            "description": "The domains this key is scoped to (migration 0078), sorted; ABSENT for a key with full account authority. A scoped key reaches only these domains' directory and the mailboxes with an address on them; everything account-level answers 403 account_credentials_required. An EMPTY list is a stored scope core cannot read (a hand-edited row): that key refuses to authenticate, and this is where the listing says so — never folded into absent, which would show a dead key as the widest one.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "id": {
             "description": "Unique API key identifier",
             "type": "string"
@@ -1113,6 +1120,13 @@
               "string",
               "null"
             ]
+          },
+          "domains": {
+            "description": "The domains this key is scoped to, normalized (lowercased, deduplicated, sorted); ABSENT when the key was minted unscoped. A minter that asked for a scope and does not see it echoed here is talking to a core that predates the feature and must treat the key as mis-minted (revoke it) — core strips unknown request keys.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "id": {
             "description": "Unique API key identifier",
@@ -2009,6 +2023,16 @@
               "null"
             ]
           },
+          "permittedRecipients": {
+            "description": "The credential's OWN outbound recipient allowlist (exact addresses or `*@domain`), intersected with the identity's: both must permit. null = none of its own. Only a 'send' credential carries one",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "revokedAt": {
             "description": "Timestamp when credential was revoked in epoch seconds, or null",
             "format": "int64",
@@ -2016,6 +2040,16 @@
               "integer",
               "null"
             ]
+          },
+          "scope": {
+            "description": "The credential's scope, a ladder: 'read' (list and read mail — nothing that leaves a trace), 'write' (also mark, file, label and trash — everything the store can undo), 'send' (also submit mail), 'full' (also permanent deletion, every settings and credential route, PIM collection lifecycle and sharing — the human's own session, and the default)",
+            "enum": [
+              "read",
+              "write",
+              "send",
+              "full"
+            ],
+            "type": "string"
           },
           "username": {
             "description": "Login username or email address",
@@ -2030,7 +2064,9 @@
           "createdAt",
           "lastUsedAt",
           "revokedAt",
-          "expiresAt"
+          "expiresAt",
+          "scope",
+          "permittedRecipients"
         ],
         "type": "object"
       },
@@ -2097,6 +2133,26 @@
                   "null"
                 ]
               },
+              "permittedRecipients": {
+                "description": "The credential's OWN outbound recipient allowlist (exact addresses or `*@domain`), intersected with the identity's: both must permit. null = none of its own. Only a 'send' credential carries one",
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "scope": {
+                "description": "The credential's scope, a ladder: 'read' (list and read mail — nothing that leaves a trace), 'write' (also mark, file, label and trash — everything the store can undo), 'send' (also submit mail), 'full' (also permanent deletion, every settings and credential route, PIM collection lifecycle and sharing — the human's own session, and the default)",
+                "enum": [
+                  "read",
+                  "write",
+                  "send",
+                  "full"
+                ],
+                "type": "string"
+              },
               "token": {
                 "description": "Plaintext app password secret (returned once only at creation)",
                 "type": "string"
@@ -2112,7 +2168,9 @@
               "username",
               "name",
               "token",
-              "expiresAt"
+              "expiresAt",
+              "scope",
+              "permittedRecipients"
             ],
             "type": "object"
           }
@@ -9241,7 +9299,7 @@
             "type": "string"
           },
           "surface": {
-            "description": "API interface surface ('rest', 'jmap', 'dav', 'gateway', 'webmail', 'console')",
+            "description": "API interface surface ('rest', 'jmap', 'dav', 'gateway', 'webmail', 'console', 'mcp')",
             "type": "string"
           }
         },
@@ -10132,7 +10190,7 @@
             "type": "array"
           },
           "skipped": {
-            "description": "Mailboxes not moved, with why (busy = a move or drain already in flight; off = not opted in)",
+            "description": "Mailboxes not moved, with why (busy = a move or drain already in flight; off = not opted in; unknown / not_on_shard for a named mailbox; unreachable = its store did not answer — re-run for these)",
             "items": {
               "properties": {
                 "mailboxId": {
@@ -10153,6 +10211,54 @@
         },
         "required": [
           "moved",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "SemanticReembedResult": {
+        "properties": {
+          "armed": {
+            "description": "Mailboxes whose stale rows will be cleared in pages by the store's alarm duty and re-embedded by the backfill chain",
+            "items": {
+              "properties": {
+                "mailboxId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mailboxId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "description": "Mailboxes not armed, with why (unknown; off = not opted in; unknown_shard = assigned outside the declared fan; shard_unreachable = its index did not answer just now; busy = a move, drain or clear already in flight; gone; unreachable = its store did not answer — re-run for these)",
+            "items": {
+              "properties": {
+                "mailboxId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mailboxId",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "stamp": {
+            "description": "The CURRENT stamp (`<model>#<shaping version>`): rows carrying any other tag are cleared and re-embedded; rows carrying this one are left alone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stamp",
+          "armed",
           "skipped"
         ],
         "type": "object"
@@ -11263,7 +11369,7 @@
             "type": "number"
           },
           "model": {
-            "description": "The embedding model stamped on every embedded row",
+            "description": "The embedding model — the id the model call is made with",
             "type": "string"
           },
           "optedInMailboxes": {
@@ -11323,11 +11429,16 @@
               "$ref": "#/components/schemas/SemanticShard"
             },
             "type": "array"
+          },
+          "stamp": {
+            "description": "The tag written into every embedded row's `vec_model`: the model plus the embedding-text shaping version (`<model>#e1`). A shaping change bumps the suffix so the rows embedded under the old one stay enumerable for a targeted re-embed",
+            "type": "string"
           }
         },
         "required": [
           "configured",
           "model",
+          "stamp",
           "shards",
           "optedInMailboxes",
           "inflightMaxHours",
@@ -12486,6 +12597,16 @@
             },
             "type": "array"
           },
+          "scope": {
+            "description": "The matched credential's scope (design D50). Below 'full' it is reported only to a caller that sent `enforcesScope: true` — its promise to forward `X-Acting-Credential: <credentialId>` beside `X-Acting-Identity` on every call it makes for this login, so core applies the scope there; any other caller is answered 401 invalid_credentials for such a credential, the one refusal the fleets treat as final",
+            "enum": [
+              "read",
+              "write",
+              "send",
+              "full"
+            ],
+            "type": "string"
+          },
           "secondFactor": {
             "description": "Present when WebAuthn second-factor authentication is required",
             "enum": [
@@ -12516,6 +12637,7 @@
           "kind",
           "canSend",
           "semantic",
+          "scope",
           "permittedFrom",
           "facets"
         ],
@@ -13117,6 +13239,13 @@
               "null"
             ]
           },
+          "domains": {
+            "description": "An account key's domain scope (migration 0078), sorted — ABSENT for an unscoped key and for every other credential kind. Present, this key reaches only these domains' directory and the mailboxes with an address on them; a call outside that answers 404 (a resource) or 403 account_credentials_required (the account tier, and JMAP).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "idleExpiresAt": {
             "description": "When this credential lapses from disuse, in epoch seconds, or null when it never does. Here so a client can say 'this key stops working on <date> unless you use it' rather than letting the holder discover it as a 401.",
             "format": "int64",
@@ -13146,6 +13275,19 @@
               "null"
             ]
           },
+          "scope": {
+            "description": "A mailbox credential's scope — 'read', 'write', 'send' or 'full' — or null for an API key. What this bearer may do of what its mailbox may do; a call outside it answers 403 credential_scope naming the rung it needs",
+            "enum": [
+              "read",
+              "write",
+              "send",
+              "full"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "type": {
             "description": "Bearer credential permission scope",
             "enum": [
@@ -13162,6 +13304,7 @@
           "accountId",
           "mailboxId",
           "credentialId",
+          "scope",
           "kind",
           "idleExpiresAt"
         ],
@@ -13734,6 +13877,16 @@
               }
             },
             "description": "Account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "semantic_mailboxes_opted_in — `semantic: false` while `optedIn` mailboxes are opted in: paid with vectors does not become free; the tenant opts out (which deletes the embeddings) or the account is deleted (which wipes them)"
           }
         },
         "summary": "Update account settings",
@@ -16339,6 +16492,17 @@
                     "description": "Account ULID to associate key with (required for account role)",
                     "type": "string"
                   },
+                  "domains": {
+                    "description": "Scope this key to these domains (bare lowercase names the owning account holds — an unknown or foreign one answers 400 unknown_domain naming it). A scoped key is an ACCOUNT key wearing a restriction: it reaches the directory of these domains (routes, patterns, DNS, branding, hostnames, webhooks) and the mailboxes with an address on them, and nothing whose subject is the account itself (403 account_credentials_required), nor JMAP. Delegation within one account, not tenancy — every domain still shares the account's caps, storage pool and bill. Omit for full account authority. Refused on system keys (400 system_key_unscopable); fixed for the key's life (revoke and re-mint to change).",
+                    "items": {
+                      "maxLength": 253,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "idleTtlS": {
                     "description": "Seconds of disuse after which this key stops authenticating, measured from last use (or from creation while it has never been used). Omit for a key that never lapses, which is the default and what every key had before. Refused on system keys.",
                     "maximum": 31622400,
@@ -16410,7 +16574,7 @@
                 }
               }
             },
-            "description": "validation_failed, account_id_required, unknown_account, or system_key_unexpirable"
+            "description": "validation_failed, account_id_required, unknown_account, system_key_unexpirable, system_key_unscopable, invalid_domain (a `domains` entry is not a bare domain name; `domain` names it), or unknown_domain (a `domains` entry the target account does not hold; `domain` names it — identical for a missing and a foreign domain)"
           },
           "401": {
             "content": {
@@ -16883,6 +17047,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "enforcesScope": {
+                    "description": "The caller's promise that it forwards `X-Acting-Credential: <credentialId>` beside `X-Acting-Identity` on every call it makes for this login, so core applies the credential's scope and recipient list there (design D50). Without it a credential scoped below 'full' is refused 401 invalid_credentials — a frontend that acts with its own system key has no other way to honour a scope, and a session it would then exceed must not open.",
+                    "type": "boolean"
+                  },
                   "password": {
                     "description": "Plaintext password or app password",
                     "minLength": 1,
@@ -17233,6 +17401,7 @@
                       "keyId": "01J9KEYX5C8E2G5J9M00000000",
                       "kind": "cli",
                       "mailboxId": null,
+                      "scope": null,
                       "type": "account"
                     }
                   },
@@ -17244,6 +17413,7 @@
                       "keyId": null,
                       "kind": null,
                       "mailboxId": "01J9MBX7F4Q2K9T3W600000000",
+                      "scope": "full",
                       "type": "mailbox"
                     }
                   }
@@ -17933,7 +18103,7 @@
                 }
               }
             },
-            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (the sender's outbound recipient allowlist excludes this recipient), receiving_disabled (a local recipient is not accepting mail), posting_denied (a members-only group refused this poster), too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear and must bounce). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses (see isPermanentHold in src/db/sendhold.ts, which excludes it deliberately), so the backlog must be held rather than bounced."
+            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (the sender's outbound recipient allowlist — the identity's, or the credential's own — excludes this recipient), credential_scope (the credential in play — the bearer's, or the one X-Acting-Credential names — is scoped below `send`; permanent for that credential, carrying `scope` and `required`), receiving_disabled (a local recipient is not accepting mail), posting_denied (a members-only group refused this poster), too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear and must bounce). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses (see isPermanentHold in src/db/sendhold.ts, which excludes it deliberately), so the backlog must be held rather than bounced."
           },
           "404": {
             "content": {
@@ -21687,7 +21857,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, or domain_is_alias"
+            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, domain_is_alias, or primary_address_required (a DOMAIN-SCOPED api key must create WITH an address on one of its domains — a bare identity would be one it could never reach again, migration 0078)"
           },
           "401": {
             "content": {
@@ -21814,6 +21984,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a DOMAIN-SCOPED api key named a mailbox that is also routed on a domain outside its scope. Restore rebinds the mailbox's primary address, so deleting one primaried elsewhere could not be undone without writing a route on a domain this key does not hold; the account's own key may delete it"
           },
           "404": {
             "content": {
@@ -26851,6 +27031,13 @@
                         "minLength": 8,
                         "type": "string"
                       },
+                      "scope": {
+                        "description": "A login password is always 'full'; any other value is refused",
+                        "enum": [
+                          "full"
+                        ],
+                        "type": "string"
+                      },
                       "username": {
                         "maxLength": 320,
                         "minLength": 3,
@@ -26884,6 +27071,29 @@
                       },
                       "name": {
                         "maxLength": 128,
+                        "type": "string"
+                      },
+                      "permittedRecipients": {
+                        "description": "The credential's OWN outbound recipient allowlist (exact addresses or `*@domain`), INTERSECTED with the identity's: both must permit. Accepted only with scope 'send' (400 permitted_recipients_requires_send otherwise); `[]` means this credential may send to nobody. Omit or null for no list of its own",
+                        "items": {
+                          "maxLength": 320,
+                          "pattern": "^[^\\s@]+@[^\\s@]+$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "scope": {
+                        "description": "The credential's SCOPE (design D50), a ladder — 'read': list and read mail, nothing that leaves a trace; 'write': also mark, file, label and trash (everything the store undoes for 14 days); 'send': also submit mail; 'full' (the default): also permanent deletion, every settings route (rules, Sieve, vacation, prefs, forwarding, shares, retention, pickups, webhooks, credentials — reads included), PIM collection lifecycle and sharing. A call outside the scope answers 403 credential_scope naming the rung it needs. The bound for an agent token: mint 'write' for an assistant that reads and files, 'send' with permittedRecipients for one that may write to named people, and never 'full' for a program",
+                        "enum": [
+                          "read",
+                          "write",
+                          "send",
+                          "full"
+                        ],
                         "type": "string"
                       },
                       "surface": {
@@ -26935,7 +27145,7 @@
                 }
               }
             },
-            "description": "validation_failed, username_required, username_not_mailbox_address, or password_required (the mailbox's own bearer sent no currentPassword)"
+            "description": "validation_failed, username_required, username_not_mailbox_address, username_not_in_scope (a DOMAIN-SCOPED api key may only mint a credential whose username is on one of its domains, migration 0078; `domain` names the refused one), permitted_recipients_requires_send (a recipient list on a credential whose scope is not 'send'), or password_required (the mailbox's own bearer sent no currentPassword)"
           },
           "401": {
             "content": {
@@ -26955,7 +27165,7 @@
                 }
               }
             },
-            "description": "invalid_password (the mailbox's own bearer proved the wrong password), or account_credentials_required (a mailbox bearer asked for a login password: admin only)"
+            "description": "invalid_password (the mailbox's own bearer proved the wrong password), or account_credentials_required (a mailbox bearer asked for a login password: admin only; or a DOMAIN-SCOPED api key named a mailbox that is also routed on a domain outside its scope — a credential outlives the key that minted it, so minting one needs authority over every domain the mailbox serves)"
           },
           "404": {
             "content": {
@@ -35035,7 +35245,7 @@
                 }
               }
             },
-            "description": "semantic_not_enabled — the mailbox has not opted in, or its account lacks the plan gate; or not_embedded — the message has no vector yet (below the floor, or the backfill has not reached it); the body carries semanticFloor"
+            "description": "semantic_not_enabled — the mailbox has not opted in, or its account lacks the plan gate; or not_embedded — the index holds no vector for the message (below the floor, the backfill has not reached it, or its upsert has not landed); the body carries semanticFloor"
           },
           "429": {
             "content": {
@@ -35181,7 +35391,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
           },
           "404": {
             "content": {
@@ -37980,7 +38190,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50; carries `scope` and `required`) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
           },
           "404": {
             "content": {
@@ -39714,7 +39924,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | mailbox_gone (the sending mailbox was torn down mid-submission)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50) | mailbox_gone (the sending mailbox was torn down mid-submission)"
           },
           "404": {
             "content": {
@@ -45359,6 +45569,82 @@
           }
         },
         "summary": "Move mailboxes off a shard (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/vec/reembed": {
+      "post": {
+        "description": "For each mailbox, clears every stamp that is NOT the current one (`GET /system/vec` → `stamp`) in pages, then the backfill chain re-embeds exactly those rows — nothing already current is spent again. The operator's verb after bumping the embedding-text shaping version or the model. Bounded per call; a mailbox with a move, drain or clear in flight is skipped as busy, and one whose shard is not declared or not reachable is skipped rather than de-stamped into a chain that cannot upsert. Rows stamped before the stamp carried a shaping version (a bare model id) count as stale: the first call after that change re-embeds them all. While a re-embed runs, `/similar` answers from the index, so a cleared row with its old vector still behind it is not refused. A row the new shaping REFUSES is stamped `skip:` and keeps its previous vector — search still answers with its last good embedding; the next re-embed tries it again.",
+        "operationId": "post_SystemSemanticReembed",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mailboxIds": {
+                    "description": "Exactly these mailboxes, each opted in",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "mailboxIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticReembedResult"
+                }
+              }
+            },
+            "description": "What was armed and what was not"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or no_shard_configured (no VEC_n binding and no REST credentials: nothing could re-embed)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Re-embed the rows a shaping or model change left stale (system only)",
         "tags": [
           "System"
         ]

@@ -25,6 +25,15 @@ type APIKey struct {
 	// login minted, null otherwise. Display metadata: the minting caller sets
 	// it, so nothing may authorize on it.
 	Kind *string `json:"kind"`
+	// Domains is the key's DOMAIN SCOPE (core migration 0078), sorted — ABSENT
+	// for an unscoped key, which is every key minted before 0078 and every key
+	// minted without one. Nil therefore means "the whole account", and that
+	// asymmetry is deliberate: absent is not empty. An EMPTY list is a stored
+	// scope core could not read (a hand-edited row, a build skew): such a key
+	// refuses to authenticate, and the listing says so with `[]` rather than
+	// omitting the field, which would show a dead key as reaching everything.
+	// Core never MINTS an empty scope. ScopeLabel renders the three cases.
+	Domains []string `json:"domains"`
 	// IdleTTLS is the configured seconds of disuse before the key stops
 	// working; null for a key that never lapses, which is every key minted
 	// before core 0051 and every key created outside the browser login.
@@ -46,6 +55,10 @@ type CreatedAPIKey struct {
 	// got without re-reading the key: see APIKey.Kind and APIKey.IdleTTLS.
 	Kind     *string `json:"kind"`
 	IdleTTLS *int64  `json:"idleTtlS"`
+	// The domain scope core actually RECORDED (core migration 0078), sorted and
+	// normalized. This is the echo `CreateAPIKey` documents: nil after asking
+	// for a scope means the key was minted UNSCOPED and must not be used.
+	Domains []string `json:"domains"`
 	// When the key would lapse if never used. Computed by core from the TTL it
 	// just recorded, so a caller shows the date without doing the arithmetic
 	// against a clock that is not the one enforcing the lapse.

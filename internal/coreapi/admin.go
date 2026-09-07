@@ -38,6 +38,11 @@ type VerifyResult struct {
 	// login came through should demand the second factor. Advisory, like
 	// CanSend; app-password logins never carry it.
 	SecondFactor *string `json:"secondFactor,omitempty"`
+	// Scope is the matched credential's rung (design D50) — see
+	// Credential.Scope. Reported below "full" only to a caller that promised to
+	// enforce it (`enforcesScope: true` on the request); any other caller is
+	// answered 401 for such a credential.
+	Scope string `json:"scope"`
 }
 
 // Reindex re-enqueues FTS index jobs for a mailbox (system-only). limit bounds the

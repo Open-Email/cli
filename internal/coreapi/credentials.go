@@ -16,6 +16,17 @@ type Credential struct {
 	RevokedAt  *int64  `json:"revokedAt"`
 	// ExpiresAt is unix seconds; nil = never expires.
 	ExpiresAt *int64 `json:"expiresAt"`
+	// Scope is the credential's RUNG (core migration 0077, design D50): a
+	// ladder — "read" < "write" < "send" < "full". What this credential may do
+	// of what its mailbox may do; a call above the rung answers 403
+	// credential_scope naming the rung it needs. Modelled here so the wire
+	// shape is complete; the CLI does not yet mint below "full".
+	Scope string `json:"scope"`
+	// PermittedRecipients is the credential's OWN outbound allowlist (exact
+	// addresses or `*@domain`), intersected with the identity's — BOTH must
+	// permit. Null means it carries none of its own, which is not the same as
+	// an empty list (nobody), so this stays a nil-able slice.
+	PermittedRecipients []string `json:"permittedRecipients"`
 }
 
 // CreatedCredential is the create response; Token is the one-time plaintext,
@@ -29,6 +40,17 @@ type CreatedCredential struct {
 	// ExpiresAt is unix seconds; nil = never expires. app_password arm only —
 	// the password arm of the union carries no expiry.
 	ExpiresAt *int64 `json:"expiresAt,omitempty"`
+	// Scope is the credential's RUNG (core migration 0077, design D50): a
+	// ladder — "read" < "write" < "send" < "full". What this credential may do
+	// of what its mailbox may do; a call above the rung answers 403
+	// credential_scope naming the rung it needs. Modelled here so the wire
+	// shape is complete; the CLI does not yet mint below "full".
+	Scope string `json:"scope"`
+	// PermittedRecipients is the credential's OWN outbound allowlist (exact
+	// addresses or `*@domain`), intersected with the identity's — BOTH must
+	// permit. Null means it carries none of its own, which is not the same as
+	// an empty list (nobody), so this stays a nil-able slice.
+	PermittedRecipients []string `json:"permittedRecipients"`
 }
 
 // CredentialCreateInput is the POST body. Kind is "password" (requires Password)

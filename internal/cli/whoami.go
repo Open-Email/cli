@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -68,6 +69,15 @@ func newWhoamiCmd(a *app) *cobra.Command {
 					}
 					return time.Unix(id.IdleExpiresAt, 0).UTC().Format(time.RFC3339)
 				}(),
+				// Absent, not empty, for the same reason keyKind is: nil means
+				// "unscoped" — the whole account — and `[]` would say the key
+				// reaches nothing, which is not a scope core will mint.
+				"domains": func() any {
+					if len(id.Domains) == 0 {
+						return nil
+					}
+					return id.Domains
+				}(),
 				// Named for what it does, not for the column: this is the domain
 				// claim value, never a credential.
 				"domainVerificationToken": verifyToken,
@@ -95,6 +105,14 @@ func (a *app) printIdentity(w io.Writer, id coreapi.Principal, verifyToken strin
 	}
 	if id.CredentialID != "" {
 		rows = append(rows, []string{"Credential", id.CredentialID})
+	}
+	// The domain scope, spelled out in full — this is the screen where somebody
+	// asks "why am I getting 404 for a domain I own?", and the answer is either
+	// this line or its absence. Shown only when there IS one: an unscoped key
+	// has nothing to say here, and a row reading "all domains" on every ordinary
+	// key would be noise on the line that matters least.
+	if len(id.Domains) > 0 {
+		rows = append(rows, []string{"Domain scope", strings.Join(id.Domains, ", ")})
 	}
 	// The stored key id/name belong to the profile credential — show them only when
 	// the active token came from the profile (an --api-key/env override has none).

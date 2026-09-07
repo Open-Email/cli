@@ -505,6 +505,11 @@ func keysDesc() resourceDesc {
 			{title: "NAME", flex: true},
 			{title: "ROLE", width: 7},
 			{title: "ACCOUNT", width: 26},
+			// What the key can REACH (core migration 0078). "all" for an
+			// unscoped key, in a word rather than a dash: the absence is the
+			// meaning, and a blank beside rows naming domains would read as
+			// "unknown" — the one misreading a scope column must not invite.
+			{title: "SCOPE", width: 24},
 			{title: "CREATED", width: 16},
 			{title: "LAST USED", width: 16},
 			{title: "REVOKED", width: 7},
@@ -517,7 +522,7 @@ func keysDesc() resourceDesc {
 			rows := make([]rowData, len(pg.Items))
 			for i, k := range pg.Items {
 				rows[i] = rowData{
-					cells: []string{k.Name, k.Role, strOr(k.AccountName, strOr(k.AccountID, "—")), fmtEpoch(k.CreatedAt), fmtEpochPtr(k.LastUsedAt), yn(k.RevokedAt != nil)},
+					cells: []string{k.Name, k.Role, strOr(k.AccountName, strOr(k.AccountID, "—")), k.ScopeLabel(2), fmtEpoch(k.CreatedAt), fmtEpochPtr(k.LastUsedAt), yn(k.RevokedAt != nil)},
 					item:  k,
 				}
 			}
@@ -543,6 +548,9 @@ func keysDesc() resourceDesc {
 				{k: "role", v: k.Role},
 				{k: "account", v: strOr(k.AccountName, strOr(k.AccountID, "—"))},
 				{k: "account id", v: strOr(k.AccountID, "—")},
+				// In full: the table cell truncates past two domains, and this
+				// is where "which exact domains" gets answered.
+				{k: "scope", v: k.ScopeLabel(len(k.Domains))},
 				{k: "created", v: fmtEpoch(k.CreatedAt)},
 				{k: "last used", v: fmtEpochPtr(k.LastUsedAt)},
 				{k: "revoked", v: fmtEpochPtr(k.RevokedAt)},

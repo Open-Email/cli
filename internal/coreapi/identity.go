@@ -27,6 +27,10 @@ type Principal struct {
 	// IdleExpiresAt is when the credential lapses from disuse, epoch seconds;
 	// zero when it never does (or when core predates the field).
 	IdleExpiresAt int64
+	// Domains is the key's domain scope (core migration 0078), or nil for a key
+	// that carries none — which is the whole account. Nil and empty are the
+	// same here only because core never mints an empty scope.
+	Domains []string
 }
 
 // Resolve classifies the current bearer from core's /auth/whoami — the exact,
@@ -48,6 +52,7 @@ func (c *Client) Resolve(ctx context.Context) (Principal, error) {
 		CredentialID: derefStr(w.CredentialID),
 		KeyID:        derefStr(w.KeyID),
 		Kind:         derefStr(w.Kind),
+		Domains:      w.Domains,
 	}
 	if w.IdleExpiresAt != nil {
 		p.IdleExpiresAt = *w.IdleExpiresAt

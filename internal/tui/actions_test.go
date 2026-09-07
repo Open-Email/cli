@@ -594,15 +594,15 @@ func TestComposePaneTitleCarriesMailbox(t *testing.T) {
 }
 
 func TestKeyCreatePaneByPrincipal(t *testing.T) {
-	// Account principals go straight to the form (their key is self-scoped).
-	p := keyCreatePane(t.Context(), &Options{Role: coreapi.PrincipalAccount})
-	if _, ok := p.(*formPane); !ok {
-		t.Fatalf("account principal should get the form directly, got %T", p)
-	}
-	// System principals get the loader that fetches the account picker options.
-	p = keyCreatePane(t.Context(), &Options{Role: coreapi.PrincipalSystem})
-	if _, ok := p.(*loaderPane); !ok {
-		t.Fatalf("system principal should get the accounts loader, got %T", p)
+	// Both principals load before the form, for a picker each: a system
+	// principal for the ACCOUNT the key acts as, an account principal for the
+	// DOMAINS a scope may name (core migration 0078). A scope is chosen from a
+	// list, never typed — the same reason the account is.
+	for _, role := range []string{coreapi.PrincipalAccount, coreapi.PrincipalSystem} {
+		p := keyCreatePane(t.Context(), &Options{Role: role})
+		if _, ok := p.(*loaderPane); !ok {
+			t.Fatalf("%s principal should get the loader, got %T", role, p)
+		}
 	}
 }
 

@@ -244,7 +244,7 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 	case identity.Type == coreapi.PrincipalAccount && opts.noMint:
 		a.out.Msgf("Storing the provided account key as-is (--no-mint).")
 	case identity.Type == coreapi.PrincipalAccount:
-		created, cerr := client.CreateAPIKey(ctx, keyName, "", "")
+		created, cerr := client.CreateAPIKey(ctx, coreapi.CreateKeyOptions{Name: keyName})
 		switch {
 		case cerr == nil:
 			finalToken = created.Token

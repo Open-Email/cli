@@ -77,7 +77,7 @@ func newAccountCreateCmd(a *app) *cobra.Command {
 				})
 				return nil
 			}
-			key, kerr := client.CreateAPIKey(cmd.Context(), keyName, coreapi.PrincipalAccount, acc.ID)
+			key, kerr := client.CreateAPIKey(cmd.Context(), coreapi.CreateKeyOptions{Name: keyName, Role: coreapi.PrincipalAccount, AccountID: acc.ID})
 			if kerr != nil {
 				// The account exists; report the partial state loudly rather
 				// than pretending the whole call failed.

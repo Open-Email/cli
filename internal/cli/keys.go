@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -23,16 +25,41 @@ func newKeysCmd(a *app) *cobra.Command {
 
 func newKeysCreateCmd(a *app) *cobra.Command {
 	var role, account string
+	var domains []string
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create an API key (the token is shown exactly once)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Create an API key.\n\n" +
+			"Pass --domain (repeatable) to mint a DOMAIN-SCOPED key: it reaches only those\n" +
+			"domains' directory and the mailboxes with an address on one of them. Other\n" +
+			"domains and their mailboxes answer 404, exactly as another account's would;\n" +
+			"account-level surfaces — the account itself, its keys, its audit trail, JMAP —\n" +
+			"answer 403 account_credentials_required. A scope narrows and never grants — it\n" +
+			"is a delegation inside one account, not a tenancy boundary — and it is fixed for\n" +
+			"the key's life: revoke and re-mint to change it.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
-			created, err := client.CreateAPIKey(cmd.Context(), args[0], role, account)
+			ctx := cmd.Context()
+			created, err := client.CreateAPIKey(ctx, coreapi.CreateKeyOptions{
+				Name:      args[0],
+				Role:      role,
+				AccountID: account,
+				Domains:   domains,
+			})
+			// The echo check lives in the client, so the TUI's form inherits it:
+			// a core that predates migration 0078 strips `domains` and mints a
+			// key over the WHOLE account, and CreateAPIKey has already revoked
+			// that key — or says which one it could not. What this command adds
+			// is the way out; not when a key is stranded, though, where the one
+			// sentence that matters is the one naming it.
+			var unscoped *coreapi.ScopeNotRecordedError
+			if errors.As(err, &unscoped) && unscoped.RevokeErr == nil {
+				return fmt.Errorf("%w; upgrade core, or re-run without --domain to mint an account-wide key deliberately", err)
+			}
 			if err != nil {
 				return err
 			}
@@ -41,6 +68,9 @@ func newKeysCreateCmd(a *app) *cobra.Command {
 				return nil
 			}
 			a.out.Successf("Created key %s (%s), role %s", created.Name, created.ID, created.Role)
+			if len(created.Domains) > 0 {
+				a.out.Msgf("Scope: %s", strings.Join(created.Domains, ", "))
+			}
 			a.out.Warnf("This token is shown only once — store it now.")
 			fmt.Fprintln(os.Stdout, created.Token) // token to stdout so it can be piped
 			return nil
@@ -48,6 +78,7 @@ func newKeysCreateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&role, "role", "", "system|account (system callers only; default account)")
 	cmd.Flags().StringVar(&account, "account", "", "account id to own the key (system callers only)")
+	cmd.Flags().StringArrayVar(&domains, "domain", nil, "restrict the key to this domain (repeatable); omit for the whole account")
 	if eagerProfileRole() != coreapi.PrincipalSystem {
 		_ = cmd.Flags().MarkHidden("role")
 		_ = cmd.Flags().MarkHidden("account")
@@ -98,10 +129,10 @@ func newKeysListCmd(a *app) *cobra.Command {
 					}
 					rows = append(rows, []string{
 						k.ID, k.Name, kind, k.Role, strOr(k.AccountName, strOr(k.AccountID, "—")),
-						fmtEpoch(k.CreatedAt), fmtEpochPtr(k.LastUsedAt), status,
+						k.ScopeLabel(2), fmtEpoch(k.CreatedAt), fmtEpochPtr(k.LastUsedAt), status,
 					})
 				}
-				printTable(w, a.out, []string{"ID", "NAME", "KIND", "ROLE", "ACCOUNT", "CREATED", "LAST USED", "STATUS"}, rows)
+				printTable(w, a.out, []string{"ID", "NAME", "KIND", "ROLE", "ACCOUNT", "SCOPE", "CREATED", "LAST USED", "STATUS"}, rows)
 				if next != "" {
 					a.out.Msgf("more results — pass --cursor %s (or --all)", next)
 				}

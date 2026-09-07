@@ -706,32 +706,60 @@ func patternDeleteConfirm(ctx context.Context, ui *Options, p coreapi.Pattern) p
 // --- API keys ---
 
 // keyCreatePane opens the new-key form. For system principals it first loads
-// the accounts list so the tenant is PICKED, not typed (ULIDs are hostile).
+// the accounts list so the tenant is PICKED, not typed (ULIDs are hostile);
+// for account principals it loads the account's domains, so a DOMAIN SCOPE is
+// picked the same way. A domain list that cannot be read is an error pane, not
+// a silently unscoped form: the failure is visible and the mint would meet the
+// same fault a keystroke later.
 func keyCreatePane(ctx context.Context, ui *Options) pane {
-	if ui.Role != coreapi.PrincipalSystem {
-		return keyFormPane(ctx, ui, nil)
-	}
 	return newLoaderPane(ctx, ui, "New API key", func(lctx context.Context, c *coreapi.Client) (pane, error) {
-		accounts, err := coreapi.Depaginate(lctx, func(dctx context.Context, cursor string) (coreapi.Page[coreapi.Account], error) {
-			return c.ListAccounts(dctx, 200, cursor)
+		if ui.Role == coreapi.PrincipalSystem {
+			accounts, err := coreapi.Depaginate(lctx, func(dctx context.Context, cursor string) (coreapi.Page[coreapi.Account], error) {
+				return c.ListAccounts(dctx, 200, cursor)
+			})
+			if err != nil {
+				return nil, err
+			}
+			return keyFormPane(ctx, ui, accounts, nil), nil
+		}
+		domains, err := coreapi.Depaginate(lctx, func(dctx context.Context, cursor string) (coreapi.Page[coreapi.Domain], error) {
+			return c.ListDomains(dctx, 200, cursor)
 		})
 		if err != nil {
 			return nil, err
 		}
-		return keyFormPane(ctx, ui, accounts), nil
+		names := make([]string, 0, len(domains))
+		for _, d := range domains {
+			names = append(names, d.Domain)
+		}
+		return keyFormPane(ctx, ui, nil, names), nil
 	})
 }
 
-func keyFormPane(ctx context.Context, ui *Options, accounts []coreapi.Account) pane {
+// keyFormPane is the new-key form. `domains` are the choices for a domain
+// scope (core migration 0078) and are offered to ACCOUNT principals only: a
+// system caller's scope would depend on which account it picks two fields up,
+// and that is `openemail keys create --account … --domain …`. Nothing ticked
+// mints an account-wide key — the whole account is the absence of a scope.
+func keyFormPane(ctx context.Context, ui *Options, accounts []coreapi.Account, domains []string) pane {
 	var (
 		name      string
 		role      = coreapi.PrincipalAccount
 		accountID string
+		scope     []string
 	)
 	build := func() *huh.Form {
 		fields := []huh.Field{
 			huh.NewInput().Title("Name").Placeholder("ci @ builder").
 				Value(&name).Validate(required("name")),
+		}
+		if ui.Role != coreapi.PrincipalSystem && len(domains) > 0 {
+			fields = append(fields,
+				huh.NewMultiSelect[string]().Title("Domains").
+					Description("space toggles · tick domains to limit what the key reaches; none ticked is the whole account. Fixed for the key's life — revoke and re-mint to change it").
+					Options(huh.NewOptions(domains...)...).
+					Value(&scope),
+			)
 		}
 		if ui.Role == coreapi.PrincipalSystem {
 			acctOpts := make([]huh.Option[string], 0, len(accounts)+1)
@@ -756,16 +784,26 @@ func keyFormPane(ctx context.Context, ui *Options, accounts []coreapi.Account) p
 		if role == coreapi.PrincipalSystem {
 			acct = "" // system keys are platform-scoped by definition
 		}
-		ck, err := c.CreateAPIKey(sctx, strings.TrimSpace(name), role, acct)
+		// The client checks the echo: a core that ignored the scope has its
+		// key revoked before this returns, and the error says so.
+		ck, err := c.CreateAPIKey(sctx, coreapi.CreateKeyOptions{Name: strings.TrimSpace(name), Role: role, AccountID: acct, Domains: scope})
 		if err != nil {
 			return "", nil, err
 		}
-		scope := "platform"
+		owner := "platform"
 		if ck.AccountID != nil && *ck.AccountID != "" {
-			scope = "account " + *ck.AccountID
+			owner = "account " + *ck.AccountID
+		}
+		// Stated from what core RECORDED, never from what was ticked: the two
+		// differ exactly when a mint did not take, and this is the line a
+		// person would notice it on.
+		reach := "the whole account"
+		if len(ck.Domains) > 0 {
+			reach = strings.Join(ck.Domains, ", ")
 		}
 		reveal := newNotePane("API key created", []string{
-			"Name: " + ck.Name + " · role " + ck.Role + " · " + scope,
+			"Name: " + ck.Name + " · role " + ck.Role + " · " + owner,
+			"Reaches: " + reach,
 			"",
 			"Token — shown ONCE, copy it now:",
 			"",
@@ -817,7 +855,7 @@ func accountFormPane(ctx context.Context, ui *Options) pane {
 		// A keyless account is unusable — bootstrap one and reveal it once.
 		// The account exists either way; a failed mint is reported, not fatal.
 		lines := []string{"Account: " + a.Name, "Id: " + a.ID, ""}
-		ck, kerr := c.CreateAPIKey(sctx, "bootstrap", coreapi.PrincipalAccount, a.ID)
+		ck, kerr := c.CreateAPIKey(sctx, coreapi.CreateKeyOptions{Name: "bootstrap", Role: coreapi.PrincipalAccount, AccountID: a.ID})
 		if kerr != nil {
 			lines = append(lines,
 				"API key mint FAILED: "+kerr.Error(),

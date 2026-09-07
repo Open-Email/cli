@@ -96,6 +96,17 @@ type WhoamiResult struct {
 	// seconds), or nil when it never does. Present so the CLI can warn while the
 	// key still works, rather than letting a 401 be the first news of it.
 	IdleExpiresAt *int64 `json:"idleExpiresAt"`
+	// Domains is an account key's DOMAIN SCOPE (core migration 0078), sorted —
+	// absent for an unscoped key and for every other credential kind. Present,
+	// this key reaches only these domains' directory and the mailboxes with an
+	// address on one of them; a call outside that answers 404 (a resource) or
+	// 403 account_credentials_required (the account tier, and JMAP). Here so a
+	// holder can DISCOVER its own scope rather than infer it from refusals.
+	Domains []string `json:"domains"`
+	// Scope is a MAILBOX credential's rung (design D50), or nil for an API key,
+	// which has no rung. Distinct from Domains: one bounds what a bearer may DO,
+	// the other which domains it may do it to.
+	Scope *string `json:"scope"`
 }
 
 // Whoami introspects the current bearer.
