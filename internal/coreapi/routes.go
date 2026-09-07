@@ -14,9 +14,15 @@ type Route struct {
 	DestinationType string  `json:"destinationType"`
 	MailboxID       *string `json:"mailboxId"`
 	WebhookURL      *string `json:"webhookUrl"`
-	RemoteAddress   *string `json:"remoteAddress"`
-	Paced           bool    `json:"paced"`
-	CreatedAt       int64   `json:"createdAt"`
+	// WebhookFormat is the payload shape that webhook receives: "parsed" (core's
+	// default — decoded bodies and inlined attachments) or "reference" (headers
+	// plus rawUrl, no MIME walk). Follows WebhookURL's dual meaning: the
+	// destination's format on a webhook route, the tap's on any other. Nil when
+	// the address carries no webhook at all.
+	WebhookFormat *string `json:"webhookFormat"`
+	RemoteAddress *string `json:"remoteAddress"`
+	Paced         bool    `json:"paced"`
+	CreatedAt     int64   `json:"createdAt"`
 	// Posting ("open" | "members") and MemberCount are group-only and present
 	// only on single-route answers (create/get/update) — absent on the list and
 	// for other destination kinds.
@@ -44,8 +50,12 @@ type RouteCreateInput struct {
 	MailboxID       string `json:"mailboxId,omitempty"`
 	WebhookURL      string `json:"webhookUrl,omitempty"`
 	WebhookSecret   string `json:"webhookSecret,omitempty"`
-	RemoteAddress   string `json:"remoteAddress,omitempty"`
-	Paced           bool   `json:"paced"`
+	// WebhookFormat requires WebhookURL in the same body; empty = core's default
+	// ("parsed"). "reference" is refused when the deployment has not configured
+	// capability URLs, since that payload's bodies live only behind rawUrl.
+	WebhookFormat string `json:"webhookFormat,omitempty"`
+	RemoteAddress string `json:"remoteAddress,omitempty"`
+	Paced         bool   `json:"paced"`
 	// Posting is the group posting policy ("open" | "members"); group routes
 	// only (core answers 400 otherwise). Empty = core's default.
 	Posting string `json:"posting,omitempty"`

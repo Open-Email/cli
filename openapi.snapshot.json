@@ -6884,6 +6884,14 @@
               "null"
             ]
           },
+          "webhookFormat": {
+            "description": "Payload format when destinationType='webhook': 'parsed' (the default — decoded bodies and inlined attachments) or 'reference' (headers plus rawUrl, no MIME walk). 'parsed' and inert on every other destination type",
+            "enum": [
+              "parsed",
+              "reference"
+            ],
+            "type": "string"
+          },
           "webhookUrl": {
             "description": "Target webhook URL when destinationType='webhook', otherwise null",
             "type": [
@@ -6900,6 +6908,7 @@
           "destinationType",
           "mailboxId",
           "webhookUrl",
+          "webhookFormat",
           "remoteAddress",
           "aliasAddress",
           "paced",
@@ -9648,6 +9657,17 @@
               "null"
             ]
           },
+          "webhookFormat": {
+            "description": "Payload format for the webhook named by webhookUrl: 'parsed' (the default — decoded bodies and inlined attachments) or 'reference' (headers plus rawUrl, no MIME walk). Null when this address carries no webhook",
+            "enum": [
+              "parsed",
+              "reference"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "webhookUrl": {
             "description": "Target webhook URL or tap webhook URL, otherwise null",
             "type": [
@@ -9662,6 +9682,7 @@
           "destinationType",
           "mailboxId",
           "webhookUrl",
+          "webhookFormat",
           "remoteAddress",
           "paced",
           "createdAt"
@@ -13053,11 +13074,12 @@
             "$ref": "#/components/schemas/WebhookDeliveryAuth"
           },
           "bodiesOmitted": {
-            "description": "Present when the HEADERS parsed but the body did not, and why. text/html/attachments are then empty as a matter of ignorance, not of fact",
+            "description": "Present when the bodies are absent, and why. text/html/attachments are then empty as a matter of ignorance, not of fact — except for 'not_requested', which is the webhook asking for the 'reference' format: no MIME walk was performed and the original message is at rawUrl",
             "enum": [
               "too_large",
               "unavailable",
-              "parse_failed"
+              "parse_failed",
+              "not_requested"
             ],
             "type": "string"
           },
@@ -40479,6 +40501,13 @@
                     "format": "email",
                     "type": "string"
                   },
+                  "webhookFormat": {
+                    "enum": [
+                      "parsed",
+                      "reference"
+                    ],
+                    "type": "string"
+                  },
                   "webhookSecret": {
                     "type": [
                       "string",
@@ -40659,6 +40688,13 @@
                   },
                   "remoteAddress": {
                     "format": "email",
+                    "type": "string"
+                  },
+                  "webhookFormat": {
+                    "enum": [
+                      "parsed",
+                      "reference"
+                    ],
                     "type": "string"
                   },
                   "webhookSecret": {
@@ -41416,6 +41452,13 @@
                     "format": "email",
                     "type": "string"
                   },
+                  "webhookFormat": {
+                    "enum": [
+                      "parsed",
+                      "reference"
+                    ],
+                    "type": "string"
+                  },
                   "webhookSecret": {
                     "type": "string"
                   },
@@ -41668,6 +41711,14 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "webhookFormat": {
+                    "description": "Webhook payload format: 'parsed' (default) or 'reference'",
+                    "enum": [
+                      "parsed",
+                      "reference"
+                    ],
+                    "type": "string"
                   },
                   "webhookSecret": {
                     "description": "HMAC signing secret for webhooks (null to clear)",
@@ -45828,7 +45879,7 @@
     },
     "message-delivery": {
       "post": {
-        "description": "POSTed when mail arrives for an address routed to a webhook URL (`POST /api/v1/routes` with a webhook target), or as a TAP beside an ordinary mailbox delivery. The POST *is* the delivery: answer a 2xx within 30 seconds (acknowledge first, work after) or the attempt is retried with the same `deliveryId`. Redirects are never followed: a 3xx counts as a failed attempt at the registered URL. Bodies and attachments are inlined up to fixed ceilings (1 MiB per body, 256 KiB per attachment, 1 MiB total attachment budget); anything larger arrives as a signed, expiring `url` / `rawUrl` capability redeemed at `GET /api/v1/deliveries/fetch/{token}` with no credential. The parse is the SAME machinery as `GET /messages/{id}/content`, so a webhook receiver and a REST reader can never disagree about what the body is.",
+        "description": "POSTed when mail arrives for an address routed to a webhook URL (`POST /api/v1/routes` with a webhook target), or as a TAP beside an ordinary mailbox delivery. The POST *is* the delivery: answer a 2xx within 30 seconds (acknowledge first, work after) or the attempt is retried with the same `deliveryId`. Redirects are never followed: a 3xx counts as a failed attempt at the registered URL. Bodies and attachments are inlined up to fixed ceilings (1 MiB per body, 256 KiB per attachment, 1 MiB total attachment budget); anything larger arrives as a signed, expiring `url` / `rawUrl` capability redeemed at `GET /api/v1/deliveries/fetch/{token}` with no credential. The parse is the SAME machinery as `GET /messages/{id}/content`, so a webhook receiver and a REST reader can never disagree about what the body is. A route or tap set to `webhookFormat: \"reference\"` opts out of the parse entirely: the same envelope and the same `message` with every header, `auth` and `rawUrl`, but `text`/`html` null, `attachments` empty and `bodiesOmitted: \"not_requested\"` — for a receiver that carries its own MIME parser.",
         "parameters": [
           {
             "description": "`sha256=<hex HMAC-SHA256 of the exact raw request body>`, keyed with the hook's secret. Present only when the hook has one. Verify against the received bytes before parsing; never re-serialize",

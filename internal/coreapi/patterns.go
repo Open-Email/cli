@@ -16,10 +16,15 @@ type Pattern struct {
 	DestinationType string  `json:"destinationType"`
 	MailboxID       *string `json:"mailboxId"`
 	WebhookURL      *string `json:"webhookUrl"`
-	RemoteAddress   *string `json:"remoteAddress"`
-	AliasAddress    *string `json:"aliasAddress"`
-	Paced           bool    `json:"paced"`
-	CreatedAt       int64   `json:"createdAt"`
+	// WebhookFormat is the payload shape for a webhook destination: "parsed"
+	// (core's default) or "reference" (headers plus rawUrl, no MIME walk).
+	// "parsed" and inert on every other destination type — a pattern carries no
+	// tap, so unlike a Route this is never null.
+	WebhookFormat string  `json:"webhookFormat"`
+	RemoteAddress *string `json:"remoteAddress"`
+	AliasAddress  *string `json:"aliasAddress"`
+	Paced         bool    `json:"paced"`
+	CreatedAt     int64   `json:"createdAt"`
 }
 
 // PatternCreateInput is the POST /patterns body.
@@ -31,9 +36,11 @@ type PatternCreateInput struct {
 	MailboxID       string `json:"mailboxId,omitempty"`
 	WebhookURL      string `json:"webhookUrl,omitempty"`
 	WebhookSecret   string `json:"webhookSecret,omitempty"`
-	RemoteAddress   string `json:"remoteAddress,omitempty"`
-	AliasAddress    string `json:"aliasAddress,omitempty"`
-	Paced           bool   `json:"paced"`
+	// Empty = core's default ("parsed"); see Route's field for the semantics.
+	WebhookFormat string `json:"webhookFormat,omitempty"`
+	RemoteAddress string `json:"remoteAddress,omitempty"`
+	AliasAddress  string `json:"aliasAddress,omitempty"`
+	Paced         bool   `json:"paced"`
 }
 
 // ListPatterns returns one page (numeric cursor; core answers 400 invalid_cursor
