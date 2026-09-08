@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
@@ -294,10 +296,10 @@ func newMailboxGetCmd(a *app) *cobra.Command {
 }
 
 func newMailboxUpdateCmd(a *app) *cobra.Command {
-	var address, quota, sendMsgs, sendRcpts string
+	var address, quota, sendMsgs, sendRcpts, semantic, semanticFloor string
 	cmd := &cobra.Command{
 		Use:   "update <mailboxId>",
-		Short: "Update a mailbox's quota, primary address, or send caps",
+		Short: "Update a mailbox's quota, primary address, send caps or semantic search",
 		Long: "Update one mailbox. The send caps need a system key — a tenant that can raise\n" +
 			"its own cap has a suggestion, not a limit. Holding or stopping a mailbox's\n" +
 			"sending is an operator action: openemail admin hold mailbox <id> --pause|--stop.",
@@ -343,8 +345,36 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 				patch[f.field] = v // nil marshals as JSON null = clear the override
 			}
 
+			// SEMANTIC (meaning-based) search — the tenant's own switch, gated by
+			// the account's plan flag (403 semantic_not_enabled without it).
+			//
+			// Turning it ON embeds new mail as it arrives and backfills a recent
+			// window; turning it OFF DELETES the mailbox's embeddings, which is
+			// the design's guarantee rather than a side effect — a tenant who
+			// turned it off did not ask for a derived copy of their mail to be
+			// kept. That is why this is an explicit true|false and not a bare
+			// --semantic: a flag that could only mean "on" would make the
+			// destructive direction the harder one to reach for.
+			if cmd.Flags().Changed("semantic") {
+				v, perr := parseBoolFlag("--semantic", semantic)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch["semantic"] = v
+			}
+			// How far BACK the backfill goes. Separate from the switch because
+			// lowering it on an already-opted-in mailbox is the "index my older
+			// mail" verb, and it is the one knob here whose cost is unbounded by
+			// the default window.
+			if cmd.Flags().Changed("semantic-floor") {
+				v, perr := parseSemanticFloorFlag(semanticFloor)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch["semanticFloor"] = v
+			}
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --address, --quota, or a --send-*-per-day cap (to hold or stop sending: openemail admin hold)"))
+				return usageError(errors.New("nothing to update — pass --address, --quota, --semantic, --semantic-floor, or a --send-*-per-day cap (to hold or stop sending: openemail admin hold)"))
 			}
 			mb, err := client.UpdateMailbox(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -361,7 +391,52 @@ func newMailboxUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&quota, "quota", "", "new quota in bytes, or 'unlimited'")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages per rolling 24h: a number, 'unlimited', or 'default' to drop the override (system key required)")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h: a number, 'unlimited', or 'default' to drop the override (system key required)")
+	cmd.Flags().StringVar(&semantic, "semantic", "", "SEMANTIC (meaning-based) search for this mailbox: true|false. Needs the account's plan gate. true embeds new mail and backfills a recent window; FALSE DELETES this mailbox's embeddings")
+	cmd.Flags().StringVar(&semanticFloor, "semantic-floor", "", "how far back to index: 'all', a date (2025-01-01), a relative age (18m, 400d), or unix seconds. Lowering it on an opted-in mailbox indexes older mail")
 	return cmd
+}
+
+// semanticFloorRelative matches the relative ages the floor accepts (18m, 400d,
+// 2y) — the register an operator actually thinks in for "how far back".
+var semanticFloorRelative = regexp.MustCompile(`^(\d+)([dmy])$`)
+
+// parseSemanticFloorFlag renders --semantic-floor as the epoch SECONDS core
+// stores, accepting the forms a person types: "all" for everything, a relative
+// age, a bare date, or raw seconds.
+//
+// "all" is 0 and not nil. Core distinguishes them — nil means semantic search
+// is OFF, 0 means indexed from the beginning of time — so a parser that folded
+// "all" into null would ask for the opposite of what was typed on the one flag
+// whose whole purpose is reaching further back.
+func parseSemanticFloorFlag(s string) (int64, error) {
+	trimmed := strings.ToLower(strings.TrimSpace(s))
+	switch trimmed {
+	case "all", "everything", "0":
+		return 0, nil
+	}
+	if m := semanticFloorRelative.FindStringSubmatch(trimmed); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		var d time.Duration
+		switch m[2] {
+		case "d":
+			d = time.Duration(n) * 24 * time.Hour
+		case "m":
+			d = time.Duration(n) * 30 * 24 * time.Hour
+		case "y":
+			d = time.Duration(n) * 365 * 24 * time.Hour
+		}
+		return time.Now().Add(-d).Unix(), nil
+	}
+	if t, err := time.Parse("2006-01-02", trimmed); err == nil {
+		return t.UTC().Unix(), nil
+	}
+	if n, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+		if n < 0 {
+			return 0, fmt.Errorf("--semantic-floor cannot be negative, got %q", s)
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("--semantic-floor %q: expected 'all', a date (2025-01-01), a relative age (18m, 400d, 2y), or unix seconds", s)
 }
 
 // parseSendCapFlag parses a --send-*-per-day value into the three states core
@@ -529,6 +604,13 @@ func printMailbox(w io.Writer, p *Printer, m *coreapi.Mailbox) {
 			[]string{"  rcpts/day", fmtSendCap(m.SendRcptsPerDay)},
 		)
 	}
+	// Shown only when ON, like the caps above: "no" on every mailbox that never
+	// asked for it is a row saying nothing. When on, the floor rides with it —
+	// the switch alone would not say how much of the mailbox is actually
+	// reachable by a meaning-based search.
+	if m.Semantic {
+		rows = append(rows, []string{"Semantic search", fmtSemanticFloor(m.SemanticFloor)})
+	}
 	if m.MessageCount != nil {
 		rows = append(rows, []string{"Messages", int64Or(m.MessageCount, "0")})
 	}
@@ -546,4 +628,18 @@ func deref(p *int64) int64 {
 		return 0
 	}
 	return *p
+}
+
+// fmtSemanticFloor says how far back the index reaches, in the words the flag
+// takes. A nil floor on a mailbox reporting Semantic:true is core's older
+// shape rather than an error, so it is named as unknown rather than guessed at.
+func fmtSemanticFloor(floor *int64) string {
+	switch {
+	case floor == nil:
+		return "on"
+	case *floor == 0:
+		return "on, all mail indexed"
+	default:
+		return "on, indexed from " + fmtEpoch(*floor)
+	}
 }

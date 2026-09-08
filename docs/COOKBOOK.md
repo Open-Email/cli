@@ -345,6 +345,37 @@ by `--position` instead of a cursor. Core allows at most one full-text condition
 a bare query and `--subject`/`--body` are mutually exclusive. Dates take RFC3339,
 `YYYY-MM-DD`, or a relative `7d`/`24h`; sizes take a `k`/`m`/`g` suffix.
 
+## Turn on semantic (meaning-based) search
+
+```sh
+# 1. the PLAN GATE, system key — lets this account's mailboxes opt in at all
+openemail accounts update <accountId> --semantic true
+
+# 2. the mailbox opts itself in — embeds new mail, backfills a recent window
+openemail mailboxes update <mailboxId> --semantic true
+
+# 3. reach further back than the default window
+openemail mailboxes update <mailboxId> --semantic-floor all      # or 2025-01-01, 18m, 400d
+
+# check either half
+openemail accounts get <accountId>      # "Semantic search"
+openemail mailboxes get <mailboxId>     # shown only when on, with how far back it reaches
+```
+
+Two gates, and searching before both are set answers `semantic_not_enabled` — one
+code for both causes, so check the account first: a mailbox cannot opt in without
+the plan gate. The gate is system-only because embedding spends a shared model
+budget and keeps a derived copy of every message in a third store.
+
+The floor takes `all`, a date, a relative age (`18m`, `400d`, `2y`) or unix
+seconds. Lowering it on a mailbox that is already opted in is the "index my older
+mail" verb; the backfill's default window is the later of 12 months and the 20,000
+most recent messages.
+
+`--semantic false` on a mailbox **deletes that mailbox's embeddings** — that is the
+opt-out guarantee, not a side effect. Clearing the account gate while any mailbox
+is still opted in is refused: opt them out first.
+
 ## List by the date the sender wrote, not by arrival
 
 ```sh

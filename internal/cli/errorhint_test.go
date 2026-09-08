@@ -29,6 +29,37 @@ func TestErrorHint(t *testing.T) {
 			want: "routes create alias@x.test --type mailbox",
 		},
 		{
+			// ONE core code, two remedies, and only the status separates them.
+			// Core collapses them deliberately; the CLI is where that has to be
+			// un-collapsed, or "not enabled" leaves a user with nothing to do.
+			name: "semantic_not_enabled at 403 names the account gate",
+			ae:   &coreapi.APIError{Status: 403, Code: "semantic_not_enabled"},
+			want: "accounts update <accountId> --semantic true",
+		},
+		{
+			name: "semantic_not_enabled at 409 names BOTH possibilities, account first",
+			ae:   &coreapi.APIError{Status: 409, Code: "semantic_not_enabled"},
+			want: "mailboxes update <id> --semantic true",
+		},
+		{
+			// The remedy is an ORDER, not a flag: the tenant's opt-out is what
+			// deletes the embeddings, so it has to happen before the gate clears.
+			name: "semantic_mailboxes_opted_in says to opt the mailboxes out first",
+			ae:   &coreapi.APIError{Status: 409, Code: "semantic_mailboxes_opted_in"},
+			want: "opt each one out first",
+		},
+		{
+			name: "semantic_capacity is not the caller's to fix",
+			ae:   &coreapi.APIError{Status: 503, Code: "semantic_capacity"},
+			want: "an operator adds one",
+		},
+		{
+			// The floor rides the error, and it is the half that says what to do.
+			name: "not_embedded names the window it fell outside",
+			ae:   &coreapi.APIError{Status: 409, Code: "not_embedded", Extra: map[string]any{"semanticFloor": float64(1735689600)}},
+			want: "--semantic-floor all",
+		},
+		{
 			// The end of a key's life, and the one failure the platform
 			// manufactures on its own schedule: a CLI key that lapses from disuse
 			// answers exactly like a revoked or mistyped one, so the hint has to

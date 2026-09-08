@@ -290,6 +290,9 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Max mailboxes", int64Or(acc.MaxMailboxes, "unlimited")},
 		{"Storage pool", fmtStoragePool(acc.StorageLimitBytes)},
 		{"Vanity hostnames", boolYN(acc.VanityHosts)},
+		// The plan gate, not the state: "yes" means mailboxes MAY opt in, never
+		// that any has. `mailboxes get` answers for a mailbox.
+		{"Semantic search", boolYN(acc.Semantic)},
 		{"Created", fmtEpoch(acc.CreatedAt)},
 	})
 }
@@ -335,11 +338,12 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		sendMsgs, sendRcpts string
 		vanityHosts         string
 		storageLimit        string
+		semantic            string
 	)
 	cmd := &cobra.Command{
 		Use:     "update <accountId>",
 		Aliases: []string{"patch"},
-		Short:   "Update an account's name, caps, storage pool or vanity-hostname gate (system callers only)",
+		Short:   "Update an account's name, caps, storage pool, vanity-hostname or semantic-search gate (system callers only)",
 		Long: "Update a tenant account. Holding or stopping the tenant's outbound mail is an operator\n" +
 			"action of its own: openemail admin hold account <id> --pause|--stop (and admin release).\n" +
 			"Both cover every mailbox on every domain the account owns, queued relay backlog included,\n" +
@@ -402,8 +406,24 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 				}
 				patch["vanityHosts"] = v
 			}
+			// The semantic-search PLAN GATE. On/off like --vanity-hosts, but the
+			// asymmetry is the opposite way round and worth knowing before
+			// typing it: turning it ON lets the tenant opt mailboxes in, which
+			// spends a shared model budget and puts a derived copy of their mail
+			// in a third store; turning it OFF is REFUSED (409
+			// semantic_mailboxes_opted_in) while any mailbox is still opted in,
+			// because paid-with-vectors does not silently become free. The
+			// tenant opts out first — which deletes the embeddings — or the
+			// account is deleted.
+			if cmd.Flags().Changed("semantic") {
+				v, perr := parseBoolFlag("--semantic", semantic)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch["semantic"] = v
+			}
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --name, --max-mailboxes, --send-*-per-day, --storage-limit or --vanity-hosts (to hold or stop sending: openemail admin hold account)"))
+				return usageError(errors.New("nothing to update — pass --name, --max-mailboxes, --send-*-per-day, --storage-limit, --vanity-hosts or --semantic (to hold or stop sending: openemail admin hold account)"))
 			}
 			acc, err := client.UpdateAccount(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -422,6 +442,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
 	cmd.Flags().StringVar(&storageLimit, "storage-limit", "", "account-wide storage POOL across every mailbox it owns: a size like 50G, 'unlimited' (metered — overage billed, never refused), or 'default' for the platform pool")
 	cmd.Flags().StringVar(&vanityHosts, "vanity-hosts", "", "may this account claim VANITY HOSTNAMES (its own mail./smtp./webmail./dav. names): true|false. Gates claiming only — turning it off never revokes hostnames already serving clients")
+	cmd.Flags().StringVar(&semantic, "semantic", "", "may this account's mailboxes enable SEMANTIC (meaning-based) search: true|false. The plan gate only — each mailbox still opts in for itself (openemail mailboxes update <id> --semantic true). Refused while a mailbox is still opted in")
 	return cmd
 }
 

@@ -210,6 +210,36 @@ func errorHint(ae *coreapi.APIError) string {
 		// commands work with one, which is exactly why the few that do not read
 		// as a bug rather than as the restriction doing its job.
 		return "this key is restricted to specific domains — account-wide commands (accounts, audit, keys) need an unrestricted key"
+	case "semantic_not_enabled":
+		// ONE code, two different remedies, and the status is what separates
+		// them — which is exactly the ambiguity a CLI should resolve rather
+		// than pass through. Core collapses them on purpose (D36: authorization
+		// has already passed, so the code leaks nothing), but "not enabled" is
+		// unactionable when it could mean either the account's plan gate or
+		// this mailbox's own switch.
+		if ae.Status == 403 {
+			return "this account does not have the semantic-search plan gate — an operator sets it: openemail accounts update <accountId> --semantic true (system key)"
+		}
+		return "either this mailbox has not opted in (openemail mailboxes update <id> --semantic true) or its account lacks the plan gate (openemail accounts get <accountId> — 'Semantic search'); check the account first, since the mailbox cannot opt in without it"
+	case "semantic_mailboxes_opted_in":
+		// Refusing to clear the gate under a mailbox that is still using it.
+		// The remedy is an ORDER, not a flag, and the order is the point: the
+		// tenant's opt-out is what deletes the embeddings.
+		return "mailboxes on this account still have semantic search on — clearing the plan gate would leave paid-for embeddings running: opt each one out first (openemail mailboxes update <id> --semantic false, which deletes its embeddings)"
+	case "semantic_capacity":
+		// Not the caller's fault and not fixable by them.
+		return "no vector shard is open for new mailboxes — an operator adds one; openemail api GET /system/vec shows the fan's state (system key)"
+	case "semantic_misconfigured":
+		// Deliberately distinguished from the transient sibling: core sends no
+		// Retry-After here because retrying never resolves it.
+		return "semantic search is not configured on this deployment — retrying will not help; openemail api GET /system/vec shows whether any shard is reachable (system key)"
+	case "not_embedded":
+		// `/similar` on a message the backfill has not reached. `semanticFloor`
+		// rides the error, and it is the actionable half.
+		if floor, ok := ae.Extra["semanticFloor"].(float64); ok && floor > 0 {
+			return fmt.Sprintf("this message is older than the indexed window (indexed from %s) — reach further back with: openemail mailboxes update <id> --semantic-floor all", fmtEpoch(int64(floor)))
+		}
+		return "this message has not been embedded — it may predate the indexed window, or the backfill may still be running"
 	case "verification_unavailable":
 		// A resolver outage, not the customer's DNS. Retrying is the whole fix.
 		return "DNS could not be queried just now — nothing was changed; try again shortly"
