@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Open-Email/cli/internal/coreapi"
+	"github.com/spf13/cobra"
 )
 
 // The floor is the one semantic flag with a parser, and the parser is where
@@ -105,5 +110,115 @@ func TestSemanticFlagIsExplicitTriState(t *testing.T) {
 	}
 	if _, err := parseBoolFlag("--semantic", ""); err == nil {
 		t.Fatal("an empty --semantic should be refused, not read as false")
+	}
+}
+
+// The semantic route takes q, label, limit, cursor, since/before and snippet —
+// and nothing else. A CLI that accepted --from here and dropped it would answer
+// a DIFFERENT question than the one asked, which on a search is
+// indistinguishable from a wrong answer. So the refusals are the behaviour
+// worth pinning, and each one has to name a way forward.
+func TestSemanticModeRefusesWhatItCannotHonour(t *testing.T) {
+	// A stand-in for the real command's flag set: runSemanticSearch reads flags
+	// through cmd.Flags().Changed, so what it needs is a command whose flags
+	// have the same names and can be marked changed.
+	newCmd := func(changed ...string) *cobra.Command {
+		cmd := &cobra.Command{Use: "search"}
+		for _, name := range []string{
+			"from", "to", "cc", "subject", "body", "min-size", "max-size",
+			"has-attachment", "unread", "flagged", "has-keyword", "not-keyword",
+			"sort", "position", "total", "mode",
+		} {
+			cmd.Flags().String(name, "", "")
+		}
+		for _, name := range changed {
+			if err := cmd.Flags().Set(name, "x"); err != nil {
+				t.Fatalf("set %s: %v", name, err)
+			}
+		}
+		return cmd
+	}
+	a := &app{out: &Printer{out: io.Discard, err: io.Discard}}
+
+	for _, tc := range []struct {
+		name    string
+		changed []string
+		mode    string
+		query   string
+		all     bool
+		group   bool
+		want    string
+	}{
+		{
+			name:    "a structured filter is refused by name, with the alternative",
+			changed: []string{"from"},
+			mode:    "hybrid", query: "anything",
+			want: "--from cannot be combined with --mode",
+		},
+		{
+			name:    "several are listed together rather than one at a time",
+			changed: []string{"from", "unread"},
+			mode:    "hybrid", query: "anything",
+			want: "--from, --unread",
+		},
+		{
+			// Not a longer answer — the same short answer with a misleading
+			// shape, since the route is bounded at 100 candidates.
+			name: "--all is refused because there is no every-page to fetch",
+			mode: "hybrid", query: "anything", all: true,
+			want: "100 most relevant",
+		},
+		{
+			name:  "--group-thread is refused: this route ranks messages",
+			mode:  "hybrid",
+			query: "anything", group: true,
+			want: "--group-thread cannot be combined",
+		},
+		{
+			name: "an empty query is refused with an example",
+			mode: "hybrid",
+			want: "--mode needs a query",
+		},
+		{
+			name: "an unknown mode names the two that exist",
+			mode: "sideways", query: "anything",
+			want: "must be 'hybrid' or 'semantic'",
+		},
+		{
+			// "lexical" is what someone types reaching for the default, and
+			// sending it to the semantic route would be silently wrong.
+			name: "--mode lexical points back at the plain search",
+			mode: "lexical", query: "anything",
+			want: "drop --mode entirely",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newCmd(tc.changed...)
+			err := runSemanticSearch(cmd, a, nil, "MBX", tc.query, "", 0, "", tc.mode, tc.all, tc.group, &searchFlags{})
+			if err == nil {
+				t.Fatal("expected a refusal")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q should contain %q", err.Error(), tc.want)
+			}
+		})
+	}
+}
+
+// An incomplete backfill is not an error and nothing in the results reveals
+// it — they are simply the best of what has been embedded so far, which on a
+// half-indexed mailbox can be a confidently-ranked list of the wrong messages.
+func TestSemanticCoverageWarnsOnlyWhenIncomplete(t *testing.T) {
+	var buf bytes.Buffer
+	a := &app{out: &Printer{out: io.Discard, err: &buf}}
+
+	printSemanticCoverage(a, &coreapi.SemanticSearchResult{Coverage: coreapi.SemanticCoverage{Complete: true}})
+	if buf.Len() != 0 {
+		t.Fatalf("a complete index should say nothing, got %q", buf.String())
+	}
+
+	printSemanticCoverage(a, &coreapi.SemanticSearchResult{Coverage: coreapi.SemanticCoverage{Complete: false}})
+	if !strings.Contains(buf.String(), "still running") {
+		t.Fatalf("an incomplete index must warn, got %q", buf.String())
 	}
 }

@@ -376,6 +376,28 @@ most recent messages.
 opt-out guarantee, not a side effect. Clearing the account gate while any mailbox
 is still opted in is refused: opt them out first.
 
+## Search by meaning
+
+```sh
+openemail search "the invoice from the Berlin supplier" --mode hybrid
+openemail search "someone complaining the onboarding was confusing" --mode semantic
+openemail search "what legal said about the lease" --mode hybrid --label Archive --snippet
+```
+
+`hybrid` fuses the word ranking into the meaning ranking, which is what keeps exact
+identifiers (invoice numbers, surnames) findable — it is the one to reach for.
+`semantic` asks for the vector ranking alone, which is mostly useful for comparing
+the two.
+
+This route filters by `--label`, `--before` and `--after` only. The structured flags
+(`--from`, `--unread`, `--sort`, …) are refused rather than ignored, because
+silently dropping them would answer a different question than the one asked. It also
+answers the 100 most relevant candidates by construction, so `--all` is refused too:
+there is no every-page to fetch.
+
+While the backfill is still running the CLI says so above the results — they are the
+best matches among the messages embedded *so far*, not the mailbox.
+
 ## List by the date the sender wrote, not by arrival
 
 ```sh

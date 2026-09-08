@@ -52,12 +52,18 @@ func newSearchCmd(a *app) *cobra.Command {
 		cursor      string
 		groupThread bool
 		all         bool
+		mode        string
 		sf          searchFlags
 	)
 	cmd := &cobra.Command{
 		Use:   "search [query]",
-		Short: "Search a mailbox: full text, or structured filters over any field",
+		Short: "Search a mailbox: full text, by MEANING, or structured filters over any field",
 		Long: "Search a mailbox's messages.\n\n" +
+			"--mode semantic|hybrid searches by MEANING rather than by words: 'the invoice\n" +
+			"from the Berlin supplier' finds it whether or not those words appear. hybrid\n" +
+			"(the default when --mode is given) fuses the word ranking in, which is what\n" +
+			"keeps exact identifiers findable; semantic asks for the vector ranking alone.\n" +
+			"Both need the mailbox opted in: openemail mailboxes update <id> --semantic true.\n\n" +
 			"With just a query it runs a full-text search. Add any structured flag\n" +
 			"(--from/--before/--unread/--sort/…) and it switches to the filter search,\n" +
 			"which pages by offset (--position) rather than by cursor.\n\n" +
@@ -81,6 +87,9 @@ func newSearchCmd(a *app) *cobra.Command {
 				return err
 			}
 
+			if cmd.Flags().Changed("mode") {
+				return runSemanticSearch(cmd, a, client, mbx, query, label, limit, cursor, mode, all, groupThread, &sf)
+			}
 			if sf.structured(cmd) {
 				return runStructuredSearch(cmd, a, client, mbx, query, label, limit, groupThread, all, cursor, &sf)
 			}
@@ -128,6 +137,7 @@ func newSearchCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous page (text search only)")
 	cmd.Flags().BoolVar(&groupThread, "group-thread", false, "one result per conversation")
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page (text search only)")
+	cmd.Flags().StringVar(&mode, "mode", "", "search by MEANING: 'hybrid' (word ranking fused in — the one to use) or 'semantic' (vectors alone). Needs the mailbox opted in")
 
 	cmd.Flags().StringVar(&sf.from, "from", "", "From contains")
 	cmd.Flags().StringVar(&sf.to, "to", "", "To contains")
@@ -148,6 +158,84 @@ func newSearchCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&sf.total, "total", false, "also report the total number of matches")
 	cmd.Flags().BoolVar(&sf.snippet, "snippet", false, "also show highlighted excerpts of the matched text")
 	return cmd
+}
+
+// runSemanticSearch drives the meaning-based route.
+//
+// It REFUSES the structured flags rather than ignoring them. Core's semantic
+// route takes q, label, limit, cursor, since/before and snippet — and nothing
+// else: there is no --from, no --unread, no --sort. A CLI that accepted them
+// here and dropped them would answer a different question than the one asked,
+// which on a search is indistinguishable from a wrong answer. The refusal
+// names the flags it saw, and the alternative, because "unsupported" without
+// a way forward is a dead end.
+//
+// --all is refused for a reason worth stating: this route is bounded at the
+// 100 most relevant candidates by construction. It answers "the most
+// relevant", never "every match ranked", so depaginating it is not a longer
+// answer — it is the same short answer with a misleading shape.
+func runSemanticSearch(cmd *cobra.Command, a *app, client *coreapi.Client, mbx, query, label string,
+	limit int, cursor, mode string, all, groupThread bool, sf *searchFlags) error {
+	fuse := ""
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "hybrid", "":
+		fuse = "lexical"
+	case "semantic", "vector", "none":
+		fuse = "none"
+	case "lexical", "text":
+		return usageError(errors.New("--mode lexical is the default search — drop --mode entirely"))
+	default:
+		return usageError(fmt.Errorf("--mode must be 'hybrid' or 'semantic', got %q", mode))
+	}
+	if query == "" {
+		return usageError(errors.New("--mode needs a query: openemail search 'the invoice from the Berlin supplier' --mode hybrid"))
+	}
+	var refused []string
+	for _, name := range []string{
+		"from", "to", "cc", "subject", "body", "min-size", "max-size",
+		"has-attachment", "unread", "flagged", "has-keyword", "not-keyword",
+		"sort", "position", "total",
+	} {
+		if cmd.Flags().Changed(name) {
+			refused = append(refused, "--"+name)
+		}
+	}
+	if len(refused) > 0 {
+		return usageError(fmt.Errorf(
+			"%s cannot be combined with --mode: the semantic route filters by label and date only — run the structured search without --mode, or narrow with --label/--before/--after",
+			strings.Join(refused, ", ")))
+	}
+	if groupThread {
+		return usageError(errors.New("--group-thread cannot be combined with --mode (the semantic route ranks messages, not conversations)"))
+	}
+	if all {
+		return usageError(errors.New("--all cannot be combined with --mode: the semantic route answers the 100 most relevant candidates by construction, so there is no every-page to fetch"))
+	}
+
+	res, err := client.SemanticSearch(cmd.Context(), mbx, query, label, limit, cursor, fuse, sf.snippet)
+	if err != nil {
+		return err
+	}
+	a.out.Emit(res, func(w io.Writer) {
+		printTable(w, a.out, messageListHeaders, messageListRows(res.Results, ""))
+		printSemanticCoverage(a, res)
+		a.moreHint(res.NextCursor)
+	})
+	return nil
+}
+
+// printSemanticCoverage warns when the ranking above is PARTIAL.
+//
+// An incomplete backfill is not an error and nothing in the results reveals
+// it: they are simply the best of what has been embedded so far, which on a
+// mailbox halfway through indexing can be a confidently-ranked list of the
+// wrong messages. Saying so is the difference between a user who waits and
+// one who concludes the feature does not work.
+func printSemanticCoverage(a *app, res *coreapi.SemanticSearchResult) {
+	if res.Coverage.Complete {
+		return
+	}
+	a.out.Warnf("indexing is still running — these are the best matches among the messages embedded SO FAR, not the mailbox")
 }
 
 func runStructuredSearch(cmd *cobra.Command, a *app, client *coreapi.Client, mbx, query, label string,

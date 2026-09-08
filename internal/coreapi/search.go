@@ -92,6 +92,68 @@ func (c *Client) SearchQuery(ctx context.Context, mailboxID string, req EmailSea
 	return &out, nil
 }
 
+// SemanticCoverage says how much of a mailbox a meaning-based search actually
+// reached. Since is the earliest arrival time the index covers (0 = all mail);
+// Complete is false while the backfill is still running, which makes every
+// ranking beside it PARTIAL — a result set taken then describes how far the
+// backfill got, not what the mailbox holds.
+type SemanticCoverage struct {
+	Since    *int64 `json:"since"`
+	Complete bool   `json:"complete"`
+}
+
+// SemanticSearchResult is the semantic route's answer: the same MessageMeta
+// rows /search returns, plus the coverage the caller has to know about before
+// trusting them.
+type SemanticSearchResult struct {
+	Results    []MessageMeta    `json:"results"`
+	NextCursor string           `json:"nextCursor"`
+	Coverage   SemanticCoverage `json:"coverage"`
+	Scoped     string           `json:"scoped,omitempty"`
+}
+
+// SemanticSearch runs a MEANING-based query over a mailbox
+// (docs/semantic-search-design.md §V). Hybrid by default — the BM25 ranking is
+// fused in by reciprocal rank, which is what keeps exact identifiers findable —
+// and fuse "none" asks for the vector ranking alone.
+//
+// Needs the mailbox opted in AND its account's plan gate: without either, core
+// answers 409 semantic_not_enabled for both causes and the CLI's error hint is
+// what separates them. Bounded at the 100 most relevant candidates before
+// filtering: this is "the most relevant", never "every match ranked" — deep
+// paging is Search's job.
+func (c *Client) SemanticSearch(ctx context.Context, mailboxID, query, label string, limit int, cursor, fuse string, snippet bool) (*SemanticSearchResult, error) {
+	q := url.Values{}
+	q.Set("q", query)
+	if label != "" {
+		q.Set("label", label)
+	}
+	if limit > 0 {
+		q.Set("limit", itoa(limit))
+	}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	// Only ever sent as "none": "lexical" IS the default, and sending it would
+	// make a future change to that default silently not reach this client.
+	if fuse == "none" {
+		q.Set("fuse", "none")
+	}
+	if snippet {
+		q.Set("snippet", "true")
+	}
+	var out SemanticSearchResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodGet,
+		path:   "/mailboxes/" + escapeSegment(mailboxID) + "/search/semantic",
+		query:  q, idempotent: true,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Search runs a full-text query over a mailbox. label restricts to one label;
 // groupThread collapses matches to one per conversation (single page — a cursor
 // with groupThread is rejected 400 grouped_search_unpaginated). limit is 1..100
