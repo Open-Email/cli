@@ -1082,6 +1082,10 @@
             "description": "System keys only (migration 0046): when true, mailbox-scoped requests made with this key must declare `X-Acting-Identity` or are refused `403 acting_required`. Set it on an INGRESS credential (a gateway or BFF acting for a logged-in user); never on an autonomous one (smtp-in, pop3-fetch, automation), which has no acting user.",
             "type": "boolean"
           },
+          "requireActingCredential": {
+            "description": "System keys only (migration 0081): when true, those same requests must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — so the credential's scope and recipient list survive being relayed under this key. It is also what lets `/auth/verify` hand this key a credential scoped below 'full': only a key that carries the header can honour a scope, and a session it would silently exceed must not open.",
+            "type": "boolean"
+          },
           "revokedAt": {
             "description": "Timestamp when key was revoked in epoch seconds, or null",
             "format": "int64",
@@ -1106,6 +1110,7 @@
           "lastUsedAt",
           "revokedAt",
           "requireActing",
+          "requireActingCredential",
           "kind",
           "idleTtlS",
           "idleExpiresAt"
@@ -1189,13 +1194,46 @@
         "oneOf": [
           {
             "properties": {
+              "blobHash": {
+                "description": "On a fresh store: the blob SHA-256 (what body caches key on)",
+                "type": "string"
+              },
               "duplicate": {
                 "description": "True if message was already delivered previously",
                 "type": "boolean"
               },
+              "flags": {
+                "description": "On a fresh store: the flags the row was stored with",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "keywords": {
+                "description": "On a fresh store: the keywords the row was stored with",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "messageId": {
                 "description": "Assigned message ULID",
                 "type": "string"
+              },
+              "modseq": {
+                "description": "On a fresh store: the membership row's MODSEQ in the target label",
+                "format": "int64",
+                "type": "integer"
+              },
+              "receivedAt": {
+                "description": "On a fresh store: the INTERNALDATE in epoch seconds",
+                "format": "int64",
+                "type": "integer"
+              },
+              "size": {
+                "description": "On a fresh store: the stored size in bytes",
+                "format": "int64",
+                "type": "integer"
               },
               "status": {
                 "description": "Message was successfully delivered and stored",
@@ -4062,12 +4100,19 @@
             "description": "Return one representative message per conversation.",
             "type": "boolean"
           },
+          "fields": {
+            "description": "`ids`: answer the matching message IDS only, in query order, under `ids` — no metadata rows, page cap 2000. For a client that needs an id set (an IMAP SEARCH with header or BODY criteria) and would otherwise download bodies to decide. Not combinable with `snippet`.",
+            "enum": [
+              "ids"
+            ],
+            "type": "string"
+          },
           "filter": {
             "$ref": "#/components/schemas/EmailSearchFilter"
           },
           "limit": {
-            "description": "Page size; capped at 200, defaults to 25.",
-            "maximum": 200,
+            "description": "Page size; capped at 200, defaults to 25 — or up to 2000 with `fields: \"ids\"`.",
+            "maximum": 2000,
             "minimum": 1,
             "type": "integer"
           },
@@ -4092,6 +4137,13 @@
       },
       "EmailSearchResult": {
         "properties": {
+          "ids": {
+            "description": "With `fields: \"ids\"`: the matching message IDs in query order (`results` is then empty)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "limit": {
             "description": "Effective page size limit applied by the server",
             "format": "int64",
@@ -6022,6 +6074,13 @@
             "description": "True if more changes remain to be polled immediately",
             "type": "boolean"
           },
+          "labels": {
+            "description": "With `include=labels`: the label vector as of `newState`, exactly `GET /labels`' shape",
+            "items": {
+              "$ref": "#/components/schemas/LabelInfo"
+            },
+            "type": "array"
+          },
           "newState": {
             "description": "New opaque state token for the next sync poll",
             "type": "string"
@@ -6029,6 +6088,13 @@
           "oldState": {
             "description": "Echo of the previous state token passed in the request",
             "type": "string"
+          },
+          "sync": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MessageSyncEntry"
+            },
+            "description": "With `include=sync`: the folder-sync projection of every `created`/`updated` id on this page, keyed by id",
+            "type": "object"
           },
           "updated": {
             "description": "Message IDs whose flags, keywords, labels, or thread changed",
@@ -6586,6 +6652,54 @@
         ],
         "type": "object"
       },
+      "MessageSyncEntry": {
+        "properties": {
+          "blobHash": {
+            "description": "Storage blob SHA-256 hash — what body caches key on",
+            "type": "string"
+          },
+          "flags": {
+            "description": "System flags (seen, answered, flagged, draft, deleted)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "keywords": {
+            "description": "Custom keywords (e.g. $forwarded)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "labels": {
+            "description": "Per-label membership: name, UID in that label, MODSEQ",
+            "items": {
+              "$ref": "#/components/schemas/MessageLabel"
+            },
+            "type": "array"
+          },
+          "receivedAt": {
+            "description": "Server receive timestamp in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "size": {
+            "description": "Message size in bytes",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "labels",
+          "flags",
+          "keywords",
+          "blobHash",
+          "size",
+          "receivedAt"
+        ],
+        "type": "object"
+      },
       "MessageUpdateResult": {
         "anyOf": [
           {
@@ -6983,7 +7097,7 @@
           {
             "properties": {
               "health": {
-                "description": "`paused` is the owner's own choice and not a fault; `stale` means no run has been reported for several intervals, which is the only way a stopped scheduler is visible",
+                "description": "`paused` is the owner's own choice and not a fault; `auto_disabled` is the platform having switched the source off after repeated AUTH failures, the only fault that does so — a source whose remote is merely down reads `failing` and keeps polling; `stale` means no run has been reported for several intervals, which is the only way a stopped scheduler is visible",
                 "enum": [
                   "ok",
                   "paused",
@@ -13297,6 +13411,13 @@
               "null"
             ]
           },
+          "permittedRecipients": {
+            "description": "A mailbox credential's OWN outbound recipient allowlist (design D50) — exact addresses and `*@domain` wildcards, INTERSECTED with the identity's at every submission site, so this list is a bound and not a promise that everything in it is deliverable. ABSENT when this credential carries no list of its own (the `domains` convention), which is not the same fact as `[]`: an empty array is a credential permitted to send to NOBODY. Here so an agent door learns its correspondents up front instead of discovering them as a per-recipient `recipient_not_permitted`",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "scope": {
             "description": "A mailbox credential's scope — 'read', 'write', 'send' or 'full' — or null for an API key. What this bearer may do of what its mailbox may do; a call outside it answers 403 credential_scope naming the rung it needs",
             "enum": [
@@ -16679,7 +16800,7 @@
         ]
       },
       "patch": {
-        "description": "Sets or clears `requireActing` on a SYSTEM API key. When true, mailbox-scoped requests made with the key must declare `X-Acting-Identity` or are refused `403 acting_required`. Intended for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry it.",
+        "description": "Sets or clears the acting fences on a SYSTEM API key; name either field or both, and one left unnamed is left unchanged. `requireActing` (migration 0046): mailbox-scoped requests made with the key must declare `X-Acting-Identity` or are refused `403 acting_required`. `requireActingCredential` (migration 0081): they must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — and this is the flag `/auth/verify` consults before it will hand this key a credential scoped below `full` at all, since only a key that carries the header can honour a scope. Both are for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry either.",
         "operationId": "patch_ApiKeyPatch",
         "parameters": [
           {
@@ -16701,16 +16822,17 @@
                   "requireActing": {
                     "description": "Require `X-Acting-Identity` on mailbox-scoped requests with this key",
                     "type": "boolean"
+                  },
+                  "requireActingCredential": {
+                    "description": "Require `X-Acting-Credential` as well, and let `/auth/verify` hand this key credentials scoped below 'full'",
+                    "type": "boolean"
                   }
                 },
-                "required": [
-                  "requireActing"
-                ],
                 "type": "object"
               }
             }
           },
-          "required": true
+          "required": false
         },
         "responses": {
           "200": {
@@ -16722,6 +16844,16 @@
               }
             },
             "description": "Updated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — the body named neither flag"
           },
           "401": {
             "content": {
@@ -17049,7 +17181,7 @@
     },
     "/api/v1/auth/verify": {
       "post": {
-        "description": "Verifies a username and password against mailbox credentials and returns sender permissions (system callers only).",
+        "description": "Verifies a username and password against mailbox credentials and returns sender permissions (system callers only). A credential SCOPED below `full` (design D50) opens a session only for a caller whose key carries `requireActingCredential`, because this endpoint's callers act with their own system key afterwards and would otherwise relay a narrowed credential as owner-mode authority. To any other key such a credential answers `invalid_credentials`, deliberately indistinguishable from a wrong password — a frontend that mints or accepts scoped credentials (an MCP or OAuth door) must be provisioned with that flag before its users can sign in with one.",
         "operationId": "post_AuthVerify",
         "parameters": [
           {
@@ -17069,10 +17201,6 @@
             "application/json": {
               "schema": {
                 "properties": {
-                  "enforcesScope": {
-                    "description": "The caller's promise that it forwards `X-Acting-Credential: <credentialId>` beside `X-Acting-Identity` on every call it makes for this login, so core applies the credential's scope and recipient list there (design D50). Without it a credential scoped below 'full' is refused 401 invalid_credentials — a frontend that acts with its own system key has no other way to honour a scope, and a session it would then exceed must not open.",
-                    "type": "boolean"
-                  },
                   "password": {
                     "description": "Plaintext password or app password",
                     "minLength": 1,
@@ -17129,7 +17257,7 @@
                 }
               }
             },
-            "description": "invalid_credentials"
+            "description": "invalid_credentials: no such username, the wrong password, a deleted account, or a credential scoped below `full` presented to a key without `requireActingCredential` — ONE answer for all four, on purpose. The scope case is logged server-side (`verify_scope_unsupported`, naming the key) since it is the only one an operator can fix"
           },
           "403": {
             "content": {
@@ -17408,7 +17536,7 @@
     },
     "/api/v1/auth/whoami": {
       "get": {
-        "description": "Answers what the presented bearer credential IS and therefore what it reaches; call it first when integrating. Key on `type`: `account` (an `oek_…` API key: the account's directory plus every mailbox it owns), `mailbox` (an `oemp_…` app password: one mailbox, `mailboxId` says which; directory routes answer 403 insufficient_scope), or `system` (an operator key). `idleExpiresAt` warns when a key will lapse from disuse, so a client can say 'this key stops working on <date> unless you use it' rather than letting the holder discover it as a 401.",
+        "description": "Answers what the presented bearer credential IS and therefore what it reaches; call it first when integrating. Key on `type`: `account` (an `oek_…` API key: the account's directory plus every mailbox it owns), `mailbox` (an `oemp_…` app password: one mailbox, `mailboxId` says which; directory routes answer 403 insufficient_scope), or `system` (an operator key). `scope` and `permittedRecipients` are a mailbox credential's own bound (D50): what it may do, and who it may send to — asked once here rather than learned from a 403 per call. `idleExpiresAt` warns when a key will lapse from disuse, so a client can say 'this key stops working on <date> unless you use it' rather than letting the holder discover it as a 401.",
         "operationId": "get_AuthWhoami",
         "responses": {
           "200": {
@@ -29760,6 +29888,19 @@
               "description": "Mailbox ULID identifier",
               "type": "string"
             }
+          },
+          {
+            "description": "`state`: subscribe to change SIGNALS only — `state.changed`, `label.*`, `trash.emptied`, `credential.revoked`, `ready` — and never the per-message `message.*` frames. For a consumer that treats every frame as the same 'something changed' nudge and re-syncs from `GET /messages/changes` (the IMAP gateway), this removes one frame per message on every bulk mutation. Omit for the full stream.",
+            "in": "query",
+            "name": "frames",
+            "required": false,
+            "schema": {
+              "description": "`state`: subscribe to change SIGNALS only — `state.changed`, `label.*`, `trash.emptied`, `credential.revoked`, `ready` — and never the per-message `message.*` frames. For a consumer that treats every frame as the same 'something changed' nudge and re-syncs from `GET /messages/changes` (the IMAP gateway), this removes one frame per message on every bulk mutation. Omit for the full stream.",
+              "enum": [
+                "state"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -30590,7 +30731,7 @@
                 }
               }
             },
-            "description": "label_exists — a label with this name already exists"
+            "description": "label_exists — a label with this name already exists; or too_many_labels — the mailbox is at its ceiling of 500 labels (system labels are not counted), and a retry under another name cannot help. Delete one first"
           }
         },
         "summary": "Create a new custom label",
@@ -32851,6 +32992,17 @@
             }
           },
           {
+            "description": "Comma-separated initial keywords (e.g. $forwarded,$mdnsent), committed WITH the store flip — an IMAP APPEND with keywords is one call rather than a POST followed by a PATCH. Flag-shaped keywords ($seen, $answered, $flagged, $draft) fold onto their flag bit.",
+            "in": "query",
+            "name": "keywords",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated initial keywords (e.g. $forwarded,$mdnsent), committed WITH the store flip — an IMAP APPEND with keywords is one call rather than a POST followed by a PATCH. Flag-shaped keywords ($seen, $answered, $flagged, $draft) fold onto their flag bit.",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
             "description": "Whether to run the mailbox's active Sieve filter on this append (default false)",
             "in": "query",
             "name": "filter",
@@ -33123,6 +33275,17 @@
               "maximum": 500,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated companions computed in the SAME store turn as the feed, so they describe exactly the state `newState` names: `labels` — the label vector `GET /labels` returns (counts, UIDVALIDITY, UIDNEXT, HIGHESTMODSEQ), `sync` — for every id in `created` and `updated` on this page, the folder-sync projection (per-label uid/modseq, flags, keywords, blobHash, size, receivedAt) under `sync`. A sync client that asks for both makes ONE request per poll instead of `changes` + `labels` + N × `batch`.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "description": "Comma-separated companions computed in the SAME store turn as the feed, so they describe exactly the state `newState` names: `labels` — the label vector `GET /labels` returns (counts, UIDVALIDITY, UIDNEXT, HIGHESTMODSEQ), `sync` — for every id in `created` and `updated` on this page, the folder-sync projection (per-label uid/modseq, flags, keywords, blobHash, size, receivedAt) under `sync`. A sync client that asks for both makes ONE request per poll instead of `changes` + `labels` + N × `batch`.",
+              "maxLength": 64,
+              "type": "string"
             }
           }
         ],
@@ -35413,7 +35576,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50) | recipient_not_permitted (a recipient of the draft is outside the submitting credential's own allowlist, naming the `address`) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
           },
           "404": {
             "content": {
@@ -37239,13 +37402,13 @@
             }
           },
           {
-            "description": "Maximum messages to return (default 25, max 100)",
+            "description": "Maximum messages to return (default 25, max 100 — or 2000 with `fields=ids`)",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
-              "description": "Maximum messages to return (default 25, max 100)",
-              "maximum": 100,
+              "description": "Maximum messages to return (default 25, max 100 — or 2000 with `fields=ids`)",
+              "maximum": 2000,
               "minimum": 1,
               "type": "integer"
             }
@@ -37257,6 +37420,19 @@
             "required": false,
             "schema": {
               "description": "Pagination cursor for next page of results",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`ids`: answer the matching message IDS only, in rank order, under `ids` — no metadata rows, page cap 2000. What a client that needs a UID set (IMAP SEARCH) asks for: one call for what used to be twenty pages of full rows. Not combinable with `group` or `snippet`.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "description": "`ids`: answer the matching message IDS only, in rank order, under `ids` — no metadata rows, page cap 2000. What a client that needs a UID set (IMAP SEARCH) asks for: one call for what used to be twenty pages of full rows. Not combinable with `group` or `snippet`.",
+              "enum": [
+                "ids"
+              ],
               "type": "string"
             }
           },
@@ -37351,6 +37527,13 @@
                 },
                 "schema": {
                   "properties": {
+                    "ids": {
+                      "description": "With `fields=ids`: the matching message IDs in rank order (`results` is then empty)",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
                     "nextCursor": {
                       "description": "Opaque cursor for the next page; absent on the last page",
                       "type": "string"
@@ -39056,6 +39239,16 @@
               }
             },
             "description": "No such script, or mailbox not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "script_active — this is the active script (RFC 5804 §2.10); deactivate it (DELETE …/sieve/active) or activate another first"
           }
         },
         "summary": "Delete a Sieve filter script",
@@ -40488,6 +40681,7 @@
                   },
                   "paced": {
                     "default": false,
+                    "description": "Pace inbound deliveries to this pattern's mailbox through the paced queue (funnel protection). Mailbox patterns only; ignored at delivery time for other destination types.",
                     "type": "boolean"
                   },
                   "pattern": {
@@ -40679,7 +40873,7 @@
                     "type": "string"
                   },
                   "paced": {
-                    "description": "Whether deliveries are paced through the outbound queue",
+                    "description": "Pace inbound deliveries to this pattern's mailbox through the paced queue (funnel protection). Mailbox patterns only; ignored at delivery time for other destination types.",
                     "type": "boolean"
                   },
                   "priority": {
@@ -41439,6 +41633,7 @@
                   },
                   "paced": {
                     "default": false,
+                    "description": "Pace inbound deliveries to this route's mailbox through the paced queue (funnel/shared-inbox protection). Mailbox routes only; ignored at delivery time for other destination types.",
                     "type": "boolean"
                   },
                   "posting": {
@@ -41693,7 +41888,7 @@
                     "type": "string"
                   },
                   "paced": {
-                    "description": "Whether to pace outbound forwards through rate limit queue",
+                    "description": "Pace inbound deliveries to this route's mailbox through the paced queue (funnel/shared-inbox protection). Mailbox routes only; ignored at delivery time for other destination types.",
                     "type": "boolean"
                   },
                   "posting": {
