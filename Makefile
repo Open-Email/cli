@@ -8,8 +8,13 @@ LDFLAGS     := -s -w -X $(PKG)/internal/cli.Version=$(VERSION)
 OPENEMAIL_API_URL ?= http://localhost:8787
 export OPENEMAIL_API_URL
 
-# Sibling core checkout, source of the vendored OpenAPI snapshot.
-CORE_DIR ?= ../openemail-core
+# Sibling core checkout, source of the vendored OpenAPI snapshot. The repo is
+# `Open-Email/core` and checks out as `core`; this said `../openemail-core`, a
+# name nothing uses, so every target below failed on the one layout there is —
+# the snapshot was never refreshed rather than refreshed and wrong, which is a
+# drift that announces itself as nothing at all. CORE_DIR overrides it (CI
+# passes `.core`).
+CORE_DIR ?= ../core
 
 .PHONY: build install test vet fmt lint tidy clean snapshot sync-spec sync-spec-check integration live completions help
 
