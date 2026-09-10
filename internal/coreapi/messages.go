@@ -97,6 +97,15 @@ type AppendResult struct {
 	Duplicate   bool    `json:"duplicate,omitempty"`
 	DeliveryID  string  `json:"deliveryId,omitempty"`
 	Redirected  bool    `json:"redirected,omitempty"`
+	// On a FRESH store (status=="delivered", not a replay): the row as it was
+	// stored, so a client that just appended can sync without a re-fetch.
+	// Absent on the filtered arm and on an idempotent replay.
+	BlobHash   string   `json:"blobHash,omitempty"`
+	Flags      []string `json:"flags,omitempty"`
+	Keywords   []string `json:"keywords,omitempty"`
+	Modseq     *int64   `json:"modseq,omitempty"`
+	ReceivedAt *int64   `json:"receivedAt,omitempty"`
+	Size       *int64   `json:"size,omitempty"`
 }
 
 // PatchResult is the PATCH message union: the full updated MessageMeta, or an

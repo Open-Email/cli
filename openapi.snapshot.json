@@ -5679,7 +5679,7 @@
             "type": "string"
           },
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nNull means the whole mailbox is shared.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `k` (create and rename folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nNull means the whole mailbox is shared.",
             "items": {
               "type": "string"
             },
@@ -5693,7 +5693,7 @@
             "type": "string"
           },
           "rights": {
-            "description": "What the person you shared with is allowed to do, written as a set of letters in any order (stored and returned in the canonical order below).\n\n| Letter | Allows |\n| --- | --- |\n| `l` | See the mailbox in folder listings |\n| `r` | Read messages |\n| `s` | Change the read/unread mark — each person's own, never shared |\n| `w` | Change other flags, such as flagged or answered |\n| `i` | Put messages in: append, copy in, move in |\n| `t` | Move messages to trash |\n| `e` | Permanently delete trashed messages |\n| `a` | Create, rename and delete labels |\n\nInstead of letters you may send a preset name, which is usually what you want: `read` or `read_only` (= `lrs`), `read_write` (= `lrswit`), or `admin` / `full` (= `lrswitea`). Hyphenated spellings work too (`read-only`, `read-write`).\n\n**Two things no grant ever allows.** It does not allow sending mail as the mailbox owner. And it does not allow re-sharing: despite the letter, `a` is *not* RFC 4314's ACL-administration right — it means label management here — so only the mailbox owner and account administrators can change who has access.\n\nLetters outside the table (RFC 4314's `p`, `k` and `x`, and the obsolete `c` and `d`) are rejected and named back to you rather than ignored, so a grant never quietly means less than what you asked for. A repeated letter is rejected for the same reason.",
+            "description": "What the person you shared with is allowed to do, written as a set of letters in any order (stored and returned in the canonical order below).\n\n| Letter | Allows |\n| --- | --- |\n| `l` | See the mailbox in folder listings |\n| `r` | Read messages |\n| `s` | Change the read/unread mark — each person's own, never shared |\n| `w` | Change other flags, such as flagged or answered |\n| `i` | Put messages in: append, copy in, move in |\n| `k` | Create and rename labels |\n| `t` | Move messages to trash |\n| `e` | Permanently delete trashed messages |\n\nInstead of letters you may send a preset name, which is usually what you want: `read` or `read_only` (= `lrs`), `read_write` (= `lrswit`), or `admin` / `full` (= `lrswikte`, everything a grant can carry). Hyphenated spellings work too (`read-only`, `read-write`).\n\n**Three things no grant ever allows.** It does not allow sending mail as the mailbox owner. It does not allow deleting labels (`x`): that sends every message whose only label it was to the trash, which the owner may do with their own credentials but not hand to a delegate. And it does not allow re-sharing (`a`, RFC 4314's administration right): only the mailbox owner and account administrators can change who has access. Asking for `x` or `a` is refused with the letters named (an invalid_rights error), never quietly dropped.\n\nLetters outside the table (RFC 4314's `p`, and the obsolete `c` and `d`) are rejected and named back to you rather than ignored, so a grant never quietly means less than what you asked for. A repeated letter is rejected for the same reason.",
             "type": "string"
           }
         },
@@ -7424,6 +7424,26 @@
             "description": "Opaque sync token for delta synchronization",
             "type": "string"
           },
+          "taskCounts": {
+            "description": "Members that are tasks, split by the two `progress` buckets. Exact complements; events and contacts are in neither, so the pair need not sum to `objectCount`.",
+            "properties": {
+              "active": {
+                "description": "Tasks not completed or cancelled — what `?progress=active` lists",
+                "format": "int64",
+                "type": "integer"
+              },
+              "closed": {
+                "description": "Tasks completed or cancelled — what `?progress=closed` lists",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "active",
+              "closed"
+            ],
+            "type": "object"
+          },
           "visibility": {
             "description": "Access visibility scope",
             "enum": [
@@ -7446,9 +7466,37 @@
           "syncToken",
           "createdAt",
           "objectCount",
+          "taskCounts",
           "myPermission",
           "ownerIdentityId",
           "ownerAddress"
+        ],
+        "type": "object"
+      },
+      "PimCollectionRestored": {
+        "properties": {
+          "collection": {
+            "$ref": "#/components/schemas/PimCollection"
+          },
+          "objectsRestored": {
+            "description": "Members that came back with it",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reinvitesDropped": {
+            "description": "Schedulable members past the per-restore bound: restored, but no REQUEST is sent for them",
+            "type": "integer"
+          },
+          "reinvitesScheduled": {
+            "description": "Restored meetings offered to the scheduler; those this mailbox does not organize are skipped there, SEQUENCE untouched",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection",
+          "objectsRestored",
+          "reinvitesScheduled",
+          "reinvitesDropped"
         ],
         "type": "object"
       },
@@ -7883,6 +7931,42 @@
         ],
         "type": "object"
       },
+      "PimObjectRestored": {
+        "properties": {
+          "etag": {
+            "description": "The live row's strong ETag: the stored one, or the re-invite's bumped body",
+            "type": "string"
+          },
+          "href": {
+            "description": "DAV resource path name, unchanged",
+            "type": "string"
+          },
+          "id": {
+            "description": "Object ULID, unchanged",
+            "type": "string"
+          },
+          "reinvited": {
+            "description": "True when this mailbox organizes the event and a fresh REQUEST, SEQUENCE advanced by one, was scheduled to its attendees",
+            "type": "boolean"
+          },
+          "syncToken": {
+            "description": "Updated collection sync token",
+            "type": "string"
+          },
+          "uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "href",
+          "uid",
+          "etag",
+          "syncToken",
+          "reinvited"
+        ],
+        "type": "object"
+      },
       "PimPublicCollection": {
         "properties": {
           "category": {
@@ -8119,6 +8203,11 @@
             "description": "URL slug name",
             "type": "string"
           },
+          "objectCount": {
+            "description": "Total number of events, tasks, or contacts in this collection",
+            "format": "int64",
+            "type": "integer"
+          },
           "ownerAddress": {
             "description": "Primary email address of the owner, or null for an address-less identity. The mirror of SharedMailbox.ownerAddress: a \"shared with me\" list names WHO shared",
             "type": [
@@ -8141,6 +8230,26 @@
           "syncToken": {
             "description": "Current sync token",
             "type": "string"
+          },
+          "taskCounts": {
+            "description": "Members that are tasks, split by the two `progress` buckets. Exact complements; events and contacts are in neither, so the pair need not sum to `objectCount`.",
+            "properties": {
+              "active": {
+                "description": "Tasks not completed or cancelled — what `?progress=active` lists",
+                "format": "int64",
+                "type": "integer"
+              },
+              "closed": {
+                "description": "Tasks completed or cancelled — what `?progress=closed` lists",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "active",
+              "closed"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -8154,7 +8263,9 @@
           "color",
           "description",
           "syncToken",
-          "createdAt"
+          "createdAt",
+          "objectCount",
+          "taskCounts"
         ],
         "type": "object"
       },
@@ -8245,6 +8356,150 @@
             "type": "object"
           }
         ]
+      },
+      "PimTrashPurged": {
+        "properties": {
+          "objectsPurged": {
+            "description": "Trashed objects removed for good",
+            "format": "int64",
+            "type": "integer"
+          },
+          "purged": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "purged",
+          "objectsPurged"
+        ],
+        "type": "object"
+      },
+      "PimTrashedCollection": {
+        "properties": {
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "description": "Creation timestamp in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expiresAt": {
+            "description": "When the purge duty removes it and its members for good, in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Collection ULID: the same id it had, and will have again",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Collection type ('calendar' or 'addressbook')",
+            "enum": [
+              "calendar",
+              "addressbook"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "URL slug it had; a restore refuses (409 name_taken) while a live collection holds it",
+            "type": "string"
+          },
+          "objectCount": {
+            "description": "Members that went with it, and come back with it",
+            "format": "int64",
+            "type": "integer"
+          },
+          "role": {
+            "description": "Special role ('tasks'), or null; the default collection cannot be deleted",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trashedAt": {
+            "description": "When it was deleted, in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "displayName",
+          "color",
+          "description",
+          "role",
+          "createdAt",
+          "objectCount",
+          "trashedAt",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "PimTrashedObject": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PimObjectMeta"
+          },
+          {
+            "properties": {
+              "expiresAt": {
+                "description": "When the purge duty removes it for good, in epoch seconds (fourteen days after trashedAt)",
+                "format": "int64",
+                "type": "integer"
+              },
+              "trashedAt": {
+                "description": "When it was deleted, in epoch seconds",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "trashedAt",
+              "expiresAt"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "PimTrashedObjectPage": {
+        "properties": {
+          "nextCursor": {
+            "description": "Present when more remain; pass back as ?cursor=",
+            "type": "string"
+          },
+          "objects": {
+            "description": "Newest deletion first",
+            "items": {
+              "$ref": "#/components/schemas/PimTrashedObject"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "objects"
+        ],
+        "type": "object"
       },
       "PlatformDnsRecord": {
         "properties": {
@@ -8698,7 +8953,7 @@
       "PutMailShareBody": {
         "properties": {
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAt most 32 folders may be named in one grant.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `k` (create and rename folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAt most 32 folders may be named in one grant.",
             "items": {
               "type": "string"
             },
@@ -8709,7 +8964,7 @@
             ]
           },
           "rights": {
-            "description": "What the person you shared with is allowed to do, written as a set of letters in any order (stored and returned in the canonical order below).\n\n| Letter | Allows |\n| --- | --- |\n| `l` | See the mailbox in folder listings |\n| `r` | Read messages |\n| `s` | Change the read/unread mark — each person's own, never shared |\n| `w` | Change other flags, such as flagged or answered |\n| `i` | Put messages in: append, copy in, move in |\n| `t` | Move messages to trash |\n| `e` | Permanently delete trashed messages |\n| `a` | Create, rename and delete labels |\n\nInstead of letters you may send a preset name, which is usually what you want: `read` or `read_only` (= `lrs`), `read_write` (= `lrswit`), or `admin` / `full` (= `lrswitea`). Hyphenated spellings work too (`read-only`, `read-write`).\n\n**Two things no grant ever allows.** It does not allow sending mail as the mailbox owner. And it does not allow re-sharing: despite the letter, `a` is *not* RFC 4314's ACL-administration right — it means label management here — so only the mailbox owner and account administrators can change who has access.\n\nLetters outside the table (RFC 4314's `p`, `k` and `x`, and the obsolete `c` and `d`) are rejected and named back to you rather than ignored, so a grant never quietly means less than what you asked for. A repeated letter is rejected for the same reason.",
+            "description": "What the person you shared with is allowed to do, written as a set of letters in any order (stored and returned in the canonical order below).\n\n| Letter | Allows |\n| --- | --- |\n| `l` | See the mailbox in folder listings |\n| `r` | Read messages |\n| `s` | Change the read/unread mark — each person's own, never shared |\n| `w` | Change other flags, such as flagged or answered |\n| `i` | Put messages in: append, copy in, move in |\n| `k` | Create and rename labels |\n| `t` | Move messages to trash |\n| `e` | Permanently delete trashed messages |\n\nInstead of letters you may send a preset name, which is usually what you want: `read` or `read_only` (= `lrs`), `read_write` (= `lrswit`), or `admin` / `full` (= `lrswikte`, everything a grant can carry). Hyphenated spellings work too (`read-only`, `read-write`).\n\n**Three things no grant ever allows.** It does not allow sending mail as the mailbox owner. It does not allow deleting labels (`x`): that sends every message whose only label it was to the trash, which the owner may do with their own credentials but not hand to a delegate. And it does not allow re-sharing (`a`, RFC 4314's administration right): only the mailbox owner and account administrators can change who has access. Asking for `x` or `a` is refused with the letters named (an invalid_rights error), never quietly dropped.\n\nLetters outside the table (RFC 4314's `p`, and the obsolete `c` and `d`) are rejected and named back to you rather than ignored, so a grant never quietly means less than what you asked for. A repeated letter is rejected for the same reason.",
             "type": "string"
           }
         },
@@ -10765,7 +11020,7 @@
             "type": "string"
           },
           "labelScope": {
-            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `a` (manage folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAbsent when the request passed `labelScope=false`, when the grant fell past the per-request folder-name render bound, or when the owner's store could not be reached to resolve names. Never an empty list here.",
+            "description": "Restrict the grant to specific FOLDERS, by name. Send `null` to share the whole mailbox — and note that OMITTING the field is a different request from sending null; see below.\n\nA folder-scoped grant may carry up to `lrswit` — everything `read_write` means. Within the granted folders it reads, marks read/unread privately, changes flags, files messages in, and trashes them. Two letters are rejected, naming themselves: `e` (permanently delete trashed messages), because a purge is irreversible and reaches messages filed in folders the holder cannot see; and `k` (create and rename folders), because a folder they created would not be inside their own grant.\n\n**What trashing means on a folder-scoped grant.** It removes the message from the folders they were granted — never from the mailbox. A message filed elsewhere as well stays exactly where you put it and simply leaves their view; a message that was only in their folders goes to Trash, where your normal 14-day undo reaches it. They can never permanently delete anything.\n\n**Filing in.** They must name one of their folders; there is no default (yours is INBOX, which is usually not one of theirs). Your filters do not run on what they file — a rule of yours could otherwise move it somewhere they cannot see, forward it, or send an auto-reply in your name.\n\nThe grant follows the folder if it is RENAMED, and does not follow the name: deleting a folder and creating a new one with the same name does not revive an old grant. The grant follows the folder into DELETION too: deleting a folder removes it from every grant that names it, and a grant left naming no folders is revoked outright — a share dies with its last folder. An empty list is rejected on WRITE — revoke with DELETE instead.\n\n**Omitting the field and sending `null` are different requests.** On a grant that is already folder-scoped, omitting `labelScope` PRESERVES the existing folders and changes only the rights; sending an explicit `null` is what widens the grant to the whole mailbox. Widening is a deliberate act, so it has to be spelled — otherwise any client that does not know about folder scopes (IMAP `SETACL` among them, since the ACL wire format cannot express one) would silently replace a one-folder grant with a whole-store grant, and drop the `lrs` cap along with it.\n\nOn READ an empty list can appear only on the OWNER's listing, and only as residue: it means every folder the grant named has since been deleted and the automatic revocation above could not run. Such a grant is dead — it matches nothing and gives access to nothing — and the owner's listing shows it so you can see it and remove it, while the shared-with-me listing never lists it. It is the one value you cannot send back unchanged: send DELETE, which is what a grant scoped to no folders already means.\n\nA folder-scoped viewer sees only these folders, and only their messages: listings, searches and conversations are all confined to them. Reachable over IMAP, the REST API and JMAP alike.\n\n**Changing a grant signs their clients out of sync.** Sync tokens on a folder-scoped grant are tied to the grant itself, so editing the folders or the rights makes every outstanding token stale exactly once: their clients re-list and carry on. Any live event stream they hold is closed at the same moment, so a narrowed grant takes effect immediately rather than when their connection happens to drop.\n\nAbsent when the request passed `labelScope=false`, when the grant fell past the per-request folder-name render bound, or when the owner's store could not be reached to resolve names. Never an empty list here.",
             "items": {
               "type": "string"
             },
@@ -10786,7 +11041,7 @@
             ]
           },
           "rights": {
-            "description": "What the person you shared with is allowed to do, written as a set of letters in any order (stored and returned in the canonical order below).\n\n| Letter | Allows |\n| --- | --- |\n| `l` | See the mailbox in folder listings |\n| `r` | Read messages |\n| `s` | Change the read/unread mark — each person's own, never shared |\n| `w` | Change other flags, such as flagged or answered |\n| `i` | Put messages in: append, copy in, move in |\n| `t` | Move messages to trash |\n| `e` | Permanently delete trashed messages |\n| `a` | Create, rename and delete labels |\n\nInstead of letters you may send a preset name, which is usually what you want: `read` or `read_only` (= `lrs`), `read_write` (= `lrswit`), or `admin` / `full` (= `lrswitea`). Hyphenated spellings work too (`read-only`, `read-write`).\n\n**Two things no grant ever allows.** It does not allow sending mail as the mailbox owner. And it does not allow re-sharing: despite the letter, `a` is *not* RFC 4314's ACL-administration right — it means label management here — so only the mailbox owner and account administrators can change who has access.\n\nLetters outside the table (RFC 4314's `p`, `k` and `x`, and the obsolete `c` and `d`) are rejected and named back to you rather than ignored, so a grant never quietly means less than what you asked for. A repeated letter is rejected for the same reason.",
+            "description": "What the person you shared with is allowed to do, written as a set of letters in any order (stored and returned in the canonical order below).\n\n| Letter | Allows |\n| --- | --- |\n| `l` | See the mailbox in folder listings |\n| `r` | Read messages |\n| `s` | Change the read/unread mark — each person's own, never shared |\n| `w` | Change other flags, such as flagged or answered |\n| `i` | Put messages in: append, copy in, move in |\n| `k` | Create and rename labels |\n| `t` | Move messages to trash |\n| `e` | Permanently delete trashed messages |\n\nInstead of letters you may send a preset name, which is usually what you want: `read` or `read_only` (= `lrs`), `read_write` (= `lrswit`), or `admin` / `full` (= `lrswikte`, everything a grant can carry). Hyphenated spellings work too (`read-only`, `read-write`).\n\n**Three things no grant ever allows.** It does not allow sending mail as the mailbox owner. It does not allow deleting labels (`x`): that sends every message whose only label it was to the trash, which the owner may do with their own credentials but not hand to a delegate. And it does not allow re-sharing (`a`, RFC 4314's administration right): only the mailbox owner and account administrators can change who has access. Asking for `x` or `a` is refused with the letters named (an invalid_rights error), never quietly dropped.\n\nLetters outside the table (RFC 4314's `p`, and the obsolete `c` and `d`) are rejected and named back to you rather than ignored, so a grant never quietly means less than what you asked for. A repeated letter is rejected for the same reason.",
             "type": "string"
           }
         },
@@ -22663,9 +22918,222 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}/addressbooks/trash": {
+      "get": {
+        "description": "The addressbooks this mailbox deleted within the last fourteen days, newest first, each with the count of members that went with it. Owner only.",
+        "operationId": "get_AddressbookTrashList",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "addressbooks": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimTrashedCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "addressbooks"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted collections, newest deletion first"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: mailbox not found, or not this principal's to administer"
+          }
+        },
+        "summary": "List deleted addressbooks",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/addressbooks/trash/{trashedAddressbookId}": {
+      "delete": {
+        "description": "Removes a deleted addressbook from the trash for good, with every trashed object that belonged to it. Irreversible. Owner only, full scope.",
+        "operationId": "delete_AddressbookTrashPurge",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed collection's ULID (the id it had while live)",
+            "in": "path",
+            "name": "trashedAddressbookId",
+            "required": true,
+            "schema": {
+              "description": "The trashed collection's ULID (the id it had while live)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashPurged"
+                }
+              }
+            },
+            "description": "Purged"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted collection of this kind, or mailbox not accessible"
+          }
+        },
+        "summary": "Purge deleted addressbook",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/addressbooks/trash/{trashedAddressbookId}/restore": {
+      "post": {
+        "description": "Brings a deleted addressbook back under its own id, with exactly the members that were deleted with it (members deleted individually beforehand stay in the trash, restorable once the collection is live). It comes back private: grants, feed tokens and any public listing were retired when it was deleted. For a calendar, each restored meeting this mailbox organizes is re-sent to its attendees as a REQUEST with SEQUENCE advanced by one, off the response path, unless notify=false. Owner only, write scope.",
+        "operationId": "post_AddressbookTrashRestore",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed collection's ULID (the id it had while live)",
+            "in": "path",
+            "name": "trashedAddressbookId",
+            "required": true,
+            "schema": {
+              "description": "The trashed collection's ULID (the id it had while live)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollectionRestored"
+                }
+              }
+            },
+            "description": "Restored; the live collection and what came back with it"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted collection of this kind, or mailbox not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "name_taken: a live collection of this kind now holds the deleted one's name; rename it first"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_many_collections (the per-mailbox collection cap) or too_many_objects (the store object cap): the restore would exceed it"
+          }
+        },
+        "summary": "Restore deleted addressbook",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/identities/{identityId}/addressbooks/{addressbookId}": {
       "delete": {
-        "description": "Deletes a addressbook collection and all objects stored within it.",
+        "description": "Deletes a addressbook collection and all objects stored within it. Both move to the trash tier: GET …/addressbooks/trash lists them, POST …/trash/{id}/restore brings the collection and its members back (private, since grants and feed tokens were retired), and the purge duty removes them for good fourteen days after deletion.",
         "operationId": "delete_AddressbookDelete",
         "parameters": [
           {
@@ -23401,7 +23869,7 @@
     },
     "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/objects/{href}": {
       "delete": {
-        "description": "Deletes a addressbook object by its href slug or UID.",
+        "description": "Deletes a addressbook object by its href slug or UID. The object moves to the collection's trash (GET …/trash lists it, POST …/trash/{objectId}/restore brings it back) and is purged for good fourteen days later.",
         "operationId": "delete_AddressbookObjectDelete",
         "parameters": [
           {
@@ -24464,6 +24932,332 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/trash": {
+      "delete": {
+        "description": "Removes every deleted object of this addressbook from the trash for good. Irreversible. Owner only, full scope.",
+        "operationId": "delete_AddressbookObjectTrashEmpty",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashPurged"
+                }
+              }
+            },
+            "description": "Emptied; objectsPurged counts what went"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such live collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Empty addressbook trash",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "get": {
+        "description": "The objects deleted out of this addressbook within the last fourteen days, newest first, metadata only (a restore is how the body comes back). Owner only.",
+        "operationId": "get_AddressbookObjectTrashList",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 200)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 200)",
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "nextCursor from the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "nextCursor from the previous page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashedObjectPage"
+                }
+              }
+            },
+            "description": "Deleted objects, newest deletion first"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "invalid_cursor"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such live collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List deleted addressbook objects",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/trash/{objectId}": {
+      "delete": {
+        "description": "Removes one deleted object from the trash for good. Irreversible. Owner only, full scope.",
+        "operationId": "delete_AddressbookObjectTrashPurge",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed object's ULID (the id it had while live)",
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "description": "The trashed object's ULID (the id it had while live)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashPurged"
+                }
+              }
+            },
+            "description": "Purged"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted object in this collection, no such live collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Purge deleted addressbook object",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/trash/{objectId}/restore": {
+      "post": {
+        "description": "Brings a deleted object back into this addressbook under its own id, href and UID, byte-identical. For a meeting this mailbox organizes, the body's SEQUENCE is then advanced by one and a fresh REQUEST is sent to its attendees (the delete sent them a CANCEL), unless notify=false; an attendee's copy is restored locally and nothing is sent. Owner only, write scope.",
+        "operationId": "post_AddressbookObjectTrashRestore",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "addressbookId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed object's ULID (the id it had while live)",
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "description": "The trashed object's ULID (the id it had while live)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimObjectRestored"
+                }
+              }
+            },
+            "description": "Restored"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted object in this collection, no such live collection, or mailbox not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "href_taken: a live object now holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it)"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_many_objects: the collection or store object cap"
+          }
+        },
+        "summary": "Restore deleted addressbook object",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/identities/{identityId}/calendars": {
       "get": {
         "description": "Returns all calendars for a mailbox with their sync tokens.",
@@ -24927,9 +25721,236 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}/calendars/trash": {
+      "get": {
+        "description": "The calendars this mailbox deleted within the last fourteen days, newest first, each with the count of members that went with it. Owner only.",
+        "operationId": "get_CalendarTrashList",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "calendars": {
+                      "items": {
+                        "$ref": "#/components/schemas/PimTrashedCollection"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "calendars"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted collections, newest deletion first"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: mailbox not found, or not this principal's to administer"
+          }
+        },
+        "summary": "List deleted calendars",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/calendars/trash/{trashedCalendarId}": {
+      "delete": {
+        "description": "Removes a deleted calendar from the trash for good, with every trashed object that belonged to it. Irreversible. Owner only, full scope.",
+        "operationId": "delete_CalendarTrashPurge",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed collection's ULID (the id it had while live)",
+            "in": "path",
+            "name": "trashedCalendarId",
+            "required": true,
+            "schema": {
+              "description": "The trashed collection's ULID (the id it had while live)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashPurged"
+                }
+              }
+            },
+            "description": "Purged"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted collection of this kind, or mailbox not accessible"
+          }
+        },
+        "summary": "Purge deleted calendar",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/calendars/trash/{trashedCalendarId}/restore": {
+      "post": {
+        "description": "Brings a deleted calendar back under its own id, with exactly the members that were deleted with it (members deleted individually beforehand stay in the trash, restorable once the collection is live). It comes back private: grants, feed tokens and any public listing were retired when it was deleted. For a calendar, each restored meeting this mailbox organizes is re-sent to its attendees as a REQUEST with SEQUENCE advanced by one, off the response path, unless notify=false. Owner only, write scope.",
+        "operationId": "post_CalendarTrashRestore",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed collection's ULID (the id it had while live)",
+            "in": "path",
+            "name": "trashedCalendarId",
+            "required": true,
+            "schema": {
+              "description": "The trashed collection's ULID (the id it had while live)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Send iTIP scheduling messages for this write: 'true' cancels as organizer or declines as attendee, 'false' sends nothing. Absent keeps the default — organizers schedule, attendees stay silent.",
+            "in": "query",
+            "name": "notify",
+            "required": false,
+            "schema": {
+              "description": "Send iTIP scheduling messages for this write: 'true' cancels as organizer or declines as attendee, 'false' sends nothing. Absent keeps the default — organizers schedule, attendees stay silent.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimCollectionRestored"
+                }
+              }
+            },
+            "description": "Restored; the live collection and what came back with it"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted collection of this kind, or mailbox not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "name_taken: a live collection of this kind now holds the deleted one's name; rename it first"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_many_collections (the per-mailbox collection cap) or too_many_objects (the store object cap): the restore would exceed it"
+          }
+        },
+        "summary": "Restore deleted calendar",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/identities/{identityId}/calendars/{calendarId}": {
       "delete": {
-        "description": "Deletes a calendar collection and all objects stored within it.",
+        "description": "Deletes a calendar collection and all objects stored within it. Both move to the trash tier: GET …/calendars/trash lists them, POST …/trash/{id}/restore brings the collection and its members back (private, since grants and feed tokens were retired), and the purge duty removes them for good fourteen days after deletion.",
         "operationId": "delete_CalendarDelete",
         "parameters": [
           {
@@ -25730,7 +26751,7 @@
     },
     "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}": {
       "delete": {
-        "description": "Deletes a calendar object by its href slug or UID.",
+        "description": "Deletes a calendar object by its href slug or UID. The object moves to the collection's trash (GET …/trash lists it, POST …/trash/{objectId}/restore brings it back) and is purged for good fourteen days later.",
         "operationId": "delete_CalendarObjectDelete",
         "parameters": [
           {
@@ -26970,6 +27991,346 @@
           }
         },
         "summary": "Revoke calendar feed token",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/trash": {
+      "delete": {
+        "description": "Removes every deleted object of this calendar from the trash for good. Irreversible. Owner only, full scope.",
+        "operationId": "delete_CalendarObjectTrashEmpty",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashPurged"
+                }
+              }
+            },
+            "description": "Emptied; objectsPurged counts what went"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such live collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Empty calendar trash",
+        "tags": [
+          "PIM"
+        ]
+      },
+      "get": {
+        "description": "The objects deleted out of this calendar within the last fourteen days, newest first, metadata only (a restore is how the body comes back). Owner only.",
+        "operationId": "get_CalendarObjectTrashList",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 200)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 200)",
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "nextCursor from the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "nextCursor from the previous page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashedObjectPage"
+                }
+              }
+            },
+            "description": "Deleted objects, newest deletion first"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "invalid_cursor"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such live collection, or mailbox not accessible"
+          }
+        },
+        "summary": "List deleted calendar objects",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/trash/{objectId}": {
+      "delete": {
+        "description": "Removes one deleted object from the trash for good. Irreversible. Owner only, full scope.",
+        "operationId": "delete_CalendarObjectTrashPurge",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed object's ULID (the id it had while live)",
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "description": "The trashed object's ULID (the id it had while live)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimTrashPurged"
+                }
+              }
+            },
+            "description": "Purged"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted object in this collection, no such live collection, or mailbox not accessible"
+          }
+        },
+        "summary": "Purge deleted calendar object",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/trash/{objectId}/restore": {
+      "post": {
+        "description": "Brings a deleted object back into this calendar under its own id, href and UID, byte-identical. For a meeting this mailbox organizes, the body's SEQUENCE is then advanced by one and a fresh REQUEST is sent to its attendees (the delete sent them a CANCEL), unless notify=false; an attendee's copy is restored locally and nothing is sent. Owner only, write scope.",
+        "operationId": "post_CalendarObjectTrashRestore",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Live collection ULID or its name slug",
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "description": "Live collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The trashed object's ULID (the id it had while live)",
+            "in": "path",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "description": "The trashed object's ULID (the id it had while live)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Send iTIP scheduling messages for this write: 'true' cancels as organizer or declines as attendee, 'false' sends nothing. Absent keeps the default — organizers schedule, attendees stay silent.",
+            "in": "query",
+            "name": "notify",
+            "required": false,
+            "schema": {
+              "description": "Send iTIP scheduling messages for this write: 'true' cancels as organizer or declines as attendee, 'false' sends nothing. Absent keeps the default — organizers schedule, attendees stay silent.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PimObjectRestored"
+                }
+              }
+            },
+            "description": "Restored"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such deleted object in this collection, no such live collection, or mailbox not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "href_taken: a live object now holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it)"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_many_objects: the collection or store object cap"
+          }
+        },
+        "summary": "Restore deleted calendar object",
         "tags": [
           "PIM"
         ]
@@ -30215,7 +31576,7 @@
                 }
               }
             },
-            "description": "validation_failed; or destination_is_self / destination_loops / destination_chain_too_long when the destination now routes back to this mailbox; or destination_not_permitted when the account's allowlist no longer permits it; or destination_fans_out when its address now resolves to something we host that reaches more than one party. All five are re-checked here because this is the write that arms the forward, and a route proved as a single mailbox may have been retargeted to a group since"
+            "description": "validation_failed; or destination_is_self / destination_loops / destination_chain_too_long when the destination now routes back to this mailbox; or destination_not_permitted when the account's allowlist no longer permits it; or destination_fans_out when its address now resolves to something we host that reaches more than one party. All five are re-checked here because this is the write that arms the forward, and a route proved as a single mailbox may have been retargeted to a group since; or destination_unverified (carrying the address as `target`) when the destination has not proved a code, or its proof was revoked"
           },
           "401": {
             "content": {
@@ -30226,16 +31587,6 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "destination_not_verified — the destination has not proved a code"
           },
           "404": {
             "content": {
@@ -30740,6 +32091,222 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/labels/by-id/{labelId}": {
+      "delete": {
+        "description": "Keyed on the label's numeric `id` — as `GET /labels` and `POST /labels` report it — rather than on its name. The id survives a rename (it is what JMAP `Mailbox/set` and folder-scoped shares key on), so a client that renames folders should hold it: the by-name route's key changes as the operation succeeds. It also never contains a `/`, so a folder name that does need not be encoded into a path segment. Otherwise identical to the by-name operation.\n\nDeletes a custom label. Messages carrying this label will retain any other labels they have.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
+        "operationId": "delete_LabelDeleteById",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The label's numeric `id`, as `GET /labels` and `POST /labels` report it",
+            "in": "path",
+            "name": "labelId",
+            "required": true,
+            "schema": {
+              "description": "The label's numeric `id`, as `GET /labels` and `POST /labels` report it",
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Deletion outcome"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "System labels cannot be deleted"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or label not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "folder_shared — folder-scoped grants name this label, so deleting it would revoke them, which is the `a` right: use a full-scope credential, or remove the grants first"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large — the label refilled past the one-commit ceiling while it was being drained; retry"
+          }
+        },
+        "summary": "Delete a custom label, by id",
+        "tags": [
+          "Labels"
+        ]
+      },
+      "patch": {
+        "description": "Keyed on the label's numeric `id` — as `GET /labels` and `POST /labels` report it — rather than on its name. The id survives a rename (it is what JMAP `Mailbox/set` and folder-scoped shares key on), so a client that renames folders should hold it: the by-name route's key changes as the operation succeeds. It also never contains a `/`, so a folder name that does need not be encoded into a path segment. Otherwise identical to the by-name operation.\n\nRenames a custom label and/or updates its display sort order and subscription state. System labels cannot be renamed, but their sortOrder and isSubscribed settings can still be updated.",
+        "operationId": "patch_LabelRenameById",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The label's numeric `id`, as `GET /labels` and `POST /labels` report it",
+            "in": "path",
+            "name": "labelId",
+            "required": true,
+            "schema": {
+              "description": "The label's numeric `id`, as `GET /labels` and `POST /labels` report it",
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "isSubscribed": {
+                    "description": "Whether folder is subscribed for client sync",
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "description": "New label name (custom labels only)",
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sortOrder": {
+                    "description": "Presentation display sort order index",
+                    "maximum": 2147483647,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamedResult"
+                }
+              }
+            },
+            "description": "Update successful"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — malformed name/sortOrder or empty patch"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "System labels cannot be renamed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox or label not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Target label name already exists"
+          }
+        },
+        "summary": "Rename a label or update folder settings, by id",
+        "tags": [
+          "Labels"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/labels/{label}": {
       "delete": {
         "description": "Deletes a custom label. Messages carrying this label will retain any other labels they have.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
@@ -30806,6 +32373,16 @@
               }
             },
             "description": "Mailbox or label not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "folder_shared — folder-scoped grants name this label, so deleting it would revoke them, which is the `a` right: use a full-scope credential, or remove the grants first"
           },
           "503": {
             "content": {
@@ -35822,7 +37399,7 @@
                 }
               }
             },
-            "description": "validation_failed"
+            "description": "validation_failed; or source_is_self when the credentials would open the very mailbox this source delivers into. Pulling from ANOTHER mailbox on this platform is supported"
           },
           "401": {
             "content": {
@@ -36119,7 +37696,7 @@
                 }
               }
             },
-            "description": "validation_failed"
+            "description": "validation_failed; or source_is_self when the resulting host+username would open the very mailbox this source delivers into"
           },
           "401": {
             "content": {
@@ -36194,6 +37771,16 @@
               }
             },
             "description": "Pickup run queued successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "source_is_self — this source would fetch from the mailbox it delivers into, so the scheduler will not dispatch it"
           },
           "401": {
             "content": {

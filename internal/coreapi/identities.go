@@ -107,6 +107,13 @@ type WhoamiResult struct {
 	// which has no rung. Distinct from Domains: one bounds what a bearer may DO,
 	// the other which domains it may do it to.
 	Scope *string `json:"scope"`
+	// PermittedRecipients is a MAILBOX credential's own outbound recipient
+	// allowlist (design D50): exact addresses and `*@domain` wildcards,
+	// intersected with the identity's at every submission site — a bound, not a
+	// promise that everything in it is deliverable. ABSENT (nil) when the
+	// credential carries no list of its own, the Domains convention: nil is "no
+	// list", an empty list is a list that permits nothing.
+	PermittedRecipients []string `json:"permittedRecipients"`
 }
 
 // Whoami introspects the current bearer.

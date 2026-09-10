@@ -75,6 +75,10 @@ type EmailSearchResult struct {
 	// and is present only beside Truncated.
 	Truncated  *bool  `json:"truncated,omitempty"`
 	ScanWindow *int64 `json:"scanWindow,omitempty"`
+	// IDs is the answer to a `fields: "ids"` query: the matching message ids in
+	// query order, with Results then empty. A client that only needs the set —
+	// to batch a flag or a move — asks for this and skips the metadata.
+	IDs []string `json:"ids,omitempty"`
 }
 
 // SearchQuery runs a structured search. Offset-paged (Position), not

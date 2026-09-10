@@ -50,11 +50,24 @@ type PimCollection struct {
 	SyncToken   string `json:"syncToken"`
 	CreatedAt   int64  `json:"createdAt"`
 	ObjectCount int64  `json:"objectCount"`
+	// TaskCounts splits the members that are tasks by core's two `progress`
+	// buckets. Exact complements, so a badge and the list it opens agree on
+	// what a finished task is; events and contacts are in neither, so the pair
+	// need not sum to ObjectCount.
+	TaskCounts PimTaskCounts `json:"taskCounts"`
 	// Sharing (core migration 0045): who owns this collection and what the
 	// caller may do with it, for a collection reached through a grant.
 	OwnerIdentityID *string `json:"ownerIdentityId,omitempty"`
 	OwnerAddress    *string `json:"ownerAddress,omitempty"`
 	MyPermission    *string `json:"myPermission,omitempty"`
+}
+
+// PimTaskCounts is a collection's task census by progress: Active is what
+// `?progress=active` lists (neither completed nor cancelled), Closed what
+// `?progress=closed` lists (completed or cancelled).
+type PimTaskCounts struct {
+	Active int64 `json:"active"`
+	Closed int64 `json:"closed"`
 }
 
 // PimAttendee is one parsed ATTENDEE of a calendar object.
@@ -241,6 +254,10 @@ type PimSharedWithMe struct {
 	Description  *string `json:"description"`
 	SyncToken    string  `json:"syncToken"`
 	CreatedAt    int64   `json:"createdAt"`
+	// The same census the owner's listing carries, so a shared task list can be
+	// badged without listing it.
+	ObjectCount int64         `json:"objectCount"`
+	TaskCounts  PimTaskCounts `json:"taskCounts"`
 }
 
 // PimPublicCollection is one entry of the account-scoped public directory. ID

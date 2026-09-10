@@ -21,6 +21,11 @@ type APIKey struct {
 	// RequireActing (core migration 0046): a system key that must name an
 	// acting mailbox on every call.
 	RequireActing bool `json:"requireActing"`
+	// RequireActingCredential (core migration 0081): a system key whose acting
+	// calls must ALSO declare `X-Acting-Credential`, the mailbox credential the
+	// call acts under, or are refused `403 acting_credential_required` — so a
+	// credential's scope and recipient list survive being relayed under it.
+	RequireActingCredential bool `json:"requireActingCredential"`
 	// Kind (core migration 0051) is what the key IS — "cli" for one the browser
 	// login minted, null otherwise. Display metadata: the minting caller sets
 	// it, so nothing may authorize on it.
