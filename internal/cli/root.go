@@ -243,6 +243,16 @@ func errorHint(ae *coreapi.APIError) string {
 	case "verification_unavailable":
 		// A resolver outage, not the customer's DNS. Retrying is the whole fix.
 		return "DNS could not be queried just now — nothing was changed; try again shortly"
+	case "destination_unverified":
+		// The forwarding ceremony: an address has to answer a code before mail
+		// may be pointed at it — by forward-all, a filter rule or a Sieve
+		// redirect alike, and core answers all three with this one word.
+		// `target` is the address that has not (or whose owner revoked it: the
+		// same `add` re-runs the ceremony on an existing row).
+		if tgt != "" {
+			return fmt.Sprintf("%s has not confirmed it wants this mail — send it a code with `openemail forwarding add %s`, enter the code with `forwarding verify`, then point at it again", tgt, tgt)
+		}
+		return "that address has not confirmed it wants this mail — send it a code with `openemail forwarding add <address>`, enter the code with `forwarding verify`, then point at it again"
 	case "destination_is_self":
 		// The loop vocabulary below is core's, and the same four codes answer a
 		// route, a pattern, a group member and a filter rule as answer a

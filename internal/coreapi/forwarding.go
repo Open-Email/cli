@@ -15,7 +15,9 @@ import (
 // `verified` forwards, `revoked_by_recipient` is a destination whose owner used
 // the disable link in a forwarded message and stopped it from their side. Only
 // a verified destination may be pointed at, which is why every write below can
-// answer 403 destination_not_verified.
+// answer 400 destination_unverified — the same word, shape and status core's
+// Sieve and rules surfaces use for an unconfirmed redirect target, carrying the
+// address as `target`. (It was a 403 under a spelling of its own, once.)
 
 // ForwardingDestination is one destination and where it stands in the ceremony.
 //
@@ -152,7 +154,7 @@ func (c *Client) DeleteForwardingDestination(ctx context.Context, mailboxID, des
 }
 
 // SetForwardAll points forward-everything at a VERIFIED destination.
-// 403 destination_not_verified when it has not proved a code.
+// 400 destination_unverified (with `target`) when it has not proved a code.
 //
 // The five 400s AddForwardingDestination can answer are re-taken HERE too, on
 // an already-verified destination: this is the write that arms the forward, and
