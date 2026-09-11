@@ -240,6 +240,16 @@ func errorHint(ae *coreapi.APIError) string {
 			return fmt.Sprintf("this message is older than the indexed window (indexed from %s) — reach further back with: openemail mailboxes update <id> --semantic-floor all", fmtEpoch(int64(floor)))
 		}
 		return "this message has not been embedded — it may predate the indexed window, or the backfill may still be running"
+	case "run_cooldown":
+		// A pickup run is one POP3 login at the customer's provider, and
+		// providers count those, so core dispatches a source at most once a
+		// minute, by schedule or by hand. A run already in flight collects
+		// whatever is new, so there is nothing to gain by waiting it out at
+		// the keyboard; `retryAfter` rides the envelope in whole seconds.
+		if wait, ok := ae.Extra["retryAfter"].(float64); ok && wait > 0 {
+			return fmt.Sprintf("this source was dispatched less than a minute ago, and a run in flight already collects whatever is new; try again in %d s", int(wait))
+		}
+		return "this source was dispatched less than a minute ago, and a run in flight already collects whatever is new; try again shortly"
 	case "verification_unavailable":
 		// A resolver outage, not the customer's DNS. Retrying is the whole fix.
 		return "DNS could not be queried just now — nothing was changed; try again shortly"

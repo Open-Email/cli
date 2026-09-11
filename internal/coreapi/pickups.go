@@ -128,7 +128,10 @@ func (c *Client) DeletePickup(ctx context.Context, mailboxID, pickupID string) e
 }
 
 // RunPickup schedules an out-of-band run (202 scheduled). 409 disabled if the
-// source is disabled.
+// source is disabled; 429 run_cooldown if the source was dispatched (by
+// schedule or by hand) under a minute ago, with `retryAfter` seconds in the
+// envelope. A run already in flight absorbs the trigger, so the cooldown
+// bounds the run AFTER the run, not this one.
 func (c *Client) RunPickup(ctx context.Context, mailboxID, pickupID string) (string, error) {
 	var out struct {
 		Status string `json:"status"`

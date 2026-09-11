@@ -60,6 +60,18 @@ func TestErrorHint(t *testing.T) {
 			want: "--semantic-floor all",
 		},
 		{
+			// The wait rides the envelope; without it the hint still says what
+			// happened, since "run_cooldown (HTTP 429)" alone reads as a fault.
+			name: "run_cooldown names the wait",
+			ae:   &coreapi.APIError{Status: 429, Code: "run_cooldown", Extra: map[string]any{"retryAfter": float64(41)}},
+			want: "try again in 41 s",
+		},
+		{
+			name: "run_cooldown without a wait still hints",
+			ae:   &coreapi.APIError{Status: 429, Code: "run_cooldown"},
+			want: "less than a minute ago",
+		},
+		{
 			// The end of a key's life, and the one failure the platform
 			// manufactures on its own schedule: a CLI key that lapses from disuse
 			// answers exactly like a revoked or mistyped one, so the hint has to
