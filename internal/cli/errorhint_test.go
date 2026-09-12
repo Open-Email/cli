@@ -98,6 +98,31 @@ func TestErrorHint(t *testing.T) {
 			want: "routes back here",
 		},
 		{
+			name: "run_cooldown with retryAfter seconds",
+			ae:   &coreapi.APIError{Status: 429, Code: "run_cooldown", Extra: map[string]any{"retryAfter": float64(45)}},
+			want: "wait 45 seconds before fetching again",
+		},
+		{
+			name: "run_cooldown without retryAfter still hints",
+			ae:   &coreapi.APIError{Status: 429, Code: "run_cooldown"},
+			want: "maximum once per minute",
+		},
+		{
+			name: "pickup_limit_reached with limit",
+			ae:   &coreapi.APIError{Status: 409, Code: "pickup_limit_reached", Extra: map[string]any{"limit": float64(10)}},
+			want: "reached the limit of 10 pickup sources",
+		},
+		{
+			name: "source_is_self explains self-fetch prohibition",
+			ae:   &coreapi.APIError{Status: 400, Code: "source_is_self"},
+			want: "cannot fetch from this mailbox itself",
+		},
+		{
+			name: "duplicate_source names existing source",
+			ae:   &coreapi.APIError{Status: 409, Code: "duplicate_source"},
+			want: "already exists on this mailbox",
+		},
+		{
 			name: "unrelated code gets no hint",
 			ae:   &coreapi.APIError{Status: 400, Code: "validation_failed"},
 			want: "",

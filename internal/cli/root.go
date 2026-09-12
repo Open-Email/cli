@@ -280,6 +280,30 @@ func errorHint(ae *coreapi.APIError) string {
 			return fmt.Sprintf("%s reaches more than one recipient here (a group, an alias, a webhook, or a route that forwards on) — nobody there can answer the code, and the disable link would stop your forwarding for whoever clicked it first; name one person's address", tgt)
 		}
 		return "that address reaches more than one recipient here (a group, an alias, a webhook, or a route that forwards on) — nobody there can answer the code, and the disable link would stop your forwarding for whoever clicked it first; name one person's address"
+	case "run_cooldown":
+		if ra, ok := ae.Extra["retryAfter"]; ok {
+			switch v := ra.(type) {
+			case float64:
+				return fmt.Sprintf("pickup is on cooldown (maximum once per minute) — please wait %d seconds before fetching again", int(v))
+			case int:
+				return fmt.Sprintf("pickup is on cooldown (maximum once per minute) — please wait %d seconds before fetching again", v)
+			}
+		}
+		return "pickup is on cooldown (maximum once per minute) — please wait before fetching again"
+	case "pickup_limit_reached":
+		if lim, ok := ae.Extra["limit"]; ok {
+			switch v := lim.(type) {
+			case float64:
+				return fmt.Sprintf("this mailbox has reached the limit of %d pickup sources", int(v))
+			case int:
+				return fmt.Sprintf("this mailbox has reached the limit of %d pickup sources", v)
+			}
+		}
+		return "this mailbox has reached the maximum number of pickup sources"
+	case "source_is_self":
+		return "cannot fetch from this mailbox itself — pickup is for consolidating mail from other mailboxes or external providers"
+	case "duplicate_source":
+		return "a pickup source for this server and username already exists on this mailbox"
 	}
 	return ""
 }
