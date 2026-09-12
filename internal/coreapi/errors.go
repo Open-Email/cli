@@ -16,6 +16,13 @@ import (
 // machine string. Extra holds every other top-level field verbatim so a command
 // can surface it; Body is the raw response for --debug.
 type APIError struct {
+	// Method and Path name the request core refused: the path relative to
+	// /api/v1, decoded for display. Core's 404 envelope is the bare word
+	// {error:"not_found"} — by design it says nothing about WHAT was not
+	// found, so the only party that can name the subject is the client that
+	// assembled the path. Empty for errors that never reached the wire.
+	Method  string
+	Path    string
 	Status  int
 	Code    string
 	Message string

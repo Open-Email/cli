@@ -285,6 +285,14 @@ check (which runs at most once per day, on a TTY only).
 - One-time secrets (a new key/app-password token) print once to **stdout**, with a
   "shown once" warning on stderr.
 - Exit codes: `0` ok · `1` error · `2` usage · `4` authentication required.
+- Arguments are shape-checked before any request is sent: an id where an address
+  goes (or the reverse), a lower-cased id, a domain that is really an address,
+  a non-numeric pattern id, and an unknown subcommand under any group are all
+  refused locally with exit `2` and a message naming the argument. Core's 404 is
+  the bare word `not_found` by design, so when one does come back the CLI names
+  what it asked for (`no mailbox "…"`), how to list them, and — because core
+  answers a missing and an inaccessible resource identically — that either may
+  be the case.
 - Color is emitted only on a TTY with `NO_COLOR` unset and `--no-color` off.
 
 See [docs/OUTPUT.md](docs/OUTPUT.md) for the `--json` contract and

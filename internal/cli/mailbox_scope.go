@@ -80,6 +80,16 @@ func (a *app) resolveMailbox(ctx context.Context, client *coreapi.Client, flagVa
 		}
 		route, err := client.GetRoute(ctx, val)
 		if err != nil {
+			// The lookup is the CLI's, not the user's: they named a mailbox and
+			// got back a 404 about a route, on a path they never typed. Say
+			// what it means in their terms. The address may have come from the
+			// profile default rather than the flag, so both are named.
+			if coreapi.IsNotFound(err) {
+				return "", fmt.Errorf(
+					"no mailbox at %q — the address is not routed in this account, or this key cannot see it\n"+
+						"  the mailbox came from -m/--mailbox or the profile default (openemail mailboxes use <id|address>)\n"+
+						"  openemail routes list shows the addresses; openemail mailboxes list the mailboxes", val)
+			}
 			return "", err
 		}
 		if route.DestinationType != "mailbox" || route.MailboxID == nil || *route.MailboxID == "" {

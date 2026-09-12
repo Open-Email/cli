@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/Open-Email/cli/internal/config"
@@ -72,10 +73,27 @@ func newRootCmd(a *app) *cobra.Command {
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Resolve config/profile/token before every command.
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		// Shape-check the positionals, then resolve config/profile/token, before
+		// every command. The shape check goes first because it needs neither a
+		// config file nor a network and its answer is exit 2 — the caller's
+		// input, not the platform's state.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// A group's own RunE (rejectUnknownSubcommands) prints help or
+			// refuses a stray word; neither needs a config file or a token,
+			// and `openemail labels` must show its help even with a broken
+			// config on disk.
+			if cmd.HasSubCommands() {
+				return nil
+			}
+			if err := checkArgKinds(cmd, args); err != nil {
+				return err
+			}
 			return a.preRun()
 		},
+		// Root would otherwise refuse a stray first word inside cobra's Find,
+		// before any RunE; ArbitraryArgs hands it to rejectUnknownSubcommands
+		// so the root reads the same as every other group (exit 2, suggestions).
+		Args: cobra.ArbitraryArgs,
 	}
 	root.SetVersionTemplate("openemail {{.Version}}\n")
 
@@ -145,7 +163,40 @@ func newRootCmd(a *app) *cobra.Command {
 	if a.adminCmd != nil {
 		a.adminCmd.Hidden = eagerProfileRole() != coreapi.PrincipalSystem
 	}
+	rejectUnknownSubcommands(root)
 	return root
+}
+
+// rejectUnknownSubcommands gives every command group a RunE, because cobra
+// refuses an unknown subcommand only at the ROOT: `openemail labels get X`
+// matched `labels`, found no `get` under it, and cobra's answer was the
+// group's help text on stdout and exit 0 — a wrong command that reads as
+// success to a script and as "so which of these did I get?" to a person.
+// Making the group runnable changes nothing for the bare `openemail labels`
+// (still its help) and turns the stray word into "unknown command", with
+// cobra's own did-you-mean suggestions and the usage exit code.
+func rejectUnknownSubcommands(c *cobra.Command) {
+	for _, sub := range c.Commands() {
+		rejectUnknownSubcommands(sub)
+	}
+	if !c.HasSubCommands() || c.Runnable() {
+		return
+	}
+	c.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return cmd.Help()
+		}
+		msg := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
+		// The distance the root uses (cobra sets it lazily, and only there).
+		if cmd.SuggestionsMinimumDistance <= 0 {
+			cmd.SuggestionsMinimumDistance = 2
+		}
+		if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
+			msg += "\n\nDid you mean this?\n\t" + strings.Join(s, "\n\t")
+		}
+		msg += fmt.Sprintf("\n\nRun '%s --help' for its commands", cmd.CommandPath())
+		return usageError(errors.New(msg))
+	}
 }
 
 func newVersionCmd(a *app) *cobra.Command {
@@ -317,17 +368,28 @@ func (a *app) printError(err error) {
 		p = newPrinter(a.flagJSON, a.flagNoColor)
 	}
 	if ae, ok := coreapi.AsAPIError(err); ok {
-		fmt.Fprintf(os.Stderr, "%s %s\n", p.paint(colRed, "error:"), ae.Error())
+		// A 404 carries no message from core, so the subject line is the CLI's:
+		// what it asked for, read off the path it asked on.
+		subject, hints := "", []string(nil)
+		if ae.Status == 404 {
+			subject, hints = describeNotFound(ae)
+			if subject == "" && len(hints) == 0 {
+				hints = []string{"(the resource does not exist, or is not accessible with this key)"}
+			}
+		}
+		if subject != "" {
+			fmt.Fprintf(os.Stderr, "%s %s: %s\n", p.paint(colRed, "error:"), ae.Error(), subject)
+		} else {
+			fmt.Fprintf(os.Stderr, "%s %s\n", p.paint(colRed, "error:"), ae.Error())
+		}
 		if ae.Line > 0 {
 			fmt.Fprintf(os.Stderr, "  at line %d, column %d\n", ae.Line, ae.Col)
 		}
 		if d := ae.Detail(); d != "" {
 			fmt.Fprintln(os.Stderr, d)
 		}
-		// Core answers 404 for both missing and cross-tenant resources (no
-		// existence leaks), so be honest about the ambiguity.
-		if ae.Status == 404 {
-			fmt.Fprintln(os.Stderr, p.Dim("  (the resource does not exist, or is not accessible with this key)"))
+		for _, h := range hints {
+			fmt.Fprintln(os.Stderr, p.Dim("  "+h))
 		}
 		if h := errorHint(ae); h != "" {
 			fmt.Fprintln(os.Stderr, p.Dim("  "+h))

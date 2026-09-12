@@ -252,3 +252,23 @@ func TestEscapedPathSegmentPreservation(t *testing.T) {
 		t.Errorf("expected RequestURI %q to contain escaped segment %q", requestedURI, segment)
 	}
 }
+
+// A 404 from core is the bare word not_found: the only party that can say
+// WHAT was not found is the client, from the path it asked on — so the error
+// carries the request, decoded for display, for the CLI's 404 rendering.
+func TestAPIErrorCarriesRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(404)
+		w.Write([]byte(`{"error":"not_found"}`))
+	}))
+	defer srv.Close()
+
+	_, err := testClient(t, srv.URL).GetRoute(context.Background(), "alice@example.com")
+	ae, ok := AsAPIError(err)
+	if !ok {
+		t.Fatalf("want APIError, got %v", err)
+	}
+	if ae.Method != http.MethodGet || ae.Path != "/routes/alice@example.com" {
+		t.Fatalf("request not carried: %q %q", ae.Method, ae.Path)
+	}
+}
