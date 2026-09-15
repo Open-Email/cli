@@ -57,6 +57,23 @@ func TestParseMaxMailboxesFlag(t *testing.T) {
 // rendering must be unmissable when disabled and quiet when not — and it must say
 // the SCOPE, since the reason to reach for it over the per-mailbox freeze is
 // that it also covers mailboxes the tenant has not created yet.
+// nil is a finding about the 90-day retention window, not "never": the word
+// an offboarding decision reads must not overclaim.
+func TestFmtLastClient(t *testing.T) {
+	if got := fmtLastClient(nil); got != "none in 90d" {
+		t.Fatalf("nil = %q", got)
+	}
+	when := int64(1735689600)
+	if got := fmtLastClient(&when); got != fmtEpoch(when) {
+		t.Fatalf("set = %q", got)
+	}
+	// The identity spelling has to admit the second reading of an absence —
+	// core omits the field for a grant holder — because the CLI cannot tell.
+	if got := fmtLastClientIdentity(nil); !strings.Contains(got, "shared with you") || !strings.Contains(got, "90d") {
+		t.Fatalf("identity nil = %q, should name both readings", got)
+	}
+}
+
 func TestFmtAccountSendState(t *testing.T) {
 	if got := fmtAccountSendState(nil); got != "enabled" {
 		t.Errorf("fmtAccountSendState(live) = %q; want %q", got, "enabled")

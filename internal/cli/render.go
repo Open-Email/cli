@@ -152,6 +152,29 @@ func fmtEpochPtr(sec *int64) string {
 	return fmtEpoch(*sec)
 }
 
+// fmtLastClient renders an account's dormancy stamp. nil is NOT "—": core
+// answers null when no client has reached any identity inside the 90-day
+// client retention, which is a positive finding — the one an offboarding
+// decision turns on — and a dash would read as "never", a different claim
+// about a different span.
+func fmtLastClient(sec *int64) string {
+	if sec == nil {
+		return "none in 90d"
+	}
+	return fmtEpoch(*sec)
+}
+
+// fmtLastClientIdentity is fmtLastClient for one identity, where an absent
+// value has a second reading: core OMITS it for a grant holder reading a
+// mailbox shared with them, because the owner's client history is theirs
+// alone. The CLI cannot tell the two apart from the response, so it says both.
+func fmtLastClientIdentity(sec *int64) string {
+	if sec == nil {
+		return "— (none in 90d, or a mailbox shared with you)"
+	}
+	return fmtEpoch(*sec)
+}
+
 // fmtQuota renders a nullable byte quota (null = unlimited).
 func fmtQuota(b *int64) string {
 	if b == nil {

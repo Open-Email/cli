@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func trafficServer(t *testing.T, gotRange *string) (*coreapi.Client, func()) {
 		w.WriteHeader(200)
 		w.Write([]byte(`{
 			"domain":"example.test","range":"` + *gotRange + `",
-			"totals":{"events":1297,"bytes":50281820},
+			"totals":{"events":1297,"bytes":50281820,"forwarded":41},
 			"byOutcome":{"delivered":1204,"filtered":88,"bounced":5},
 			"rows":[
 				{"outcome":"filtered","routeKind":"mailbox","events":88,"bytes":2100000},
@@ -80,9 +81,27 @@ func TestTrafficDescSortAndTotals(t *testing.T) {
 	if totals.cells[2] != "1,297" {
 		t.Fatalf("totals events = %q, want 1,297", totals.cells[2])
 	}
-	// The summary row's item is a TrafficRow so `enter` detail never panics.
-	if tr, ok := totals.item.(coreapi.TrafficRow); !ok || tr.Outcome != "TOTALS" {
-		t.Fatalf("totals item should be a TrafficRow marker, got %#v", totals.item)
+	// The summary row's item is its own marker so `enter` detail never panics
+	// AND can show the one figure no outcome row carries: the forwarded share.
+	tot, ok := totals.item.(trafficTotals)
+	if !ok {
+		t.Fatalf("totals item should be a trafficTotals marker, got %#v", totals.item)
+	}
+	if tot.Forwarded != 41 {
+		t.Fatalf("totals forwarded = %d, want 41", tot.Forwarded)
+	}
+	var sawForwarded bool
+	for _, line := range d.detail(totals.item) {
+		if line.k == "forwarded" && strings.HasPrefix(line.v, "41") {
+			sawForwarded = true
+		}
+	}
+	if !sawForwarded {
+		t.Fatalf("totals detail should name forwarded=41, got %+v", d.detail(totals.item))
+	}
+	// And an ordinary outcome row still details as before.
+	if got := d.detail(rows[0].item); len(got) == 0 || got[0].k != "outcome" {
+		t.Fatalf("outcome row detail changed shape: %+v", got)
 	}
 }
 

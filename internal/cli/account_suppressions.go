@@ -199,11 +199,9 @@ func newAccountSuppressionListCmd(a *app) *cobra.Command {
 			a.out.Emit(map[string]any{"suppressions": items, "nextCursor": next}, func(w io.Writer) {
 				rows := make([][]string, 0, len(items))
 				for _, e := range items {
-					rows = append(rows, []string{
-						e.Pattern, fmtEpoch(e.CreatedAt), truncate(strOr(e.Note, "—"), 50),
-					})
+					rows = append(rows, entryCells(e, 50))
 				}
-				printTable(w, a.out, []string{"ADDRESS", "ADDED", "NOTE"}, rows)
+				printTable(w, a.out, entryHeaders("ADDRESS"), rows)
 				a.moreHint(next)
 			})
 			return nil

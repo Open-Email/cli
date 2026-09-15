@@ -113,6 +113,16 @@ func storagePoolOr(p *int64) string {
 	return fmtBytes(*p)
 }
 
+// lastClientOr mirrors the CLI's fmtLastClient: a nil stamp is "none in 90d",
+// never a dash, because core's null here is a finding about a span — no client
+// inside the 90-day retention — and a dash would read as "never".
+func lastClientOr(p *int64) string {
+	if p == nil {
+		return "none in 90d"
+	}
+	return fmtEpoch(*p)
+}
+
 func yn(b bool) string {
 	if b {
 		return "yes"

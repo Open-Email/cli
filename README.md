@@ -229,7 +229,7 @@ openemail lists add <list-id> @spammer.example
 # …and rescue one sender from that block, for one mailbox only. A narrower
 # allow also exempts them from the spam filter.
 openemail lists create "Trusted" --direction inbound --verdict allow --scope mailbox:<id>
-openemail lists add <list-id> partner@spammer.example
+openemail lists add <list-id> partner@spammer.example --expires 30d   # drops out by itself
 openemail lists check partner@spammer.example --direction inbound --scope-mailbox <id>
 
 # Operator: is an address on the do-not-send list, and why? (system key)

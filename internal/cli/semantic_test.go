@@ -75,6 +75,33 @@ func TestParseSemanticFloorFlag(t *testing.T) {
 	}
 }
 
+// `--mode semantic` sends fuse=none; a --label makes core fuse the word
+// ranking back in regardless and say so with fused=true. The note fires on
+// exactly that contradiction — asked for one ranking, given another — and on
+// nothing else: hybrid was asked for, so fused=true there is what was ordered.
+func TestPrintSemanticFusedNote(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		fuse  string
+		fused bool
+		want  bool
+	}{
+		{"vector asked, fused anyway", "none", true, true},
+		{"vector asked, vector given", "none", false, false},
+		{"hybrid asked, hybrid given", "lexical", true, false},
+		{"default asked", "", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var errOut bytes.Buffer
+			a := &app{out: &Printer{out: io.Discard, err: &errOut}}
+			printSemanticFusedNote(a, tc.fuse, &coreapi.SemanticSearchResult{Fused: tc.fused})
+			if got := strings.Contains(errOut.String(), "fused in anyway"); got != tc.want {
+				t.Fatalf("note printed = %v, want %v (output %q)", got, tc.want, errOut.String())
+			}
+		})
+	}
+}
+
 // The mailbox printer shows the floor beside the switch, because the switch
 // alone does not say how much of the mailbox a meaning-based search reaches.
 func TestFmtSemanticFloor(t *testing.T) {

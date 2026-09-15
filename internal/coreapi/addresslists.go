@@ -91,6 +91,10 @@ type AddressListCreate struct {
 type AddressListEntryInput struct {
 	Pattern string `json:"pattern"`
 	Note    string `json:"note,omitempty"`
+	// ExpiresAt is when the entry should stop applying (epoch seconds, in the
+	// future); nil for never. A repeat add REPLACES the previous expiry, so
+	// re-adding without one makes a temporary entry permanent.
+	ExpiresAt *int64 `json:"expiresAt,omitempty"`
 }
 
 // AddressListEvaluateInput asks what the lists decide for one address. Domain

@@ -150,9 +150,12 @@ func newAccountListCmd(a *app) *cobra.Command {
 					case "paused":
 						sending = "PAUSED"
 					}
-					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "unlimited"), fmtEpoch(ac.CreatedAt)})
+					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "unlimited"), fmtEpoch(ac.CreatedAt), fmtLastClient(ac.LastClientAt)})
 				}
-				printTable(w, a.out, []string{"ID", "NAME", "SENDING", "MAX MAILBOXES", "CREATED"}, rows)
+				// LAST CLIENT is the dormancy sweep: the list is where an operator
+				// looks for the tenant nobody has logged into, and that needs a
+				// column to scan, not a detail to open per row.
+				printTable(w, a.out, []string{"ID", "NAME", "SENDING", "MAX MAILBOXES", "CREATED", "LAST CLIENT"}, rows)
 				a.moreHint(next)
 			})
 			return nil
@@ -294,6 +297,9 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		// that any has. `mailboxes get` answers for a mailbox.
 		{"Semantic search", boolYN(acc.Semantic)},
 		{"Created", fmtEpoch(acc.CreatedAt)},
+		// Any identity, any protocol — the stamp an offboarding decision reads,
+		// and not credentials' lastUsedAt, which frontend caching under-reports.
+		{"Last client", fmtLastClient(acc.LastClientAt)},
 	})
 }
 
@@ -560,7 +566,10 @@ func newAccountTrafficCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(tr, func(w io.Writer) {
 				a.out.Msgf("%s — %s (estimated, ~%dd retention)", a.out.Bold(tr.AccountID), tr.Range, tr.RetentionDays)
-				a.out.Msgf("  total: %d events, %s across %d domain(s)", tr.Totals.Events, fmtBytes(tr.Totals.Bytes), len(tr.Domains))
+				// Forwarded is the inbound-driven SUBSET of outbound, billed on its
+				// own axis; the outcome table below cannot show it (route kind is
+				// how a message matched, not why it left), so the total names it.
+				a.out.Msgf("  total: %d events (%d forwarded), %s across %d domain(s)", tr.Totals.Events, tr.Totals.Forwarded, fmtBytes(tr.Totals.Bytes), len(tr.Domains))
 				if tr.DomainsTruncated {
 					// Never let a partial total read as a complete one — this is
 					// the number someone decides to freeze an account on.
