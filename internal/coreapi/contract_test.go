@@ -84,8 +84,13 @@ func contractPairings() []pairing {
 		{val: DomainTraffic{}, comp: "DomainTraffic"},
 		{val: AccountTraffic{}, comp: "AccountTraffic"},
 		{val: AccountSendUsage{}, comp: "AccountSendUsage"},
+		{val: AccountDeleteResult{}, comp: "AccountDeleteResult"},
 		{val: TrafficRow{}, comp: "TrafficRow"},
 		{val: TrafficEvent{}, comp: "TrafficEvent"},
+		// TrafficSeriesPoint went unpinned while core added `forwarded` to it, so
+		// every bucket this client printed silently omitted the inbound-driven
+		// share of its own outbound number.
+		{val: TrafficSeriesPoint{}, comp: "TrafficSeriesPoint"},
 		{val: DomainEvents{}, comp: "DomainEvents"},
 		// DMARC aggregate-report views. DmarcTotals has no named component
 		// (core inlines it under DomainDmarc.totals) — TestDmarcTotalsMatchesInlineSchema
@@ -169,10 +174,18 @@ func contractPairings() []pairing {
 		{val: DkimKey{}, comp: "DkimKey"},
 		{val: DkimCname{}, comp: "DkimCname"},
 		{val: DkimRotated{}, comp: "DkimRotated"},
-		// Structured search. EmailSearchRequest/Filter are free-form on the wire
-		// (additionalProperties), so only the response shapes are pinned.
+		// Structured search. EmailSearchFilter alone is free-form on the wire
+		// (additionalProperties over an open condition set, validated by core);
+		// EmailSearchRequest is NOT, and the comment that used to lump the two
+		// together is what kept `fields` — the ids-only answer mode — out of this
+		// client after core added it. A request shape is pinned for the mirror of
+		// the reason a response shape is: an option core offers and this client
+		// cannot spell is an option nobody here knows is missing.
+		{val: EmailSearchRequest{}, comp: "EmailSearchRequest"},
 		{val: EmailSearchResult{}, comp: "EmailSearchResult"},
 		{val: EmailSearchSnippet{}, comp: "EmailSearchSnippet"},
+		{val: SemanticSearchResult{}, comp: "SemanticSearchResult"},
+		{val: SemanticCoverage{}, comp: "SemanticCoverage"},
 		// JSON filter rules (the flat authoring surface over Sieve).
 		{val: FilterRule{}, comp: "FilterRule"},
 		{val: RuleCondition{}, comp: "RuleCondition"},
@@ -232,11 +245,37 @@ func TestWireStructsMatchOpenAPISnapshot(t *testing.T) {
 	}
 }
 
+// inlineObjectProps reports the properties of a schema that spells an object
+// out in place, and false for anything else — a $ref, a bare map, a scalar.
+func inlineObjectProps(schema map[string]any) (map[string]any, bool) {
+	if _, isRef := schema["$ref"]; isRef {
+		return nil, false
+	}
+	props, ok := schema["properties"].(map[string]any)
+	if !ok || len(props) == 0 {
+		return nil, false
+	}
+	return props, true
+}
+
+// structType unwraps pointers and slices to the struct underneath, or nil when
+// there is none — a map[string]int64 has object kind and no fields to compare.
+func structType(t reflect.Type) reflect.Type {
+	for t != nil && (t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice) {
+		t = t.Elem()
+	}
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	return t
+}
+
 // ── Go reflection ────────────────────────────────────────────────────────────
 
 type goField struct {
 	kind    string // string|integer|number|boolean|array|object|any
 	nilable bool
+	typ     reflect.Type // the declared type, for descending into inline objects
 }
 
 func flattenGoFields(t reflect.Type) map[string]goField {
@@ -257,7 +296,7 @@ func flattenGoFields(t reflect.Type) map[string]goField {
 			continue
 		}
 		kind, nilable := goKind(f.Type)
-		out[name] = goField{kind: kind, nilable: nilable}
+		out[name] = goField{kind: kind, nilable: nilable, typ: f.Type}
 	}
 	return out
 }
@@ -412,6 +451,20 @@ func compare(p pairing, schemas map[string]any, props map[string]any, goFields m
 		}
 		if nullable && !gf.nilable {
 			issues = append(issues, fmt.Sprintf("%s.%s: spec is nullable but Go type is not nilable (a null would fail to decode)", p.comp, name))
+		}
+		// An INLINE object is the blind spot this test had: `totals` matched as
+		// object-vs-struct and its contents were never looked at, which is how
+		// `forwarded` got added to both traffic totals without a word here. A
+		// $ref is deliberately NOT followed — those are components, pinned (or
+		// not) on their own row above, and following them would report the same
+		// drift once per referrer.
+		if sub, ok := inlineObjectProps(props[name].(map[string]any)); ok {
+			if st := structType(gf.typ); st != nil {
+				nested := pairing{comp: p.comp + "." + name}
+				for _, issue := range compare(nested, schemas, sub, flattenGoFields(st)) {
+					issues = append(issues, issue)
+				}
+			}
 		}
 	}
 
