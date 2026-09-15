@@ -4,6 +4,14 @@
     "schemas": {
       "Account": {
         "properties": {
+          "addressCreatesPerDay": {
+            "description": "Addresses (routes) this account may CREATE per rolling day (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "createdAt": {
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
@@ -17,9 +25,41 @@
               "null"
             ]
           },
+          "domainCreatesPerDay": {
+            "description": "Domains this account may onboard per rolling day (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "forwardMsgsPerDay": {
+            "description": "Inbound-driven egress per rolling day — mail leaving because a route was configured, with no local sender to charge (null = platform default, 0 = unlimited). Ledger is per DOMAIN, so N domains get N x this; never spends the send allowance",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "id": {
             "description": "Unique account ULID",
             "type": "string"
+          },
+          "lastClientAt": {
+            "description": "When a client last reached any identity in this account, in epoch seconds coalesced to five minutes — the dormancy and offboarding stamp. Read from the client history (GET /accounts/:accountId/clients), so it counts IMAP, SMTP, DAV, JMAP and webmail alike; null when no client has been seen inside the 90-day client retention. Not credentials' lastUsedAt, which frontend caching under-reports",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailboxCreatesPerDay": {
+            "description": "Mailboxes this account may CREATE per rolling day (null = platform default, 0 = unlimited) — a churn bound, not a ceiling; maxMailboxes is the ceiling",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "maxMailboxes": {
             "description": "Maximum allowed mailboxes (null = the platform default, MAX_MAILBOXES_DEFAULT)",
@@ -169,6 +209,10 @@
           "sendRcptsPerHour",
           "recvMsgsPerDay",
           "recvBytesPerDay",
+          "mailboxCreatesPerDay",
+          "addressCreatesPerDay",
+          "domainCreatesPerDay",
+          "forwardMsgsPerDay",
           "noticeMailboxId",
           "plan",
           "storageLimitBytes",
@@ -179,7 +223,8 @@
           "createdAt",
           "deletedAt",
           "purgeAt",
-          "purgedAt"
+          "purgedAt",
+          "lastClientAt"
         ],
         "type": "object"
       },
@@ -264,6 +309,43 @@
         ],
         "type": "object"
       },
+      "AccountPlanRecord": {
+        "properties": {
+          "accountId": {
+            "description": "Account ULID",
+            "type": "string"
+          },
+          "appliedAt": {
+            "description": "When the current label was applied, epoch seconds (null with the label)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "appliedBy": {
+            "description": "The id of the API key that applied the current label — with per-operator keys, the operator who vetted the account (null with the label)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plan": {
+            "description": "The label on the account (null = no plan recorded)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "plan",
+          "appliedAt",
+          "appliedBy"
+        ],
+        "type": "object"
+      },
       "AccountPlanResult": {
         "properties": {
           "accountId": {
@@ -288,6 +370,10 @@
             "description": "The columns stamped",
             "type": "object"
           },
+          "appliedBy": {
+            "description": "The calling API key's id, now recorded on the account as the label's author",
+            "type": "string"
+          },
           "plan": {
             "description": "The plan label now on the account",
             "type": "string"
@@ -301,7 +387,8 @@
           "accountId",
           "plan",
           "presetHash",
-          "applied"
+          "applied",
+          "appliedBy"
         ],
         "type": "object"
       },
@@ -742,11 +829,17 @@
                 "description": "Total events across all account domains",
                 "format": "int64",
                 "type": "integer"
+              },
+              "forwarded": {
+                "description": "Inbound-driven egress events across all account domains — the forwarded SUBSET of outbound, counted inside it rather than beside it. The number a tenant is billed for separately, below submitted mail",
+                "format": "int64",
+                "type": "integer"
               }
             },
             "required": [
               "events",
-              "bytes"
+              "bytes",
+              "forwarded"
             ],
             "type": "object"
           }
@@ -898,11 +991,16 @@
             "type": "integer"
           },
           "invalid": {
-            "description": "List of invalid pattern strings that could not be added",
+            "description": "List of invalid pattern strings that could not be added (a CSV import reports at most the first 100)",
             "items": {
               "type": "string"
             },
             "type": "array"
+          },
+          "invalidCount": {
+            "description": "Total invalid rows when the list above was truncated (CSV import only)",
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -917,6 +1015,27 @@
             "description": "Timestamp when pattern was added in epoch seconds",
             "format": "int64",
             "type": "integer"
+          },
+          "expiresAt": {
+            "description": "Epoch seconds after which the entry stops applying and disappears from the list, or null for never",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "hitCount": {
+            "description": "Evaluations this entry decided (at least: hits within ten seconds of the previous recorded one are folded into it)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastHitAt": {
+            "description": "Epoch seconds of the last recorded hit, or null if never matched",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "note": {
             "description": "Optional operator note, or null",
@@ -933,7 +1052,10 @@
         "required": [
           "pattern",
           "note",
-          "createdAt"
+          "createdAt",
+          "expiresAt",
+          "hitCount",
+          "lastHitAt"
         ],
         "type": "object"
       },
@@ -3862,11 +3984,17 @@
                 "description": "Total events count",
                 "format": "int64",
                 "type": "integer"
+              },
+              "forwarded": {
+                "description": "Inbound-driven egress events — the forwarded subset of outbound",
+                "format": "int64",
+                "type": "integer"
               }
             },
             "required": [
               "events",
-              "bytes"
+              "bytes",
+              "forwarded"
             ],
             "type": "object"
           }
@@ -4763,6 +4891,30 @@
         ],
         "type": "object"
       },
+      "FilteringBody": {
+        "properties": {
+          "trustContacts": {
+            "description": "Trust the mailbox's own address book as an implicit allow list",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trustContacts"
+        ],
+        "type": "object"
+      },
+      "FilteringSettings": {
+        "properties": {
+          "trustContacts": {
+            "description": "When true (the default), mail from a sender in this mailbox's own address book is delivered to the inbox even when the spam filter would have filed it to Junk, provided the sender identity was authenticated (DMARC for the From, SPF for the envelope). Explicit block lists still win.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trustContacts"
+        ],
+        "type": "object"
+      },
       "FleetDomainState": {
         "allOf": [
           {
@@ -5262,6 +5414,14 @@
             "properties": {
               "facets": {
                 "$ref": "#/components/schemas/IdentityFacets"
+              },
+              "lastClientAt": {
+                "description": "When a client last reached this identity, in epoch seconds coalesced to five minutes — read from its client history (GET /identities/:identityId/clients), so IMAP, DAV, JMAP and webmail all count; null when none inside the 90-day client retention. Omitted for a grant holder reading a mailbox shared with them: the owner's client history is theirs alone, like the client list itself",
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -5270,6 +5430,157 @@
             "type": "object"
           }
         ]
+      },
+      "IdentityClient": {
+        "properties": {
+          "accountId": {
+            "description": "The identity's account at first sighting, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asOrg": {
+            "description": "Autonomous system organisation, or null (same rule)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asn": {
+            "description": "Autonomous system number, or null (same rule)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "city": {
+            "description": "City, or null (same rule as country)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client": {
+            "description": "The client's self-description (User-Agent, IMAP ID) as last seen, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country": {
+            "description": "ISO 3166-1 alpha-2 country, or null when NOBODY LOOKED — never 'unknown'. Mail-protocol rows carry null until the fleet resolves locations",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "credentialId": {
+            "description": "The credential the client presented — the thing to revoke — or null when the reporting surface could not attribute one. Never render null as 'your password'",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "credentialKind": {
+            "description": "`password` (the identity's own password) or `app_password`; null when unattributed or purged",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "credentialName": {
+            "description": "The credential's label as its owner gave it (\"old-phone\"; webmail names its sessions \"webmail session\"), so a reader can say which app password to revoke without a lookup per row. null when unattributed, unnamed, or purged; a revoked credential keeps its name",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "facets": {
+            "description": "What the client TOUCHED — `mail`, `pim` (calendars, contacts, tasks) or both — never what the identity owns. A JMAP client that read a mailbox and a calendar carries both",
+            "items": {
+              "enum": [
+                "mail",
+                "pim"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "firstSeenAt": {
+            "description": "First sighting, epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Client row ULID — the FIRST sighting's; not the sort key",
+            "type": "string"
+          },
+          "identityId": {
+            "description": "The identity this client reached",
+            "type": "string"
+          },
+          "ip": {
+            "description": "The client's address as LAST seen, canonical (RFC 5952 for v6). An IPv6 client is one row per /64: the address here is the most recent host within it",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "description": "Last sighting, epoch seconds — coalesced, so exact for a first sighting and up to five minutes stale after it. 'Connected now' is a presentation rule over this, not a fact the row asserts",
+            "format": "int64",
+            "type": "integer"
+          },
+          "notifiedAt": {
+            "description": "When this client was flagged as a NEW LOCATION — a network or (country, network operator) the identity had not been reached from before — and the notice raised: mail to the identity's inbox and verified recovery address (unless the identity's prefs carry notifyNewClient: false) and an identity.client.new event. null for the first client an identity ever had, for a known network or location, and past the daily cap",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "protocol": {
+            "description": "How the client reached the platform. `dav` is a CalDAV/CardDAV request on neither half (a principal PROPFIND); `api` is the REST surface; `webmail` is a browser session reported by the webmail frontend",
+            "enum": [
+              "imap",
+              "pop3",
+              "sieve",
+              "smtp",
+              "caldav",
+              "carddav",
+              "dav",
+              "jmap",
+              "webmail",
+              "api"
+            ],
+            "type": "string"
+          },
+          "touchCount": {
+            "description": "How many coalesced sightings were recorded, not how many connections were made",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "identityId",
+          "accountId",
+          "protocol",
+          "facets",
+          "ip",
+          "credentialId",
+          "credentialName",
+          "credentialKind",
+          "client",
+          "country",
+          "city",
+          "asn",
+          "asOrg",
+          "firstSeenAt",
+          "lastSeenAt",
+          "touchCount",
+          "notifiedAt"
+        ],
+        "type": "object"
       },
       "IdentityFacets": {
         "properties": {
@@ -5352,6 +5663,140 @@
             "type": "object"
           }
         },
+        "type": "object"
+      },
+      "InvitationCheck": {
+        "properties": {
+          "code": {
+            "description": "The code's canonical spelling; null when none was asked about or it cannot be a code",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inviteOnly": {
+            "description": "Whether POST /accounts demands a code right now",
+            "type": "boolean"
+          },
+          "live": {
+            "description": "Whether the code exists and is unspent; null when none was asked about",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "inviteOnly",
+          "code",
+          "live"
+        ],
+        "type": "object"
+      },
+      "InvitationCounts": {
+        "properties": {
+          "total": {
+            "description": "Every code ever minted",
+            "type": "integer"
+          },
+          "unused": {
+            "description": "Codes still to be spent",
+            "type": "integer"
+          },
+          "used": {
+            "description": "Codes an account was created on",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "unused",
+          "used"
+        ],
+        "type": "object"
+      },
+      "InvitationEntry": {
+        "properties": {
+          "code": {
+            "description": "The code, XXXX-XXXX-XXXX — in clear, it is a handout",
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "When it was minted, epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "createdBy": {
+            "description": "Id of the system key that minted it",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Unique ULID identifier",
+            "type": "string"
+          },
+          "note": {
+            "description": "What the batch was for, stamped on every code of it",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usedAccountId": {
+            "description": "The account whose creation spent it",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usedAt": {
+            "description": "When it was spent, epoch seconds; null while unspent",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "usedBy": {
+            "description": "That account's name — the signup address, the way the console names accounts",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "note",
+          "createdAt",
+          "createdBy",
+          "usedAt",
+          "usedAccountId",
+          "usedBy"
+        ],
+        "type": "object"
+      },
+      "InvitationMintResult": {
+        "properties": {
+          "count": {
+            "description": "How many were minted",
+            "type": "integer"
+          },
+          "entries": {
+            "description": "The fresh codes",
+            "items": {
+              "$ref": "#/components/schemas/InvitationEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "entries"
+        ],
         "type": "object"
       },
       "LabelInfo": {
@@ -6772,6 +7217,10 @@
               "null"
             ]
           },
+          "quiesced": {
+            "description": "The ledger stopped its own timer because the sweep proved there is nothing left to measure: the account is purged and its last day is filed. Reported because `nextAlarmAt: null` cannot be read on its own — a finished ledger and one whose alarm was dropped are the same null and want opposite responses. Arming is the one verb that does NOT separate them, since it is declined while quiesced; the verb for a ledger that should not be quiesced is `POST /system/metering/run`, whose firing re-reads the primary and lifts the mark if the row is no longer purged.",
+            "type": "boolean"
+          },
           "sealed": {
             "description": "The account row was confirmed gone twice on the primary; the rows are kept as evidence and readable by a system principal. Lifted automatically by the next arm or run made with the account row present.",
             "type": "boolean"
@@ -6787,6 +7236,7 @@
         "required": [
           "accountId",
           "sealed",
+          "quiesced",
           "lastStorageDay",
           "lastSweepAt",
           "lastError",
@@ -8675,7 +9125,7 @@
         "properties": {
           "prefs": {
             "additionalProperties": {},
-            "description": "User client preferences JSON key-value map",
+            "description": "User client preferences JSON key-value map. Opaque to the server with one exception: notifyNewClient: false turns off the mail the platform sends when a client reaches the identity from a new location (the identity.client.new event to the tenant's hooks is unaffected)",
             "type": "object"
           },
           "version": {
@@ -11573,6 +12023,34 @@
         ],
         "type": "object"
       },
+      "SystemInvitations": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/InvitationCounts"
+          },
+          "entries": {
+            "description": "Invitation codes, newest first",
+            "items": {
+              "$ref": "#/components/schemas/InvitationEntry"
+            },
+            "type": "array"
+          },
+          "inviteOnly": {
+            "description": "Whether POST /accounts demands a code right now (SIGNUP_INVITE_ONLY)",
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "description": "Cursor for next page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inviteOnly",
+          "counts",
+          "entries"
+        ],
+        "type": "object"
+      },
       "SystemPickups": {
         "properties": {
           "counts": {
@@ -11920,6 +12398,10 @@
                 "description": "True if PIM_ITIP_CANCEL_REMOVED is on, so an organizer dropping an attendee from a calendar write cancels that attendee's copy (RFC 6638 3.2.1.2) rather than leaving it. Irreversible per event: there is no PIM undelete and no unsending.",
                 "type": "boolean"
               },
+              "recvLimits": {
+                "description": "True if the inbound receive allowance is actively enforced (over-allowance mail is deferred, 429 at the API and 451 at the MX). Its own flag, RECV_LIMITS_LOG_ONLY, never derived from sendLimits.",
+                "type": "boolean"
+              },
               "sendLimits": {
                 "description": "True if outbound sending rate limits are actively enforced",
                 "type": "boolean"
@@ -11931,6 +12413,7 @@
             },
             "required": [
               "sendLimits",
+              "recvLimits",
               "storageLimits",
               "itipCancelRemoved"
             ],
@@ -12031,11 +12514,17 @@
                 "description": "Total events count",
                 "format": "int64",
                 "type": "integer"
+              },
+              "forwarded": {
+                "description": "Inbound-driven egress events — the forwarded subset of outbound",
+                "format": "int64",
+                "type": "integer"
               }
             },
             "required": [
               "events",
-              "bytes"
+              "bytes",
+              "forwarded"
             ],
             "type": "object"
           }
@@ -12502,6 +12991,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "forwarded": {
+            "description": "The inbound-driven SUBSET of `outbound` (never a third direction): mail that left because a route was configured rather than because anyone submitted it. Bounded by the per-domain forwarding budget, billed on its own axis (forwardedMessages), and spends no send allowance",
+            "format": "int64",
+            "type": "integer"
+          },
           "inbound": {
             "description": "Count of inbound messages received from external senders",
             "format": "int64",
@@ -12518,7 +13012,8 @@
           "events",
           "bytes",
           "inbound",
-          "outbound"
+          "outbound",
+          "forwarded"
         ],
         "type": "object"
       },
@@ -13776,6 +14271,18 @@
             }
           },
           {
+            "description": "Only accounts on this plan label — 'untrusted' is the vetting queue. The word 'none' selects accounts with NO label recorded (the fleet that predates plans). Omitted = every plan",
+            "in": "query",
+            "name": "plan",
+            "required": false,
+            "schema": {
+              "description": "Only accounts on this plan label — 'untrusted' is the vetting queue. The word 'none' selects accounts with NO label recorded (the fleet that predates plans). Omitted = every plan",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
             "description": "Listing direction over the account id (a ULID, so creation order): asc (default) = oldest first, desc = newest signups first. Hold it constant across a cursor crawl — cursors do not encode direction",
             "in": "query",
             "name": "order",
@@ -13860,6 +14367,11 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "invitationCode": {
+                    "description": "The signup invitation this account is created on. Required, and SPENT on the new account, when the deployment is invitation-only (SIGNUP_INVITE_ONLY; GET /system/invitations/check says); ignored when it is not. Case, spaces and dashes are forgiven",
+                    "maxLength": 64,
+                    "type": "string"
+                  },
                   "maxMailboxes": {
                     "description": "Maximum number of mailboxes allowed in this account (null = the platform default, MAX_MAILBOXES_DEFAULT)",
                     "exclusiveMinimum": 0,
@@ -13924,7 +14436,7 @@
                 }
               }
             },
-            "description": "system_credentials_required"
+            "description": "system_credentials_required; invitation_required — the deployment is invitation-only and no code was presented; invitation_invalid — the code is unknown, malformed, or already spent (one answer for all three, so a guesser learns nothing)"
           }
         },
         "summary": "Create account",
@@ -14115,6 +14627,42 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "addressCreatesPerDay": {
+                    "description": "Addresses (routes) this ACCOUNT may CREATE per rolling 24h. Velocity only, never a total — a total would quietly turn 'unlimited addresses' into a ceiling. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "domainCreatesPerDay": {
+                    "description": "Domains this ACCOUNT may onboard per rolling 24h, claimed BEFORE the ownership probe so a farming script spends no resolver calls. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "forwardMsgsPerDay": {
+                    "description": "INBOUND-DRIVEN egress per rolling 24h: mail leaving because this tenant configured a route (a remote route, an external group member, a mailbox forward-all), where no local sender exists to charge. The LEDGER is keyed per DOMAIN, so an account holding N domains may forward N x this. Never spends the send allowance — it is metered and billed on its own axis (forwardedMessages on GET /accounts/:accountId/usage). null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "mailboxCreatesPerDay": {
+                    "description": "Mailboxes this ACCOUNT may CREATE per rolling 24h — a CHURN bound, not a ceiling (maxMailboxes is the ceiling): a fresh mailbox is a fresh, empty send ledger, so purge + recreate would otherwise recycle the per-mailbox cap while the count never moves. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "maxMailboxes": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
@@ -14422,6 +14970,107 @@
           }
         },
         "summary": "List account audit trail",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/clients": {
+      "get": {
+        "description": "Every identity's clients across the account, newest first, over the last ninety days — one indexed scan, paged by keyset. The sort key moves as clients are seen, so a row touched while paging can appear twice or be skipped; that is the correct behaviour for a live list. Account-scoped by design: there is no fleet-wide listing, and an operator investigating an incident reads one account at a time.",
+        "operationId": "get_AccountClientList",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "clients": {
+                      "items": {
+                        "$ref": "#/components/schemas/IdentityClient"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "clients"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Page of clients, newest first"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_cursor for a cursor that is not one this list issued"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found or not accessible to this principal"
+          }
+        },
+        "summary": "List an account's clients",
         "tags": [
           "Accounts"
         ]
@@ -15554,6 +16203,14 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "expiresAt": {
+                    "description": "Epoch seconds after which the entry stops applying (must be in the future); omit or null for never. A repeat add replaces the previous expiry.",
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "note": {
                     "description": "Optional descriptive note for this pattern entry",
                     "maxLength": 500,
@@ -15668,6 +16325,14 @@
                     "description": "Array of pattern entries to add",
                     "items": {
                       "properties": {
+                        "expiresAt": {
+                          "description": "Epoch seconds after which the entry stops applying (must be in the future); omit or null for never. A repeat add replaces the previous expiry.",
+                          "exclusiveMinimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "note": {
                           "description": "Display-only note",
                           "maxLength": 500,
@@ -15752,6 +16417,186 @@
           }
         },
         "summary": "Add multiple patterns to an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/lists/{listId}/entries/export": {
+      "get": {
+        "description": "Returns every live pattern of the list as CSV with the columns `pattern,note,expires_at` (expires_at in epoch seconds, empty for never). The file round-trips through the import endpoint unchanged.",
+        "operationId": "get_AccountAddressListEntryExport",
+        "parameters": [
+          {
+            "description": "Account identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "description": "CSV: pattern,note,expires_at",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "CSV document"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Export an address list as CSV",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/lists/{listId}/entries/import": {
+      "post": {
+        "description": "Adds every row of a CSV document to the list. Columns are `pattern,note,expires_at`, named by an optional header row or taken by position; `expires_at` is epoch seconds or an ISO 8601 date-time, empty for never. Lines starting with `#` and blank lines are ignored, so a plain one-address-per-line file imports too. Invalid rows (bad pattern, past or unparseable expiry) are skipped and reported; the whole import is refused with 409 `list_full` when the new rows would exceed the list's cap. Idempotent: re-importing an export writes nothing new.",
+        "operationId": "post_AccountAddressListEntryImport",
+        "parameters": [
+          {
+            "description": "Account identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/csv": {
+              "schema": {
+                "description": "CSV document, at most 1 MiB",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListBatchResult"
+                }
+              }
+            },
+            "description": "Import summary"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_full"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "payload_too_large — the document exceeds 1 MiB"
+          }
+        },
+        "summary": "Import patterns into an address list from CSV",
         "tags": [
           "Address lists"
         ]
@@ -15844,8 +16689,70 @@
       }
     },
     "/api/v1/accounts/{accountId}/plan": {
+      "get": {
+        "description": "The plan label on the account and who applied it and when (the calling key's id at the time — with per-operator keys, the operator who vetted the account). The vetting record the operator panel shows per account. Operator-only: a tenant's own account read carries the label but neither the author nor the instant. The stamped numbers are on GET /accounts/:accountId.",
+        "operationId": "get_AccountPlanGet",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPlanRecord"
+                }
+              }
+            },
+            "description": "The plan record"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          }
+        },
+        "summary": "Read an account's plan record (system only)",
+        "tags": [
+          "Accounts"
+        ]
+      },
       "post": {
-        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` with every key present, sorted, omitted numbers as null and the gate as false — so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Presets are owned by operator tooling; this verb applies what it is given.",
+        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label, plus who applied it and when. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` with every key present, sorted, omitted numbers as null and the gate as false — so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Content is the caller's for the tiers tooling owns; omit `limits` to apply one of core's own presets by name — the vetting axis, `untrusted` (what every signup starts on) and `trusted` (lifted by an operator after looking) — and a name core does not define is refused 400 unknown_plan.",
         "operationId": "post_AccountPlanApply",
         "parameters": [
           {
@@ -15866,8 +16773,44 @@
                 "properties": {
                   "limits": {
                     "additionalProperties": false,
-                    "description": "The preset's column set. EVERY plan column is stamped: a key the preset omits is set to its neutral value (null = the platform default for a number; the vanity-host gate off), never left at the previous plan's value. Unknown fields are refused",
+                    "description": "The preset's column set. EVERY plan column is stamped: a key the preset omits is set to its neutral value (null = the platform default for a number; the vanity-host gate off), never left at the previous plan's value. Unknown fields are refused. Omit it entirely to apply a preset core defines itself (`untrusted`, `trusted`)",
                     "properties": {
+                      "addressCreatesPerDay": {
+                        "description": "Addresses (routes) this account may CREATE per rolling day (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "domainCreatesPerDay": {
+                        "description": "Domains this account may onboard per rolling day (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "forwardMsgsPerDay": {
+                        "description": "Inbound-driven egress per rolling day — mail leaving because a route was configured, with no local sender to charge (null = platform default, 0 = UNLIMITED). The LEDGER is per domain, so an account with N domains gets N x this. Never spends the send allowance; metered separately as forwardedMessages",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "mailboxCreatesPerDay": {
+                        "description": "Mailboxes this account may CREATE per rolling day (null = platform default, 0 = UNLIMITED). A churn bound, not a ceiling — maxMailboxes is the ceiling",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
                       "maxMailboxes": {
                         "description": "Mailbox ceiling (null = the platform default, MAX_MAILBOXES_DEFAULT)",
                         "exclusiveMinimum": 0,
@@ -15956,8 +16899,7 @@
                   }
                 },
                 "required": [
-                  "plan",
-                  "limits"
+                  "plan"
                 ],
                 "type": "object"
               }
@@ -15984,7 +16926,7 @@
                 }
               }
             },
-            "description": "validation_failed"
+            "description": "validation_failed; unknown_plan — no content was sent and core has no preset of that name"
           },
           "401": {
             "content": {
@@ -28336,6 +29278,280 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}/clients": {
+      "get": {
+        "description": "Where this identity has been reached from: one row per (protocol, network, credential), newest first, over the last ninety days. Self-service: the identity's own credential may read its own list — under the same `full`-scope rule as the credential list, because the rows name every other credential and the networks it is used from, which a leaked read-scoped token must not learn. A null `country` means nobody looked, not an unknown location; mail-protocol rows carry null until the fleet resolves locations.",
+        "operationId": "get_IdentityClientList",
+        "parameters": [
+          {
+            "description": "Identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "clients": {
+                      "items": {
+                        "$ref": "#/components/schemas/IdentityClient"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "description": "Opaque cursor for the next page; absent on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "clients"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Page of clients, newest first"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_cursor for a cursor that is not one this list issued"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "credential_scope: the credential is scoped below `full`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Identity not found or not accessible to this principal"
+          }
+        },
+        "summary": "List an identity's clients",
+        "tags": [
+          "Credentials"
+        ]
+      },
+      "post": {
+        "description": "System callers only: a platform frontend (the IMAP/POP3/ManageSieve gateway at LOGIN, the submission agent at AUTH, the DAV gateway per request, the webmail frontend at login and renew) reports which end-client address reached this identity, over what, with which credential. Idempotent: repeats within the coalescing window cost nothing. The identity is resolved on the platform's side and its account attached; the caller never asserts either. The address must parse as a v4 or v6 literal.",
+        "operationId": "post_ClientIngest",
+        "parameters": [
+          {
+            "description": "Identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "asOrg": {
+                    "maxLength": 64,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "asn": {
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "city": {
+                    "maxLength": 128,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "client": {
+                    "description": "The client's self-description (User-Agent, IMAP ID)",
+                    "maxLength": 128,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "country": {
+                    "description": "ISO 3166-1 alpha-2, from the frontend's own request.cf or GeoIP; omit when unknown",
+                    "maxLength": 8,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "credentialId": {
+                    "description": "The credential the client presented, from the verify result",
+                    "maxLength": 64,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "facets": {
+                    "description": "What the client TOUCHED on this frontend — never the identity's bound stores",
+                    "items": {
+                      "enum": [
+                        "mail",
+                        "pim"
+                      ],
+                      "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "ip": {
+                    "description": "The end client's address, a bare v4 or v6 literal",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "protocol": {
+                    "description": "How the client reached the reporting frontend",
+                    "enum": [
+                      "imap",
+                      "pop3",
+                      "sieve",
+                      "smtp",
+                      "caldav",
+                      "carddav",
+                      "dav",
+                      "jmap",
+                      "webmail",
+                      "api"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "protocol",
+                  "facets",
+                  "ip"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Recorded (or coalesced into a recent sighting)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_ip when the address is not a v4 or v6 literal"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no live identity by that id — nothing is written"
+          }
+        },
+        "summary": "Report a client sighting",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
     "/api/v1/identities/{identityId}/contacts/suggest": {
       "get": {
         "description": "Compose-screen autocomplete: matches what the user typed (case-insensitive substring) against each card's formatted name, email and structured name, across every addressbook the identity owns plus those shared with it, in one call. Results are deduplicated by address, prefix matches rank first, and the caller's own books rank ahead of shared ones. Cards with no email are excluded (a suggestion a composer cannot address is noise), and only a card's FIRST `EMAIL` is indexed, so a match on a secondary address is not found. Each row carries enough identity (ownerIdentityId + addressbookId + uid) to fetch the full card via the owning addressbook's objects listing with `?uid=`.",
@@ -28815,7 +30031,7 @@
                     "type": "string"
                   },
                   "surface": {
-                    "description": "The hostname to tell the recipient to sign in at, e.g. mail.open.email. Printed as a bare hostname and never as a link (§XVII.7): a user being invited has never been here, and a code with no destination is a dead end",
+                    "description": "The hostname to tell the recipient to sign in at, e.g. webmail.open.email. Printed as a bare hostname and never as a link (§XVII.7): a user being invited has never been here, and a code with no destination is a dead end",
                     "maxLength": 64,
                     "type": "string"
                   }
@@ -31333,6 +32549,132 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/filtering": {
+      "get": {
+        "description": "Returns the mailbox's filtering switches: today `trustContacts`, whether the mailbox's own address book acts as an implicit allow list against the spam verdict.",
+        "operationId": "get_FilteringGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilteringSettings"
+                }
+              }
+            },
+            "description": "Filtering settings"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get mailbox filtering settings",
+        "tags": [
+          "Filtering"
+        ]
+      },
+      "put": {
+        "description": "Sets the mailbox's filtering switches. Turning `trustContacts` off makes address-book membership irrelevant to delivery; explicit allow and block lists are unaffected either way.",
+        "operationId": "put_FilteringPut",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilteringBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilteringSettings"
+                }
+              }
+            },
+            "description": "Updated filtering settings"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — invalid request body"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Update mailbox filtering settings",
+        "tags": [
+          "Filtering"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/forwarding": {
       "get": {
         "description": "Returns every address this mailbox has named for forwarding, with its verification state, plus the forward-everything setting. Never returns a confirmation code.",
@@ -33693,6 +35035,14 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "expiresAt": {
+                    "description": "Epoch seconds after which the entry stops applying (must be in the future); omit or null for never. A repeat add replaces the previous expiry.",
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "note": {
                     "description": "Optional descriptive note for this pattern entry",
                     "maxLength": 500,
@@ -33807,6 +35157,14 @@
                     "description": "Array of pattern entries to add",
                     "items": {
                       "properties": {
+                        "expiresAt": {
+                          "description": "Epoch seconds after which the entry stops applying (must be in the future); omit or null for never. A repeat add replaces the previous expiry.",
+                          "exclusiveMinimum": 0,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
                         "note": {
                           "description": "Display-only note",
                           "maxLength": 500,
@@ -33891,6 +35249,186 @@
           }
         },
         "summary": "Add multiple patterns to an address list",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/lists/{listId}/entries/export": {
+      "get": {
+        "description": "Returns every live pattern of the list as CSV with the columns `pattern,note,expires_at` (expires_at in epoch seconds, empty for never). The file round-trips through the import endpoint unchanged.",
+        "operationId": "get_MailboxAddressListEntryExport",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "description": "CSV: pattern,note,expires_at",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "CSV document"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          }
+        },
+        "summary": "Export an address list as CSV",
+        "tags": [
+          "Address lists"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/lists/{listId}/entries/import": {
+      "post": {
+        "description": "Adds every row of a CSV document to the list. Columns are `pattern,note,expires_at`, named by an optional header row or taken by position; `expires_at` is epoch seconds or an ISO 8601 date-time, empty for never. Lines starting with `#` and blank lines are ignored, so a plain one-address-per-line file imports too. Invalid rows (bad pattern, past or unparseable expiry) are skipped and reported; the whole import is refused with 409 `list_full` when the new rows would exceed the list's cap. Idempotent: re-importing an export writes nothing new.",
+        "operationId": "post_MailboxAddressListEntryImport",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "List id",
+            "in": "path",
+            "name": "listId",
+            "required": true,
+            "schema": {
+              "description": "List id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/csv": {
+              "schema": {
+                "description": "CSV document, at most 1 MiB",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressListBatchResult"
+                }
+              }
+            },
+            "description": "Import summary"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, or invalid_pattern"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "list_full"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "payload_too_large — the document exceeds 1 MiB"
+          }
+        },
+        "summary": "Import patterns into an address list from CSV",
         "tags": [
           "Address lists"
         ]
@@ -44344,7 +45882,7 @@
         ]
       },
       "get": {
-        "description": "Checks whether a specific email address is currently blocked on the suppression list (system callers only).",
+        "description": "Checks whether a specific email address is currently blocked on the suppression list. System callers see every row; account callers see hard-bounce rows only (the ones they may lift), and a complaint row answers 404 exactly as an unsuppressed address does.",
         "operationId": "get_SuppressionGet",
         "parameters": [
           {
@@ -44379,16 +45917,6 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          },
           "404": {
             "content": {
               "application/json": {
@@ -44397,7 +45925,7 @@
                 }
               }
             },
-            "description": "not_found — address is not suppressed"
+            "description": "not_found — the address is not suppressed, or not visible to this caller"
           }
         },
         "summary": "Get suppression status for an address",
@@ -45765,6 +47293,218 @@
           }
         },
         "summary": "Feed vanity hostnames for edges",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/invitations": {
+      "get": {
+        "description": "The codes, newest first, each with who spent it (the account it created, named after the signup address) and when; the counts over the whole table; and whether the deployment is invitation-only right now (SIGNUP_INVITE_ONLY) — a screen of unused codes on an open deployment otherwise reads as 'nobody signed up'.",
+        "operationId": "get_SystemInvitationsGet",
+        "parameters": [
+          {
+            "description": "Spent, unspent, or every code (default all)",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "description": "Spent, unspent, or every code (default all)",
+              "enum": [
+                "all",
+                "unused",
+                "used"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Page size (default 100)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a previous response",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInvitations"
+                }
+              }
+            },
+            "description": "Invitation codes, newest first; nextCursor present when a further page exists"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "List signup invitation codes (system only)",
+        "tags": [
+          "System"
+        ]
+      },
+      "post": {
+        "description": "Creates a batch of single-use codes, stamped with the minting key and a note saying what the batch was for (the note rides on every code, so the listing can say why one exists). The codes are answered here and are readable on the listing thereafter. One call mints up to 500.",
+        "operationId": "post_SystemInvitationsPost",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "count": {
+                    "description": "How many codes to mint (1–500)",
+                    "maximum": 500,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "note": {
+                    "description": "What the batch is for — stamped on every code",
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "count"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationMintResult"
+                }
+              }
+            },
+            "description": "The fresh codes"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Mint signup invitation codes (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/invitations/check": {
+      "get": {
+        "description": "What a signup form asks before it asks the visitor: `inviteOnly` says whether POST /accounts will demand a code at all, and — when a code is given — `live` says whether that code exists and is unspent. Writes nothing: the code is spent only by the account creation it goes on to. A code that cannot be one (wrong length, a symbol outside the alphabet) answers `code: null, live: false`.",
+        "operationId": "get_SystemInvitationsCheck",
+        "parameters": [
+          {
+            "description": "The code as typed — case, spaces and dashes are forgiven",
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "description": "The code as typed — case, spaces and dashes are forgiven",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationCheck"
+                }
+              }
+            },
+            "description": "The gate's state, and the code's when one was asked about"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Is the deployment invitation-only, and is this code live? (system only)",
         "tags": [
           "System"
         ]

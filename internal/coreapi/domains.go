@@ -240,6 +240,10 @@ type DomainTraffic struct {
 	Totals struct {
 		Events int64 `json:"events"`
 		Bytes  int64 `json:"bytes"`
+		// Forwarded is the inbound-driven subset of the outbound events in this
+		// window — see TrafficSeriesPoint.Forwarded. Never added to a total; it
+		// is already inside one.
+		Forwarded int64 `json:"forwarded"`
 	} `json:"totals"`
 	ByOutcome map[string]int64 `json:"byOutcome"`
 	Rows      []TrafficRow     `json:"rows"`
@@ -254,11 +258,16 @@ type DomainTraffic struct {
 // TrafficSeriesPoint is one time bucket of the traffic summary: totals plus the
 // inbound/outbound split and the per-outcome breakdown inside that bucket.
 type TrafficSeriesPoint struct {
-	Bucket    string           `json:"bucket"`
-	Events    int64            `json:"events"`
-	Bytes     int64            `json:"bytes"`
-	Inbound   int64            `json:"inbound"`
-	Outbound  int64            `json:"outbound"`
+	Bucket   string `json:"bucket"`
+	Events   int64  `json:"events"`
+	Bytes    int64  `json:"bytes"`
+	Inbound  int64  `json:"inbound"`
+	Outbound int64  `json:"outbound"`
+	// Forwarded is the inbound-driven SUBSET of Outbound, never a third
+	// direction: mail that left because a route was configured rather than
+	// because anyone submitted it. Adding it to Outbound double-counts. It is
+	// bounded by the per-domain forwarding budget and spends no send allowance.
+	Forwarded int64            `json:"forwarded"`
 	ByOutcome map[string]int64 `json:"byOutcome,omitempty"`
 }
 
