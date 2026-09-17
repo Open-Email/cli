@@ -8,9 +8,14 @@ import (
 
 // ThreadListItem is one conversation in the thread listing.
 type ThreadListItem struct {
-	ThreadID       string      `json:"threadId"`
-	MessageCount   int64       `json:"messageCount"`
-	UnseenCount    int64       `json:"unseenCount"`
+	ThreadID     string `json:"threadId"`
+	MessageCount int64  `json:"messageCount"`
+	UnseenCount  int64  `json:"unseenCount"`
+	// FlaggedCount is how many live members are starred, over the same
+	// population as MessageCount. It, and not Exemplar's flags, is what says
+	// whether a conversation is starred: the exemplar is one member, and a star
+	// on any other is invisible from it.
+	FlaggedCount   int64       `json:"flaggedCount"`
 	LastReceivedAt int64       `json:"lastReceivedAt"`
 	Exemplar       MessageMeta `json:"exemplar"`
 	// Participants are the distinct senders in the conversation, oldest first,
