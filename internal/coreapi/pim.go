@@ -46,6 +46,12 @@ type PimCollection struct {
 	Description *string `json:"description"`
 	Visibility  string  `json:"visibility"` // private | shared | public
 	Role        *string `json:"role"`       // default | tasks | nil
+	// ScheduleTransp is RFC 6638 §9.1's CALDAV:schedule-calendar-transp:
+	// whether this calendar's objects count toward the OWNER's free/busy time.
+	// Never empty — §9.1 says an absent property "MUST be assumed" to be
+	// opaque, and core resolves that before answering, so no reader here has
+	// to decide it for itself. Meaningless on an addressbook.
+	ScheduleTransp string `json:"scheduleTransp"` // opaque | transparent
 	// SyncToken is opaque (DAV ctag) — relay it, never parse it.
 	SyncToken   string `json:"syncToken"`
 	CreatedAt   int64  `json:"createdAt"`
@@ -150,6 +156,14 @@ type PimInstance struct {
 	Status       *string `json:"status"`
 	// Component is the occurrence as a standalone VCALENDAR, RECURRENCE-ID stamped.
 	Component string `json:"component"`
+	// FBType is what this occurrence contributes to a free/busy answer (RFC
+	// 4791 §7.10), and OwnerPartstat the collection owner's own PARTSTAT on
+	// it. Both appear only when the query asked for them (`fbtype=true`), and
+	// nil is meaningful in each: FBType nil contributes nothing at all, and
+	// OwnerPartstat nil means the owner is not an attendee of this occurrence
+	// — which is not the same as having failed to answer.
+	FBType        *string `json:"fbType,omitempty"` // BUSY | BUSY-TENTATIVE
+	OwnerPartstat *string `json:"ownerPartstat,omitempty"`
 }
 
 // PimWindow echoes the effective range a ranged query actually answered.
@@ -192,6 +206,15 @@ type PimPutResult struct {
 	Created   bool   `json:"created"`
 	SyncToken string `json:"syncToken"`
 	Unparsed  bool   `json:"unparsed,omitempty"`
+	// Rewritten says the stored bytes are not the bytes sent, whatever the
+	// cause — a dropped VCALENDAR METHOD (RFC 4791 §4.1), SCHEDULE-FORCE-SEND,
+	// the merge below. Merged narrows it to the one cause a client must not
+	// read as its own edit: a matching If-Schedule-Tag-Match made the server
+	// carry the OTHER attendees' answers into the body it stored (RFC 6638
+	// §3.2.10.1), so the copy the client holds is already behind and must be
+	// re-read rather than re-sent.
+	Rewritten bool `json:"rewritten,omitempty"`
+	Merged    bool `json:"merged,omitempty"`
 }
 
 // PimObjectDeleted is a DELETE object response.
@@ -258,6 +281,10 @@ type PimSharedWithMe struct {
 	// badged without listing it.
 	ObjectCount int64         `json:"objectCount"`
 	TaskCounts  PimTaskCounts `json:"taskCounts"`
+	// ScheduleTransp is §9.1 as the OWNER set it. A sharee is entitled to the
+	// same answer the owner gets, because the property describes whose busy
+	// time the calendar counts toward — theirs — and not the reader's.
+	ScheduleTransp string `json:"scheduleTransp"` // opaque | transparent
 }
 
 // PimPublicCollection is one entry of the account-scoped public directory. ID
