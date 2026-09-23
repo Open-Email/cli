@@ -126,6 +126,7 @@ func contractPairings() []pairing {
 		{val: RestoreResult{}, comp: "MessageRestoreResult"},
 		{val: BatchRestoreResult{}, comp: "BatchRestoreResult"},
 		{val: BatchRestoreEntry{}, comp: "BatchRestoreEntry"},
+		{val: BatchUnjunkEntry{}, comp: "BatchUnjunkEntry"},
 		{val: BatchLearnResult{}, comp: "BatchLearnResult"},
 		{val: BatchLearnEntry{}, comp: "BatchLearnEntry"},
 		{val: SieveScript{}, comp: "SieveScript"},

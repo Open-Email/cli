@@ -2,6 +2,7 @@ package coreapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -304,11 +305,102 @@ func TestRenameLabelBodyField(t *testing.T) {
 		w.Write([]byte(`{"renamed":true}`))
 	}))
 	defer srv.Close()
-	if err := m3Client(t, srv.URL).RenameLabel(context.Background(), "mbx", "Old", "New"); err != nil {
+	if err := m3Client(t, srv.URL).RenameLabel(context.Background(), "mbx", "Old", "New", RenameLabelOpts{}); err != nil {
 		t.Fatalf("RenameLabel: %v", err)
 	}
 	if !strings.Contains(body, `"name":"New"`) || strings.Contains(body, "newName") {
 		t.Fatalf("rename body must be {\"name\":\"New\"}, got %s", body)
+	}
+	// Absent, not false: core reads an always-echoed `withChildren: false` as
+	// saying nothing, and the body should carry only what was asked for.
+	if strings.Contains(body, "withChildren") {
+		t.Fatalf("a plain rename must not mention withChildren, got %s", body)
+	}
+}
+
+// --with-children asserts the cascade; core leaves sub-labels behind without it.
+func TestRenameLabelWithChildren(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.Write([]byte(`{"renamed":true}`))
+	}))
+	defer srv.Close()
+	err := m3Client(t, srv.URL).RenameLabel(context.Background(), "mbx", "Work", "Job",
+		RenameLabelOpts{WithChildren: true})
+	if err != nil {
+		t.Fatalf("RenameLabel: %v", err)
+	}
+	if !strings.Contains(body, `"withChildren":true`) || !strings.Contains(body, `"name":"Job"`) {
+		t.Fatalf("cascading rename body must carry name and withChildren, got %s", body)
+	}
+}
+
+// A collision under a CARRIED CHILD is a 409 whose `clash` names a label the
+// caller never typed. The envelope's unknown fields ride APIError.Extra, so the
+// command can show which name is actually taken.
+func TestRenameLabelClashSurfacesTheTakenName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"exists","clash":"Crew/Clients"}`))
+	}))
+	defer srv.Close()
+	err := m3Client(t, srv.URL).RenameLabel(context.Background(), "mbx", "Team", "Crew",
+		RenameLabelOpts{WithChildren: true})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("want *APIError, got %#v", err)
+	}
+	if apiErr.Status != http.StatusConflict || apiErr.Code != "exists" {
+		t.Fatalf("want 409 exists, got %d %s", apiErr.Status, apiErr.Code)
+	}
+	if got := apiErr.Extra["clash"]; got != "Crew/Clients" {
+		t.Fatalf("clash must reach Extra so the caller can name it, got %#v", got)
+	}
+	if !strings.Contains(apiErr.Detail(), "Crew/Clients") {
+		t.Fatalf("Detail must show the taken name, got %q", apiErr.Detail())
+	}
+}
+
+// Unjunk posts ids to /messages/unjunk and keeps core's three outcomes apart:
+// not_junked (there, but not in Junk) is not not_found (no such live message).
+func TestUnjunkMessages(t *testing.T) {
+	var path, body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.Write([]byte(`{"results":[
+			{"id":"a","status":"unjunked","message":{"id":"a","labels":[{"name":"INBOX","uid":7,"uidValidity":1,"modseq":2,"deleted":false}]}},
+			{"id":"b","status":"not_junked"},
+			{"id":"c","status":"not_found"}]}`))
+	}))
+	defer srv.Close()
+	res, err := m3Client(t, srv.URL).UnjunkMessages(context.Background(), "mbx", []string{"a", "b", "c"})
+	if err != nil {
+		t.Fatalf("UnjunkMessages: %v", err)
+	}
+	if !strings.HasSuffix(path, "/mailboxes/mbx/messages/unjunk") {
+		t.Fatalf("unexpected path %s", path)
+	}
+	if !strings.Contains(body, `"ids":["a","b","c"]`) {
+		t.Fatalf("body must carry the ids, got %s", body)
+	}
+	if len(res.Results) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(res.Results))
+	}
+	if res.Results[0].Status != "unjunked" || res.Results[0].Message == nil {
+		t.Fatalf("an unjunked row carries its message: %#v", res.Results[0])
+	}
+	if got := res.Results[0].Message.Labels[0].Name; got != "INBOX" {
+		t.Fatalf("the restored filing must decode, got %q", got)
+	}
+	if res.Results[1].Status != "not_junked" || res.Results[1].Message != nil {
+		t.Fatalf("not_junked carries no message: %#v", res.Results[1])
+	}
+	if res.Results[2].Status != "not_found" {
+		t.Fatalf("want not_found, got %q", res.Results[2].Status)
 	}
 }
 

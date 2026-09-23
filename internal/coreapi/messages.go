@@ -417,6 +417,49 @@ func (c *Client) RestoreMessages(ctx context.Context, mailboxID string, ids []st
 	return &out, nil
 }
 
+// BatchUnjunkEntry is one message's outcome in a batch unjunk. Message is
+// present iff Status is "unjunked".
+//
+// "not_junked" is deliberately distinct from "not_found": the message is there
+// and readable but does not carry Junk, so there is nothing to undo. An
+// EXPUNGED id is "not_found" here: that tier is RestoreMessages' business.
+type BatchUnjunkEntry struct {
+	ID      string       `json:"id"`
+	Status  string       `json:"status"` // unjunked | not_junked | not_found
+	Message *MessageMeta `json:"message,omitempty"`
+}
+
+// BatchUnjunkResult carries per-message outcomes in REQUEST order, so a caller
+// can pair them with the ids it sent without matching on id.
+type BatchUnjunkResult struct {
+	Results []BatchUnjunkEntry `json:"results"`
+}
+
+// UnjunkMessages takes messages out of Junk and back to where they were filed:
+// the "not spam" verb, and the counterpart of RestoreMessages for the other
+// state label.
+//
+// Where each one lands is core's record, not a guess. A label write that left
+// a message carrying only Junk recorded the filing it had beforehand, and this
+// puts that back; failing that, whatever the message carries besides Junk;
+// failing that, INBOX. Removing the Junk label by hand (a PatchInput with
+// LabelsRemove) does none of that: it drops the label and leaves the message
+// wherever the caller happened to name.
+//
+// It does NOT train the spam filter. Pair it with LearnMessages(class "ham")
+// when the message was misclassified, rather than merely misfiled.
+func (c *Client) UnjunkMessages(ctx context.Context, mailboxID string, ids []string) (*BatchUnjunkResult, error) {
+	var out BatchUnjunkResult
+	err := c.doJSON(ctx, request{
+		method: http.MethodPost, path: c.messagesPath(mailboxID) + "/unjunk",
+		body: mustJSON(map[string]any{"ids": ids}), contentType: "application/json",
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // EmptyTrash permanently purges every message currently in the trash.
 func (c *Client) EmptyTrash(ctx context.Context, mailboxID string) (int64, error) {
 	q := url.Values{}

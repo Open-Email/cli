@@ -147,6 +147,25 @@ openemail messages not-junk 01MSGID…   # this was wrongly classified
 openemail messages junk 01A 01B 01C
 ```
 
+Training does not move anything. The verb that does is `unjunk`, and the two
+are a pair worth keeping straight:
+
+```sh
+openemail messages unjunk 01MSGID…     # take it OUT of Junk, back where it was
+openemail messages not-junk 01MSGID…   # tell the filter it was wrong
+openemail messages unjunk 01A 01B 01C  # one call, up to 200
+```
+
+`unjunk` puts the message back where core recorded it, not where you guess:
+reporting spam stores the filing the message had beforehand, and this restores
+exactly that; failing a record, whatever it still carries besides Junk; failing
+that, INBOX. Removing the label by hand with `messages label` does none of
+this. A message that exists but is not in Junk answers `not_junked`, which is
+deliberately not `not_found`: an expunged id belongs to `messages restore`.
+
+Do both when the filter was wrong AND the mail is in the wrong place; `unjunk`
+alone is right when you simply want it back.
+
 The sample trains **this mailbox's** personal overlay, so one person's idea of
 junk never becomes another's. It is training only: nothing is moved, flagged or
 deleted — pair it with `openemail messages move` if you also want it out of the
@@ -670,6 +689,7 @@ DAV/JMAP clients but can never send or receive mail. `openemail whoami` and
 openemail messages list --trash                     # what's in the trash
 openemail messages restore <id>                     # undo one soft-delete
 openemail messages restore <id> <id> <id>           # undo a bulk delete, atomically
+openemail messages unjunk <id>                      # the Junk counterpart (see "Train the spam filter")
 openemail messages trash empty                       # purge all (typed confirm)
 openemail messages delete <id> --purge               # hard-delete one (typed confirm)
 ```
