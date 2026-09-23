@@ -23,6 +23,13 @@ type ThreadListItem struct {
 	// shows. Conversation-wide, which is why the exemplar alone cannot supply
 	// it: the exemplar is one message and this describes all of them.
 	Participants []ThreadParticipant `json:"participants"`
+	// Labels are the distinct label names across the conversation's live
+	// members, ordered by sort order then name. It leaves out the members the
+	// row itself leaves out: those carrying Trash or Junk, outside those two
+	// folders' own views, and any carrying a role named in excludeRoles.
+	// Conversation-wide for the same reason Participants is: the exemplar is
+	// one member, and a label on any other is invisible from it.
+	Labels []string `json:"labels"`
 }
 
 // ThreadParticipant is one distinct sender in a conversation.

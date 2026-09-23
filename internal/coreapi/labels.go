@@ -32,13 +32,17 @@ type LabelInfo struct {
 	IsSubscribed bool `json:"isSubscribed"`
 	// HighestModseq is the label's RFC 7162 HIGHESTMODSEQ (CONDSTORE).
 	HighestModseq int64 `json:"highestModseq"`
+	// Color is the label's presentation colour, "#rrggbb", or nil when the
+	// user has not chosen one. Presentation only: no protocol reads it.
+	Color *string `json:"color"`
 }
 
 // CreatedLabel is the (smaller) create response.
 type CreatedLabel struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	UIDValidity int64  `json:"uidValidity"`
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	UIDValidity int64   `json:"uidValidity"`
+	Color       *string `json:"color"`
 }
 
 func (c *Client) labelsPath(mailboxID string) string {

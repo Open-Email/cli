@@ -1702,6 +1702,53 @@
         ],
         "type": "object"
       },
+      "BatchUnjunkEntry": {
+        "properties": {
+          "id": {
+            "description": "Message ULID",
+            "type": "string"
+          },
+          "message": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageMeta"
+              },
+              {
+                "description": "Unjunked message metadata (when status=unjunked)"
+              }
+            ]
+          },
+          "status": {
+            "description": "Unjunk outcome for this message. not_junked: the message exists and is readable but does not carry the Junk label, so there is nothing to undo — deliberately distinct from not_found, which means no such live message (an EXPUNGED id is not_found here; use POST /messages/restore for that tier).",
+            "enum": [
+              "unjunked",
+              "not_junked",
+              "not_found"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchUnjunkResult": {
+        "properties": {
+          "results": {
+            "description": "List of unjunk outcomes for each requested message",
+            "items": {
+              "$ref": "#/components/schemas/BatchUnjunkEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
       "BatchUntrashEntry": {
         "properties": {
           "id": {
@@ -1765,6 +1812,20 @@
             "description": "Message ULID",
             "type": "string"
           },
+          "labelsAdded": {
+            "description": "Labels attached by this write",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "labelsRemoved": {
+            "description": "Labels detached by this write",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "message": {
             "allOf": [
               {
@@ -1790,11 +1851,12 @@
             "type": "integer"
           },
           "status": {
-            "description": "Outcome status for this message",
+            "description": "Outcome status for this message. `not_in_label`: the patch named a `flagLabel` this message is not filed in, so nothing was written for it",
             "enum": [
               "updated",
               "expunged",
               "not_found",
+              "not_in_label",
               "too_many_keywords",
               "modified"
             ],
@@ -2119,6 +2181,13 @@
       },
       "CreatedLabel": {
         "properties": {
+          "color": {
+            "description": "Hex color code for the label badge/chip, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "description": "Assigned label ID",
             "format": "int64",
@@ -2137,7 +2206,8 @@
         "required": [
           "id",
           "name",
-          "uidValidity"
+          "uidValidity",
+          "color"
         ],
         "type": "object"
       },
@@ -4228,6 +4298,21 @@
             "description": "Return one representative message per conversation.",
             "type": "boolean"
           },
+          "excludeRoles": {
+            "description": "System label roles whose mail this query must not return — e.g. `[\"trash\", \"junk\"]` for an All-Mail view. A message carrying ANY label with one of these roles is excluded, whatever else it carries. Says in one argument what a filter would need a label lookup and one bound value per label to say; a role no label answers to is simply not excluded.",
+            "items": {
+              "enum": [
+                "inbox",
+                "sent",
+                "drafts",
+                "trash",
+                "archive",
+                "junk"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
           "fields": {
             "description": "`ids`: answer the matching message IDS only, in query order, under `ids` — no metadata rows, page cap 2000. For a client that needs an id set (an IMAP SEARCH with header or BODY criteria) and would otherwise download bodies to decide. Not combinable with `snippet`.",
             "enum": [
@@ -4561,7 +4646,7 @@
             "type": "integer"
           },
           "type": {
-            "description": "Event name. The vocabulary is ADDITIVE and shared with the live WebSocket feed (GET /mailboxes/{mailboxId}/events): message.new, message.imported, message.updated, message.expunged, message.restored, message.purged, label.created, label.renamed, label.deleted, label.expunged, label.messages_updated, query.messages_updated, trash.emptied, thread.merged, state.changed, email.relayed, email.failed, webhook.test, ... Treat an unrecognized type as a generic 'something changed' nudge, never as an error",
+            "description": "Event name. The vocabulary is ADDITIVE and shared with the live WebSocket feed (GET /mailboxes/{mailboxId}/events): message.new, message.imported, message.updated, message.expunged, message.restored, message.purged, label.created, label.renamed, label.updated, label.deleted, label.expunged, label.messages_updated, query.messages_updated, trash.emptied, thread.merged, state.changed, email.relayed, email.failed, webhook.test, ... Treat an unrecognized type as a generic 'something changed' nudge, never as an error",
             "type": "string"
           }
         },
@@ -4756,6 +4841,7 @@
         "type": "object"
       },
       "FilterRule": {
+        "additionalProperties": false,
         "properties": {
           "actions": {
             "items": {
@@ -5937,12 +6023,70 @@
         ],
         "type": "object"
       },
+      "KeywordCount": {
+        "properties": {
+          "count": {
+            "description": "How many of this mailbox's live messages carry it",
+            "format": "int64",
+            "type": "integer"
+          },
+          "keyword": {
+            "description": "The keyword, canonical lowercase (JMAP keywords are case-insensitive)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword",
+          "count"
+        ],
+        "type": "object"
+      },
+      "KeywordListPage": {
+        "properties": {
+          "keywords": {
+            "description": "Distinct keywords, most-used first, then alphabetical",
+            "items": {
+              "$ref": "#/components/schemas/KeywordCount"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keywords"
+        ],
+        "type": "object"
+      },
+      "LabelDeleteResult": {
+        "properties": {
+          "archived": {
+            "description": "Messages left with no other label that fell back to the Archive label",
+            "type": "integer"
+          },
+          "deleted": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "LabelInfo": {
         "properties": {
           "bytes": {
             "description": "Total storage size of live messages in this label in bytes",
             "format": "int64",
             "type": "integer"
+          },
+          "color": {
+            "description": "Hex color code (#rrggbb) or null",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "deletedCount": {
             "description": "Number of live messages marked with \\Deleted flag",
@@ -6020,7 +6164,8 @@
           "bytes",
           "sortOrder",
           "isSubscribed",
-          "highestModseq"
+          "highestModseq",
+          "color"
         ],
         "type": "object"
       },
@@ -6046,6 +6191,10 @@
       },
       "LabelMessagesUpdateResult": {
         "properties": {
+          "archived": {
+            "description": "Messages whose last label this patch removed that fell back to the Archive label instead of being expunged. Unlike `expunged`, this is a SUBSET of `updated`, not an alternative to it: an archived message was still updated, so `examined` equals `updated + unchanged + expunged + failed` and adding `archived` to `updated` double counts. Only present when the patch carried `orphans: \"archive\"`.",
+            "type": "integer"
+          },
           "examined": {
             "description": "Memberships this call looked at, filtered-out ones included",
             "type": "integer"
@@ -6096,6 +6245,7 @@
           "updated",
           "unchanged",
           "expunged",
+          "archived",
           "failed",
           "remaining",
           "nextAfter"
@@ -7095,6 +7245,10 @@
       },
       "MessageLabel": {
         "properties": {
+          "deleted": {
+            "description": "This membership's IMAP \\Deleted mark (set with `flagLabel` on PATCH, acted on by POST /labels/{label}/expunge). Always present; false when unmarked. Per label, so the same message can be marked in one folder and clean in another",
+            "type": "boolean"
+          },
           "modseq": {
             "description": "RFC 7162 MODSEQ change sequence number",
             "format": "int64",
@@ -7119,7 +7273,8 @@
           "name",
           "uid",
           "uidValidity",
-          "modseq"
+          "modseq",
+          "deleted"
         ],
         "type": "object"
       },
@@ -7257,7 +7412,7 @@
             "type": "array"
           },
           "restoresTo": {
-            "description": "Where a recovery would file this message, as label names. Present only when the message is recoverable: one carrying the Trash label (POST /messages/untrash) or one on the expunged tier (POST /messages/restore). Null otherwise, meaning the message is filed rather than recoverable. This is the effective destination including the Inbox fallback, not a raw snapshot, so a client can name it on a Put back control without reimplementing the rule.",
+            "description": "Where a recovery would file this message, as label names. Present only when the message is recoverable: one carrying the Trash label (POST /messages/untrash), one carrying the Junk label with a recorded origin (POST /messages/unjunk), or one on the expunged tier (POST /messages/restore). A message in both Trash and Junk's records answers for Trash, the verb a client offers it first. Null otherwise, meaning the message is filed rather than recoverable. This is the effective destination including the Inbox fallback, not a raw snapshot, so a client can name it on a Put back or Not spam control without reimplementing the rule.",
             "items": {
               "type": "string"
             },
@@ -7388,7 +7543,7 @@
             "type": "array"
           },
           "labels": {
-            "description": "Per-label membership: name, UID in that label, MODSEQ",
+            "description": "Per-label membership: name, UID in that label, MODSEQ, and that membership's \\Deleted",
             "items": {
               "$ref": "#/components/schemas/MessageLabel"
             },
@@ -7418,12 +7573,247 @@
       "MessageUpdateResult": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/MessageMeta"
+            "$ref": "#/components/schemas/MessageUpdated"
           },
           {
             "$ref": "#/components/schemas/ExpungeNotice"
           }
         ]
+      },
+      "MessageUpdated": {
+        "properties": {
+          "bcc": {
+            "description": "Parsed Bcc header addresses for composed drafts, or null",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "blobGen": {
+            "description": "Storage generation identifier",
+            "type": "string"
+          },
+          "blobHash": {
+            "description": "SHA-256 hash of raw MIME content in storage",
+            "type": "string"
+          },
+          "cc": {
+            "description": "Parsed Cc header addresses, or null if unparseable",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "deliveryMeta": {
+            "additionalProperties": {},
+            "description": "Inbound delivery audit metadata",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "deliveryState": {
+            "description": "What became of this message after it was SENT, for a message this mailbox sent: 'queued' (handed to the relay), 'relayed' (the receiving mail system accepted it — never 'read'), 'delivered' (committed to a local mailbox), 'failed', or 'mixed' (some recipients failed, others did not). Null for received mail, and for sent mail whose delivery record has aged out — render null as no indicator, never as a state. Per-recipient detail and the SMTP reply behind a failure are at /messages/{messageId}/delivery.",
+            "enum": [
+              "queued",
+              "relayed",
+              "delivered",
+              "failed",
+              "mixed"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "envelopeFrom": {
+            "description": "SMTP envelope sender address",
+            "type": "string"
+          },
+          "envelopeTo": {
+            "description": "SMTP envelope recipient address",
+            "type": "string"
+          },
+          "flags": {
+            "description": "System flags (seen, answered, flagged, draft, deleted)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "Parsed From header addresses, or null if unparseable",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "hasAttachment": {
+            "description": "True if message has file attachments, null if not yet determined",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Unique message identifier (ULID)",
+            "type": "string"
+          },
+          "inReplyTo": {
+            "description": "In-Reply-To header Message-ID, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keywords": {
+            "description": "Custom JMAP keywords (e.g. $forwarded)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "labels": {
+            "description": "Labels attached to this message with per-label UIDs",
+            "items": {
+              "$ref": "#/components/schemas/MessageLabel"
+            },
+            "type": "array"
+          },
+          "labelsAdded": {
+            "description": "Labels this write attached, including an Archive fallback under `orphans`",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "labelsRemoved": {
+            "description": "Labels this write detached",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "messageIdHeader": {
+            "description": "Message-ID header value, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modseq": {
+            "description": "Per-label MODSEQ (present in label UID listings)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "receivedAt": {
+            "description": "Timestamp when message was received by server in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "referencesIds": {
+            "description": "List of Message-IDs from References header",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restoresTo": {
+            "description": "Where a recovery would file this message, as label names. Present only when the message is recoverable: one carrying the Trash label (POST /messages/untrash), one carrying the Junk label with a recorded origin (POST /messages/unjunk), or one on the expunged tier (POST /messages/restore). A message in both Trash and Junk's records answers for Trash, the verb a client offers it first. Null otherwise, meaning the message is filed rather than recoverable. This is the effective destination including the Inbox fallback, not a raw snapshot, so a client can name it on a Put back or Not spam control without reimplementing the rule.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sentAt": {
+            "description": "Sent timestamp from Date header in epoch seconds, or null",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "size": {
+            "description": "Total message size in bytes",
+            "format": "int64",
+            "type": "integer"
+          },
+          "snippet": {
+            "description": "Short plain-text preview of message body",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "description": "Message subject line, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "threadId": {
+            "description": "Conversation thread identifier (ULID), or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "description": "Parsed To header addresses, or null if unparseable",
+            "items": {
+              "$ref": "#/components/schemas/ContentAddress"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "uid": {
+            "description": "Per-label UID (present in label UID listings)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "labels",
+          "flags",
+          "keywords",
+          "envelopeFrom",
+          "envelopeTo",
+          "from",
+          "to",
+          "cc",
+          "bcc",
+          "subject",
+          "messageIdHeader",
+          "threadId",
+          "inReplyTo",
+          "referencesIds",
+          "sentAt",
+          "receivedAt",
+          "size",
+          "snippet",
+          "hasAttachment",
+          "blobHash",
+          "blobGen",
+          "deliveryMeta",
+          "deliveryState"
+        ],
+        "type": "object"
       },
       "MeteringAccount": {
         "properties": {
@@ -9739,6 +10129,10 @@
       },
       "QueryMessagesUpdateResult": {
         "properties": {
+          "archived": {
+            "description": "Messages whose last label this patch removed that fell back to the Archive label instead of being expunged. Unlike `expunged`, this is a SUBSET of `updated`, not an alternative to it: an archived message was still updated, so `examined` equals `updated + unchanged + expunged + failed` and adding `archived` to `updated` double counts. Only present when the patch carried `orphans: \"archive\"`.",
+            "type": "integer"
+          },
           "examined": {
             "description": "Messages the query selected in this call",
             "type": "integer"
@@ -9777,6 +10171,7 @@
           "updated",
           "unchanged",
           "expunged",
+          "archived",
           "failed",
           "nextAfter"
         ],
@@ -10927,7 +11322,13 @@
       "RuleAction": {
         "oneOf": [
           {
+            "additionalProperties": false,
             "properties": {
+              "keepInInbox": {
+                "default": false,
+                "description": "Also leave the message in the Inbox. A bare `fileinto` CANCELS Sieve's implicit keep, so the default — false — is what every rule written before this field already did: file into the label and nowhere else. True compiles to `fileinto :copy`, which preserves the keep.",
+                "type": "boolean"
+              },
               "label": {
                 "maxLength": 255,
                 "minLength": 1,
@@ -10947,6 +11348,7 @@
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "flag": {
                 "enum": [
@@ -10970,6 +11372,7 @@
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "keepCopy": {
                 "default": false,
@@ -10994,6 +11397,7 @@
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "type": {
                 "enum": [
@@ -11012,6 +11416,7 @@
       "RuleCondition": {
         "oneOf": [
           {
+            "additionalProperties": false,
             "properties": {
               "field": {
                 "enum": [
@@ -11050,6 +11455,7 @@
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "field": {
                 "enum": [
@@ -11086,6 +11492,7 @@
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "field": {
                 "enum": [
@@ -11128,6 +11535,7 @@
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "field": {
                 "enum": [
@@ -11160,6 +11568,7 @@
             "type": "object"
           },
           {
+            "additionalProperties": false,
             "properties": {
               "field": {
                 "enum": [
@@ -11196,6 +11605,7 @@
         ]
       },
       "RulesDocument": {
+        "additionalProperties": false,
         "properties": {
           "rules": {
             "items": {
@@ -13145,6 +13555,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "labels": {
+            "description": "Distinct label names across this conversation's live members, ordered by sort_order then name. Excludes the members the row excludes: those in Trash or Junk outside their own views, and those carrying an excludeRoles role. Limited to the viewer's granted labels.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "lastReceivedAt": {
             "description": "When this conversation last had activity, in epoch seconds — the newest live member's arrival, ANYWHERE in the thread, which is also what the listing sorts by. May be newer than exemplar.receivedAt: the position is conversation-wide, the exemplar is folder-relative (see exemplar).",
             "format": "int64",
@@ -13156,7 +13573,7 @@
             "type": "integer"
           },
           "participants": {
-            "description": "Distinct senders in the conversation, oldest first, deduplicated by address — the \"Carol, Alice, Bob\" line a conversation row shows, which the exemplar alone cannot supply. Conversation-wide like messageCount, so an Inbox row for a thread you replied to lists you as well. Bounded and capped at 8 entries: read from the conversation's opener plus its 20 newest live members, so a long thread reports who started it and who is still in it, and elides the middle. Scoped and trash-filtered like the rest of the row, so the Trash view of a conversation lists the people in its trashed half.",
+            "description": "Distinct senders in the conversation, oldest first, deduplicated by address — the \"Carol, Alice, Bob\" line a conversation row shows, which the exemplar alone cannot supply. Conversation-wide like messageCount, so an Inbox row for a thread you replied to lists you as well. Bounded and capped at 8 entries: read from the conversation's opener plus its 20 newest live members, so a long thread reports who started it and who is still in it, and elides the middle. Scoped and filtered like the rest of the row (Trash and Junk members hidden outside their own views), so the Trash view of a conversation lists the people in its trashed half.",
             "items": {
               "$ref": "#/components/schemas/ThreadParticipant"
             },
@@ -13179,7 +13596,8 @@
           "flaggedCount",
           "lastReceivedAt",
           "exemplar",
-          "participants"
+          "participants",
+          "labels"
         ],
         "type": "object"
       },
@@ -30570,7 +30988,16 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
+                  "color": {
+                    "description": "Hex color code for the label badge/chip, or null",
+                    "pattern": "^#[0-9a-f]{6}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "name": {
                     "description": "Name for the new label. May not start with `*`, which clients reserve for their own views",
                     "maxLength": 255,
@@ -30606,7 +31033,7 @@
                 }
               }
             },
-            "description": "validation_failed — malformed name"
+            "description": "validation_failed — malformed name or color"
           },
           "401": {
             "content": {
@@ -30667,6 +31094,7 @@
                   "labels": [
                     {
                       "bytes": 52428800,
+                      "color": null,
                       "deletedCount": 0,
                       "highestModseq": 91842,
                       "id": 1,
@@ -30681,6 +31109,7 @@
                     },
                     {
                       "bytes": 18874368,
+                      "color": null,
                       "deletedCount": 0,
                       "highestModseq": 91842,
                       "id": 2,
@@ -30695,6 +31124,7 @@
                     },
                     {
                       "bytes": 2097152,
+                      "color": "#4a90e2",
                       "deletedCount": 0,
                       "highestModseq": 91710,
                       "id": 7,
@@ -30746,7 +31176,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/labels/{label}": {
       "patch": {
-        "description": "Renames a custom label and/or updates its display sort order and subscription state. System labels cannot be renamed, but their sortOrder and isSubscribed settings can still be updated.",
+        "description": "Renames a custom label and/or updates its display sort order, subscription state, and color. System labels cannot be renamed, but their sortOrder, isSubscribed, and color settings can still be updated.\n\n`withChildren: true` carries every `Old/…` sub-label with the rename, in one commit that is validated whole before it writes — so the tree cannot be left half-renamed. Filter rules naming any moved label follow it, and so do pickup sources that deliver into one. Raw user Sieve scripts are NOT rewritten.",
         "operationId": "patch_LabelRename",
         "parameters": [
           {
@@ -30774,7 +31204,16 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
+                  "color": {
+                    "description": "Hex color code for the label badge/chip, or null to clear",
+                    "pattern": "^#[0-9a-f]{6}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "isSubscribed": {
                     "description": "Whether folder is subscribed for client sync",
                     "type": "boolean"
@@ -30790,6 +31229,10 @@
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "withChildren": {
+                    "description": "With `name`, carry every `Old/…` sub-label along in the same commit. The whole move is validated before any of it is written, so it cannot half-apply. Default false, which leaves sub-labels under their old prefix.",
+                    "type": "boolean"
                   }
                 },
                 "type": "object"
@@ -30866,7 +31309,7 @@
         ]
       },
       "delete": {
-        "description": "Deletes a custom label. Messages carrying this label will retain any other labels they have.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
+        "description": "Deletes a custom label. Messages carrying this label will retain any other labels they have. Messages with no other labels are expunged (moved to Recently deleted) by default, or moved to Archive when `?orphans=archive` is passed.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
         "operationId": "delete_LabelDelete",
         "parameters": [
           {
@@ -30888,6 +31331,20 @@
               "description": "Label or folder name (e.g. INBOX, Archive, custom)",
               "type": "string"
             }
+          },
+          {
+            "description": "What to do if deleting this label leaves a message with no labels. expunge (default) moves it to the Recently-deleted tier; archive attaches the Archive label instead",
+            "in": "query",
+            "name": "orphans",
+            "required": false,
+            "schema": {
+              "description": "What to do if deleting this label leaves a message with no labels. expunge (default) moves it to the Recently-deleted tier; archive attaches the Archive label instead",
+              "enum": [
+                "expunge",
+                "archive"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -30895,7 +31352,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeletedResult"
+                  "$ref": "#/components/schemas/LabelDeleteResult"
                 }
               }
             },
@@ -30960,7 +31417,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/labels/by-id/{labelId}": {
       "patch": {
-        "description": "Keyed on the label's numeric `id` — as `GET /labels` and `POST /labels` report it — rather than on its name. The id survives a rename (it is what JMAP `Mailbox/set` and folder-scoped shares key on), so a client that renames folders should hold it: the by-name route's key changes as the operation succeeds. It also never contains a `/`, so a folder name that does need not be encoded into a path segment. Otherwise identical to the by-name operation.\n\nRenames a custom label and/or updates its display sort order and subscription state. System labels cannot be renamed, but their sortOrder and isSubscribed settings can still be updated.",
+        "description": "Keyed on the label's numeric `id` — as `GET /labels` and `POST /labels` report it — rather than on its name. The id survives a rename (it is what JMAP `Mailbox/set` and folder-scoped shares key on), so a client that renames folders should hold it: the by-name route's key changes as the operation succeeds. It also never contains a `/`, so a folder name that does need not be encoded into a path segment. Otherwise identical to the by-name operation.\n\nRenames a custom label and/or updates its display sort order, subscription state, and color. System labels cannot be renamed, but their sortOrder, isSubscribed, and color settings can still be updated.\n\n`withChildren: true` carries every `Old/…` sub-label with the rename, in one commit that is validated whole before it writes — so the tree cannot be left half-renamed. Filter rules naming any moved label follow it, and so do pickup sources that deliver into one. Raw user Sieve scripts are NOT rewritten.",
         "operationId": "patch_LabelRenameById",
         "parameters": [
           {
@@ -30989,7 +31446,16 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
+                  "color": {
+                    "description": "Hex color code for the label badge/chip, or null to clear",
+                    "pattern": "^#[0-9a-f]{6}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "isSubscribed": {
                     "description": "Whether folder is subscribed for client sync",
                     "type": "boolean"
@@ -31005,6 +31471,10 @@
                     "maximum": 2147483647,
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "withChildren": {
+                    "description": "With `name`, carry every `Old/…` sub-label along in the same commit. The whole move is validated before any of it is written, so it cannot half-apply. Default false, which leaves sub-labels under their old prefix.",
+                    "type": "boolean"
                   }
                 },
                 "type": "object"
@@ -31081,7 +31551,7 @@
         ]
       },
       "delete": {
-        "description": "Keyed on the label's numeric `id` — as `GET /labels` and `POST /labels` report it — rather than on its name. The id survives a rename (it is what JMAP `Mailbox/set` and folder-scoped shares key on), so a client that renames folders should hold it: the by-name route's key changes as the operation succeeds. It also never contains a `/`, so a folder name that does need not be encoded into a path segment. Otherwise identical to the by-name operation.\n\nDeletes a custom label. Messages carrying this label will retain any other labels they have.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
+        "description": "Keyed on the label's numeric `id` — as `GET /labels` and `POST /labels` report it — rather than on its name. The id survives a rename (it is what JMAP `Mailbox/set` and folder-scoped shares key on), so a client that renames folders should hold it: the by-name route's key changes as the operation succeeds. It also never contains a `/`, so a folder name that does need not be encoded into a path segment. Otherwise identical to the by-name operation.\n\nDeletes a custom label. Messages carrying this label will retain any other labels they have. Messages with no other labels are expunged (moved to Recently deleted) by default, or moved to Archive when `?orphans=archive` is passed.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
         "operationId": "delete_LabelDeleteById",
         "parameters": [
           {
@@ -31104,6 +31574,20 @@
               "exclusiveMinimum": 0,
               "type": "integer"
             }
+          },
+          {
+            "description": "What to do if deleting this label leaves a message with no labels. expunge (default) moves it to the Recently-deleted tier; archive attaches the Archive label instead",
+            "in": "query",
+            "name": "orphans",
+            "required": false,
+            "schema": {
+              "description": "What to do if deleting this label leaves a message with no labels. expunge (default) moves it to the Recently-deleted tier; archive attaches the Archive label instead",
+              "enum": [
+                "expunge",
+                "archive"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -31111,7 +31595,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeletedResult"
+                  "$ref": "#/components/schemas/LabelDeleteResult"
                 }
               }
             },
@@ -31328,6 +31812,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "after": {
                     "description": "Continuation cursor: resume above this UID. Pass the previous call's `nextAfter`.",
@@ -31437,6 +31922,14 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "orphans": {
+                    "description": "What to do if this write would leave the message with no label. 'expunge' (the default) sends the message to Recently deleted. 'archive' keeps the message live by attaching the Archive system label (attaching Archive needs no right beyond the grant's 't' for a scoped viewer). If the write removes Archive itself and would leave no labels, Archive is kept without error. A SCOPED viewer whose write lands the message in Archive has moved it out of their own scope: the answer is still `updated`, and the hydrated message carries an EMPTY `labels` list rather than naming a label the grant never included. `labelsAdded` omits Archive for the same reason.",
+                    "enum": [
+                      "expunge",
+                      "archive"
+                    ],
+                    "type": "string"
                   },
                   "uidMax": {
                     "description": "Inclusive UID ceiling — the selection is every member with uid <= this. Omitted on a FIRST call, the label's current highest UID is used and echoed back. REQUIRED once `after` is given, so a continuation cannot move its own ceiling and sweep in mail that arrived mid-gesture.",
@@ -31545,6 +32038,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "after": {
                     "description": "Continuation cursor: resume above this UID. Pass the previous call's `nextAfter`.",
@@ -31654,6 +32148,14 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "orphans": {
+                    "description": "What to do if this write would leave the message with no label. 'expunge' (the default) sends the message to Recently deleted. 'archive' keeps the message live by attaching the Archive system label (attaching Archive needs no right beyond the grant's 't' for a scoped viewer). If the write removes Archive itself and would leave no labels, Archive is kept without error. A SCOPED viewer whose write lands the message in Archive has moved it out of their own scope: the answer is still `updated`, and the hydrated message carries an EMPTY `labels` list rather than naming a label the grant never included. `labelsAdded` omits Archive for the same reason.",
+                    "enum": [
+                      "expunge",
+                      "archive"
+                    ],
+                    "type": "string"
                   },
                   "uidMax": {
                     "description": "Inclusive UID ceiling — the selection is every member with uid <= this. Omitted on a FIRST call, the label's current highest UID is used and echoed back. REQUIRED once `after` is given, so a continuation cannot move its own ceiling and sweep in mail that arrived mid-gesture.",
@@ -31975,7 +32477,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/labels/{label}/expunge": {
       "post": {
-        "description": "Detaches messages marked with the deleted flag from this label. Messages left with no remaining labels move to Trash and can be restored until permanent purge.",
+        "description": "Detaches messages marked with the deleted flag from this label. Messages left with no remaining labels move to Recently deleted and can be restored until permanent purge.",
         "operationId": "post_LabelExpunge",
         "parameters": [
           {
@@ -33043,6 +33545,27 @@
             }
           },
           {
+            "description": "System label roles to exclude: 'inbox', 'sent', 'drafts', 'trash', 'archive', 'junk' (e.g. 'trash,junk'). Unknown roles return 400 validation_failed.",
+            "in": "query",
+            "name": "excludeRoles",
+            "required": false,
+            "schema": {
+              "description": "System label roles to exclude: 'inbox', 'sent', 'drafts', 'trash', 'archive', 'junk' (e.g. 'trash,junk'). Unknown roles return 400 validation_failed.",
+              "items": {
+                "enum": [
+                  "inbox",
+                  "sent",
+                  "drafts",
+                  "trash",
+                  "archive",
+                  "junk"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
             "description": "Opaque page cursor from a previous response",
             "in": "query",
             "name": "cursor",
@@ -33157,6 +33680,7 @@
                       "keywords": [],
                       "labels": [
                         {
+                          "deleted": false,
                           "modseq": 91842,
                           "name": "INBOX",
                           "uid": 4213,
@@ -33262,7 +33786,7 @@
         ]
       },
       "patch": {
-        "description": "Applies flag, label, and keyword updates across multiple messages in a single atomic operation. Name the targets by `ids`, by `threadIds`, or both: `threadIds` is expanded to the conversation's members server-side, in the same transaction as the write, so a reply that arrives while the request is in flight is either wholly in the gesture or wholly outside it. That is the difference from expanding it client-side, which also truncates at whatever page of members the client happened to hold. Expansion is the set GET /threads/{threadId} returns: live members in your grant, Trash excluded. `ids` may name a trashed or otherwise excluded message directly — the operand chooses targets, it does not restrict them.",
+        "description": "Applies flag, label, and keyword updates across multiple messages in a single atomic operation. Name the targets by `ids`, by `threadIds`, or both: `threadIds` is expanded to the conversation's members server-side, in the same transaction as the write, so a reply that arrives while the request is in flight is either wholly in the gesture or wholly outside it. That is the difference from expanding it client-side, which also truncates at whatever page of members the client happened to hold. Expansion is the set GET /threads/{threadId} returns: live members in your grant, Trash and Junk excluded. `ids` may name a trashed, junked or otherwise excluded message directly — the operand chooses targets, it does not restrict them.",
         "operationId": "patch_MessageBatchUpdate",
         "parameters": [
           {
@@ -33280,7 +33804,13 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
+                  "flagLabel": {
+                    "description": "The label (IMAP mailbox) the client had selected. When present, `deleted` in `flagsSet`/`flagsClear` marks the message's membership in THAT label only, leaves the message-wide bit untouched, and every other flag in the same patch keeps its message-wide meaning. Label-scoped listings (`/labels/{label}/uids`, `/labels/{label}/messages`, the label-filtered search) report this per-membership bit, `deletedCount` counts it, and `POST /labels/{label}/expunge` detaches exactly the memberships carrying it. A label the message is not filed in answers not_in_label with nothing written. Requires `deleted` in one of the two flag lists (validation_failed otherwise). Without `flagLabel`, `deleted` means every folder: the message-wide bit (JMAP's visibility rule; JMAP has no `\\Deleted`) and every membership move together. A scoped clear that unmarks the last marked membership clears the message-wide bit as well.",
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "flagsClear": {
                     "description": "Flags to remove",
                     "items": {
@@ -33365,6 +33895,29 @@
                     },
                     "type": "array"
                   },
+                  "orphans": {
+                    "description": "What to do if this write would leave the message with no label. 'expunge' (the default) sends the message to Recently deleted. 'archive' keeps the message live by attaching the Archive system label (attaching Archive needs no right beyond the grant's 't' for a scoped viewer). If the write removes Archive itself and would leave no labels, Archive is kept without error. A SCOPED viewer whose write lands the message in Archive has moved it out of their own scope: the answer is still `updated`, and the hydrated message carries an EMPTY `labels` list rather than naming a label the grant never included. `labelsAdded` omits Archive for the same reason.",
+                    "enum": [
+                      "expunge",
+                      "archive"
+                    ],
+                    "type": "string"
+                  },
+                  "threadExcludeRoles": {
+                    "description": "Roles to exclude from thread expansion (e.g. ['sent', 'drafts']). Members carrying any label with one of these roles are omitted from the expanded conversation. Trash and Junk members are already left out by the default expansion, so naming them here changes nothing unless `threadLabel` is that folder, where it empties the set. Explicit `ids` are unaffected. If every member is excluded, the conversation contributes nothing, which is not an error.",
+                    "items": {
+                      "enum": [
+                        "inbox",
+                        "sent",
+                        "drafts",
+                        "trash",
+                        "archive",
+                        "junk"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "threadIds": {
                     "description": "Conversation IDs whose members to update, expanded server-side. A stale ID from before a thread merge resolves transparently, as on GET /threads/{threadId}. Refused with thread_too_large past 1000 expanded messages, rather than acting on some of them.",
                     "items": {
@@ -33375,7 +33928,7 @@
                     "type": "array"
                   },
                   "threadLabel": {
-                    "description": "The folder each conversation in `threadIds` was being viewed in — the same value passed to GET /threads/{threadId}?label=, so the patch reaches exactly the members that view rendered. Omitted, the expansion is the default view: live members in your grant with Trash excluded. Pass the Trash folder to patch a conversation's trashed members instead, which the default deliberately leaves alone. Optional here and REQUIRED on DELETE /messages, where guessing wrong destroys a member the user was not looking at rather than re-filing one they can see.",
+                    "description": "The folder each conversation in `threadIds` was being viewed in — the same value passed to GET /threads/{threadId}?label=, so the patch reaches exactly the members that view rendered. Omitted, the expansion is the default view: live members in your grant with Trash and Junk excluded. Pass the Trash folder to patch a conversation's trashed members instead, or the Junk folder for its junked ones; the default deliberately leaves both alone. Optional here and REQUIRED on DELETE /messages, where guessing wrong destroys a member the user was not looking at rather than re-filing one they can see.",
                     "minLength": 1,
                     "type": "string"
                   },
@@ -33404,7 +33957,7 @@
                 }
               }
             },
-            "description": "Batch update results per message"
+            "description": "Batch update results per message. An entry answers not_in_label when flagLabel names a label that message is not filed in (nothing written for it)"
           },
           "400": {
             "content": {
@@ -33414,7 +33967,7 @@
                 }
               }
             },
-            "description": "validation_failed, invalid label/keyword, target_required (neither ids nor threadIds given), thread_context_required (threadLabelOnly without threadLabel), or thread_too_large"
+            "description": "validation_failed (including flagLabel without `deleted` in either flag list), invalid label/keyword, target_required (neither ids nor threadIds given), thread_context_required (threadLabelOnly without threadLabel), or thread_too_large"
           },
           "401": {
             "content": {
@@ -33681,6 +34234,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "ids": {
                     "description": "Array of message IDs to delete",
@@ -33689,6 +34243,21 @@
                     },
                     "maxItems": 200,
                     "minItems": 1,
+                    "type": "array"
+                  },
+                  "threadExcludeRoles": {
+                    "description": "Roles to exclude from thread expansion (e.g. ['sent', 'drafts']). Members carrying any label with one of these roles are omitted from the expanded conversation. Trash and Junk members are already left out by the default expansion, so naming them here changes nothing unless `threadLabel` is that folder, where it empties the set. Explicit `ids` are unaffected. If every member is excluded, the conversation contributes nothing, which is not an error.",
+                    "items": {
+                      "enum": [
+                        "inbox",
+                        "sent",
+                        "drafts",
+                        "trash",
+                        "archive",
+                        "junk"
+                      ],
+                      "type": "string"
+                    },
                     "type": "array"
                   },
                   "threadIds": {
@@ -33701,7 +34270,7 @@
                     "type": "array"
                   },
                   "threadLabel": {
-                    "description": "The folder each conversation in `threadIds` was being viewed in — the same value passed to GET /threads/{threadId}?label=, so the delete reaches exactly the members that view rendered. Inside Trash that is the trashed members; anywhere else it is the live, non-trashed ones. Required with `threadIds`, and validated: an unknown folder is unknown_label, not a fall back to the default set.",
+                    "description": "The folder each conversation in `threadIds` was being viewed in — the same value passed to GET /threads/{threadId}?label=, so the delete reaches exactly the members that view rendered. Inside Trash that is the trashed members, inside Junk the junked ones; anywhere else it is the live members carrying neither label. Required with `threadIds`, and validated: an unknown folder is unknown_label, not a fall back to the default set.",
                     "minLength": 1,
                     "type": "string"
                   },
@@ -33825,6 +34394,7 @@
                   "keywords": [],
                   "labels": [
                     {
+                      "deleted": false,
                       "modseq": 91842,
                       "name": "INBOX",
                       "uid": 4213,
@@ -33880,7 +34450,7 @@
         ]
       },
       "patch": {
-        "description": "Updates message flags, adds or removes labels, and modifies custom keywords. Removing a message's LAST label expunges it to the Recently-deleted tier (restorable until purgeAfter) — it does not attach the Trash label. A label write that leaves the message carrying only Trash is a delete: its previous filing is recorded as restoresTo, and POST /messages/untrash reverses it.",
+        "description": "Updates message flags, adds or removes labels, and modifies custom keywords. Removing a message's LAST label expunges it to the Recently-deleted tier (restorable until purgeAfter) — it does not attach the Trash label. A label write that leaves the message carrying only Trash is a delete: its previous filing is recorded as restoresTo, and POST /messages/untrash reverses it. One that leaves it carrying only Junk is a spam report, recorded the same way and reversed by POST /messages/unjunk.",
         "operationId": "patch_MessageUpdate",
         "parameters": [
           {
@@ -33934,7 +34504,13 @@
                 }
               },
               "schema": {
+                "additionalProperties": false,
                 "properties": {
+                  "flagLabel": {
+                    "description": "The label (IMAP mailbox) the client had selected. When present, `deleted` in `flagsSet`/`flagsClear` marks the message's membership in THAT label only, leaves the message-wide bit untouched, and every other flag in the same patch keeps its message-wide meaning. Label-scoped listings (`/labels/{label}/uids`, `/labels/{label}/messages`, the label-filtered search) report this per-membership bit, `deletedCount` counts it, and `POST /labels/{label}/expunge` detaches exactly the memberships carrying it. A label the message is not filed in answers not_in_label with nothing written. Requires `deleted` in one of the two flag lists (validation_failed otherwise). Without `flagLabel`, `deleted` means every folder: the message-wide bit (JMAP's visibility rule; JMAP has no `\\Deleted`) and every membership move together. A scoped clear that unmarks the last marked membership clears the message-wide bit as well.",
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "flagsClear": {
                     "description": "Flags to remove",
                     "items": {
@@ -33950,7 +34526,7 @@
                     "type": "array"
                   },
                   "flagsSet": {
-                    "description": "Flags to set (e.g. ['seen', 'flagged'])",
+                    "description": "Flags to set",
                     "items": {
                       "enum": [
                         "seen",
@@ -33985,27 +34561,35 @@
                     "type": "array"
                   },
                   "labelsAdd": {
-                    "description": "Label names to add to the message",
+                    "description": "Labels to add",
                     "items": {
                       "type": "string"
                     },
                     "type": "array"
                   },
                   "labelsExact": {
-                    "description": "Exact replacement list of label names",
+                    "description": "Exact replacement list of labels",
                     "items": {
                       "type": "string"
                     },
                     "type": "array"
                   },
                   "labelsRemove": {
-                    "description": "Label names to remove from the message",
+                    "description": "Labels to remove",
                     "items": {
                       "type": "string"
                     },
                     "type": "array"
                   },
-                  "mime": {}
+                  "mime": {},
+                  "orphans": {
+                    "description": "What to do if this write would leave the message with no label. 'expunge' (the default) sends the message to Recently deleted. 'archive' keeps the message live by attaching the Archive system label (attaching Archive needs no right beyond the grant's 't' for a scoped viewer). If the write removes Archive itself and would leave no labels, Archive is kept without error. A SCOPED viewer whose write lands the message in Archive has moved it out of their own scope: the answer is still `updated`, and the hydrated message carries an EMPTY `labels` list rather than naming a label the grant never included. `labelsAdded` omits Archive for the same reason.",
+                    "enum": [
+                      "expunge",
+                      "archive"
+                    ],
+                    "type": "string"
+                  }
                 },
                 "type": "object"
               }
@@ -34042,6 +34626,7 @@
                   "keywords": [],
                   "labels": [
                     {
+                      "deleted": false,
                       "modseq": 91842,
                       "name": "INBOX",
                       "uid": 4213,
@@ -34078,7 +34663,7 @@
                 }
               }
             },
-            "description": "validation_failed or invalid label/keyword name"
+            "description": "validation_failed (including flagLabel without `deleted` in either flag list) or invalid label/keyword name"
           },
           "401": {
             "content": {
@@ -34099,6 +34684,16 @@
               }
             },
             "description": "Mailbox or message not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_in_label — flagLabel names a label the message is not filed in; nothing written"
           }
         },
         "summary": "Update message flags and labels",
@@ -34855,6 +35450,72 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/keywords": {
+      "get": {
+        "description": "Every distinct keyword on this mailbox's LIVE messages, most-used first then alphabetical, with how many messages carry each.\n\nExpunged messages are excluded: they keep their keywords so a restore can put them back, but they are not mail the user has. Protocol keywords are NOT filtered out — `$forwarded`, `$junk` and the rest are returned like any other, because which of them are worth showing is a client's decision, not core's.\n\nScoped like every other read: a folder-scoped grant reports the keywords inside the grant and no others.",
+        "operationId": "get_MailboxKeywordList",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum distinct keywords to return (default 100, max 500). The cut falls on the least-used, since the order is by count.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Maximum distinct keywords to return (default 100, max 500). The cut falls on the least-used, since the order is by count.",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordListPage"
+                }
+              }
+            },
+            "description": "Keywords in use"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List the keywords in use, with counts",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/search": {
       "get": {
         "description": "Searches email messages across subject, sender/recipient addresses, and body text using BM25 relevance ranking. Optionally filter by label, flags, or group matches by thread.",
@@ -34889,6 +35550,27 @@
             "schema": {
               "description": "Restrict search to a specific label or folder",
               "type": "string"
+            }
+          },
+          {
+            "description": "System label roles to exclude: 'inbox', 'sent', 'drafts', 'trash', 'archive', 'junk' (e.g. 'trash,junk'). Unknown roles return 400 validation_failed.",
+            "in": "query",
+            "name": "excludeRoles",
+            "required": false,
+            "schema": {
+              "description": "System label roles to exclude: 'inbox', 'sent', 'drafts', 'trash', 'archive', 'junk' (e.g. 'trash,junk'). Unknown roles return 400 validation_failed.",
+              "items": {
+                "enum": [
+                  "inbox",
+                  "sent",
+                  "drafts",
+                  "trash",
+                  "archive",
+                  "junk"
+                ],
+                "type": "string"
+              },
+              "type": "array"
             }
           },
           {
@@ -35004,6 +35686,7 @@
                       "keywords": [],
                       "labels": [
                         {
+                          "deleted": false,
                           "modseq": 91842,
                           "name": "INBOX",
                           "uid": 4213,
@@ -35222,6 +35905,7 @@
                       "keywords": [],
                       "labels": [
                         {
+                          "deleted": false,
                           "modseq": 91842,
                           "name": "INBOX",
                           "uid": 4213,
@@ -35297,7 +35981,7 @@
         ]
       },
       "patch": {
-        "description": "Applies one patch to every message `POST /search/query` would return for the same `filter` — the way to act on a whole result set without naming its messages. The filter grammar, and the set it selects, are that route's own.\n\nTHE CEILING. `idMax` is a message id (a ULID, so ordered by arrival) resolved on the first call and echoed back: mail that arrives while the gesture runs has a later id and is never touched. Send it back unchanged on every continuation.\n\nIT MAY ANSWER A CURSOR, exactly as `PATCH /labels/{label}/messages` does: the call spends a bounded budget, and a non-null `nextAfter` means call again with `after` set to it, the same `idMax`, the same filter and the same patch. Unlike that route it reports no `remaining` — measure progress against the search's own `total`.\n\nA FULL-TEXT filter is bounded: one that matches more than 5,000 messages is refused with `too_large`, having written nothing, rather than applied to some of them. Narrow the search. A filter is REQUIRED — this route will not patch a whole mailbox by omission.",
+        "description": "Applies one patch to every message `POST /search/query` would return for the same `filter` — the way to act on a whole result set without naming its messages. The filter grammar, and the set it selects, are that route's own.\n\nSEND BACK THE `excludeRoles` YOU SEARCHED WITH. It narrows the selection here exactly as it narrows the results there, and it is not part of the filter — so a call that omits it patches the Trash and Junk mail the search left out.\n\nTHE CEILING. `idMax` is a message id (a ULID, so ordered by arrival) resolved on the first call and echoed back: mail that arrives while the gesture runs has a later id and is never touched. Send it back unchanged on every continuation.\n\nIT MAY ANSWER A CURSOR, exactly as `PATCH /labels/{label}/messages` does: the call spends a bounded budget, and a non-null `nextAfter` means call again with `after` set to it, the same `idMax`, the same filter and the same patch. Unlike that route it reports no `remaining` — measure progress against the search's own `total`.\n\nA FULL-TEXT filter is bounded: one that matches more than 5,000 messages is refused with `too_large`, having written nothing, rather than applied to some of them. Narrow the search. A filter is REQUIRED — this route will not patch a whole mailbox by omission.",
         "operationId": "patch_MailboxSearchQueryUpdate",
         "parameters": [
           {
@@ -35315,11 +35999,27 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "after": {
                     "description": "Continuation cursor: pass the previous call's `nextAfter`.",
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "excludeRoles": {
+                    "description": "System label roles whose mail this query must not return — e.g. `[\"trash\", \"junk\"]` for an All-Mail view. A message carrying ANY label with one of these roles is excluded, whatever else it carries. Says in one argument what a filter would need a label lookup and one bound value per label to say; a role no label answers to is simply not excluded.",
+                    "items": {
+                      "enum": [
+                        "inbox",
+                        "sent",
+                        "drafts",
+                        "trash",
+                        "archive",
+                        "junk"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "filter": {
                     "$ref": "#/components/schemas/EmailSearchFilter"
@@ -35403,6 +36103,14 @@
                     "description": "Lower the per-call update budget. Never raises it.",
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "orphans": {
+                    "description": "What to do if this write would leave the message with no label. 'expunge' (the default) sends the message to Recently deleted. 'archive' keeps the message live by attaching the Archive system label (attaching Archive needs no right beyond the grant's 't' for a scoped viewer). If the write removes Archive itself and would leave no labels, Archive is kept without error. A SCOPED viewer whose write lands the message in Archive has moved it out of their own scope: the answer is still `updated`, and the hydrated message carries an EMPTY `labels` list rather than naming a label the grant never included. `labelsAdded` omits Archive for the same reason.",
+                    "enum": [
+                      "expunge",
+                      "archive"
+                    ],
+                    "type": "string"
                   }
                 },
                 "type": "object"
@@ -36021,7 +36729,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/events": {
       "get": {
-        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.deleted, trash.emptied, thread.merged (an arrival joined two conversations — re-list thread views, since thread ids are convergent rather than stable), and state.changed. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. The vocabulary is additive: treat an unrecognized `type` as a generic 'something changed' nudge rather than an error.\n\nSignals are not a journal: there is no replay or backlog, so on every (re)connect re-sync and treat each event as 'this changed, re-fetch it'. A `state.changed` frame carries the current state token for each type (`{ Email, Mailbox, Thread, EmailDelivery }`); its `Email` value is exactly what `GET /mailboxes/{mailboxId}/messages/changes` accepts as `since`, so a client can re-sync incrementally instead of re-listing. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
+        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.updated / label.deleted, trash.emptied, thread.merged (an arrival joined two conversations — re-list thread views, since thread ids are convergent rather than stable), and state.changed. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. The vocabulary is additive: treat an unrecognized `type` as a generic 'something changed' nudge rather than an error.\n\nSignals are not a journal: there is no replay or backlog, so on every (re)connect re-sync and treat each event as 'this changed, re-fetch it'. A `state.changed` frame carries the current state token for each type (`{ Email, Mailbox, Thread, EmailDelivery }`); its `Email` value is exactly what `GET /mailboxes/{mailboxId}/messages/changes` accepts as `since`, so a client can re-sync incrementally instead of re-listing. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
         "operationId": "get_MailboxEvents",
         "parameters": [
           {
@@ -36811,6 +37519,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "ids": {
                     "description": "Array of message IDs to take out of Trash",
@@ -36880,6 +37589,101 @@
           }
         },
         "summary": "Take messages out of Trash, back to where they were filed",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/messages/unjunk": {
+      "post": {
+        "description": "Removes the Junk label from a batch of messages — the \"Not spam\" verb, and POST /messages/untrash's counterpart for the other state label. Where each one lands is its restoresTo: whatever it carries besides Junk if anything, otherwise the filing recorded when a label write left it carrying only Junk, otherwise Inbox. An origin label that has since been deleted is matched by name if a label of that name exists again. Reports as an update on /changes (the rows were never hidden). This does NOT train the spam filter; pair it with POST /messages/learn as before. `threadIds` takes a whole conversation out: it expands, server-side and in the same transaction, to the members that are IN Junk. A conversation with nothing junked expands to nothing and the call is a no-op.",
+        "operationId": "post_MessageBatchUnjunk",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "ids": {
+                    "description": "Array of message IDs to take out of Junk",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "threadIds": {
+                    "description": "Conversation IDs whose JUNKED members to take out of Junk, expanded server-side. Refused with thread_too_large past 1000 expanded messages.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchUnjunkResult"
+                }
+              }
+            },
+            "description": "Batch unjunk outcomes per message"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed, target_required (neither ids nor threadIds given), or thread_too_large"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Take messages out of Junk, back to where they were filed",
         "tags": [
           "Messages"
         ]
@@ -37039,7 +37843,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/threads": {
       "get": {
-        "description": "Returns conversation threads, newest activity first, one row per conversation: participants, message and unread counts, and an exemplar message carrying the subject and snippet a row renders. Grouping is by REPLY CHAIN (In-Reply-To/References), never by subject — two unrelated messages sharing a subject are two conversations, and a renamed reply stays in the one it answers. Filtering by `label` and by unread/starred flags uses Gmail semantics: a conversation matches when ANY of its live members does, and the counts then span the whole conversation — but the exemplar is the newest member that MATCHED, so a label-filtered row is faced with the message that folder actually holds. See ThreadListItem.exemplar.",
+        "description": "Returns conversation threads, newest activity first, one row per conversation: participants, message and unread counts, and an exemplar message carrying the subject and snippet a row renders. Grouping is by REPLY CHAIN (In-Reply-To/References), never by subject — two unrelated messages sharing a subject are two conversations, and a renamed reply stays in the one it answers. Filtering by `label` and by unread/starred flags uses Gmail semantics: a conversation matches when ANY of its live members does, and the counts then span the whole conversation — but the exemplar is the newest member that MATCHED, so a label-filtered row is faced with the message that folder actually holds. See ThreadListItem.exemplar. Trash and Junk are HIDDEN ROLES: outside their own views a conversation is its live members carrying neither label — they do not qualify a row, are not counted, faced or listed in `participants`/`labels`. `label=Trash` lists conversations by their trashed members and `label=Junk` by their junked ones; a member in both is in the bin (shown in Trash, hidden in Junk). `excludeRoles` adds to that rule and never lifts it.",
         "operationId": "get_ThreadList",
         "parameters": [
           {
@@ -37060,6 +37864,27 @@
             "schema": {
               "description": "Filter threads containing messages with this label (e.g. INBOX)",
               "type": "string"
+            }
+          },
+          {
+            "description": "System label roles to exclude: 'inbox', 'sent', 'drafts', 'trash', 'archive', 'junk' (e.g. 'trash,junk'). Unknown roles return 400 validation_failed.",
+            "in": "query",
+            "name": "excludeRoles",
+            "required": false,
+            "schema": {
+              "description": "System label roles to exclude: 'inbox', 'sent', 'drafts', 'trash', 'archive', 'junk' (e.g. 'trash,junk'). Unknown roles return 400 validation_failed.",
+              "items": {
+                "enum": [
+                  "inbox",
+                  "sent",
+                  "drafts",
+                  "trash",
+                  "archive",
+                  "junk"
+                ],
+                "type": "string"
+              },
+              "type": "array"
             }
           },
           {
@@ -37164,6 +37989,7 @@
                         "keywords": [],
                         "labels": [
                           {
+                            "deleted": false,
                             "modseq": 91842,
                             "name": "INBOX",
                             "uid": 4213,
@@ -37186,6 +38012,9 @@
                         ]
                       },
                       "flaggedCount": 0,
+                      "labels": [
+                        "INBOX"
+                      ],
                       "lastReceivedAt": 1788081300,
                       "messageCount": 3,
                       "participants": [
@@ -37310,12 +38139,12 @@
             }
           },
           {
-            "description": "Folder context for trash filtering — same label the listing was filtered by. Without it, and in every folder but Trash, members carrying the Trash label are excluded from both `messages` and `messageCount`; pass the Trash label to see exactly those instead. This is the member set POST /messages/patch's `threadIds` expands to, so a client that renders this view is acting on what it rendered.",
+            "description": "Folder context for the hidden-role filter — same label the listing was filtered by. Without it, and in every folder but Trash and Junk, members carrying the Trash or Junk label are excluded from both `messages` and `messageCount`; pass the Trash label to see exactly the trashed members, or the Junk label for the junked ones (a member in both is in Trash, not in Junk). This is the member set PATCH /messages's `threadIds` expands to, so a client that renders this view is acting on what it rendered.",
             "in": "query",
             "name": "label",
             "required": false,
             "schema": {
-              "description": "Folder context for trash filtering — same label the listing was filtered by. Without it, and in every folder but Trash, members carrying the Trash label are excluded from both `messages` and `messageCount`; pass the Trash label to see exactly those instead. This is the member set POST /messages/patch's `threadIds` expands to, so a client that renders this view is acting on what it rendered.",
+              "description": "Folder context for the hidden-role filter — same label the listing was filtered by. Without it, and in every folder but Trash and Junk, members carrying the Trash or Junk label are excluded from both `messages` and `messageCount`; pass the Trash label to see exactly the trashed members, or the Junk label for the junked ones (a member in both is in Trash, not in Junk). This is the member set PATCH /messages's `threadIds` expands to, so a client that renders this view is acting on what it rendered.",
               "type": "string"
             }
           }

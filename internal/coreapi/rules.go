@@ -29,6 +29,10 @@ type RuleAction struct {
 	Flag     string `json:"flag,omitempty"`
 	To       string `json:"to,omitempty"`
 	KeepCopy bool   `json:"keepCopy,omitempty"`
+	// KeepInInbox, on a fileInto action, also leaves the message in the Inbox
+	// (Sieve `fileinto :copy`). False is what every rule written before the
+	// field did: file into the label and nowhere else.
+	KeepInInbox bool `json:"keepInInbox,omitempty"`
 }
 
 // FilterRule is one rule of the flat, ordered document. Match is "all" or

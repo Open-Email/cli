@@ -17,6 +17,9 @@ type MessageLabel struct {
 	UIDValidity int64  `json:"uidValidity"`
 	// Modseq is the RFC 7162 MODSEQ of this membership row (floored to 1).
 	Modseq int64 `json:"modseq"`
+	// Deleted is IMAP's \Deleted for THIS membership: core keeps the flag per
+	// folder, so a message can be marked in one label and clean in another.
+	Deleted bool `json:"deleted"`
 }
 
 // MessageMeta is the shared message-metadata object (core's rowToMeta), returned
@@ -116,6 +119,12 @@ type PatchResult struct {
 	Expunged   bool   `json:"expunged"`
 	ExpungedAt *int64 `json:"expungedAt,omitempty"`
 	PurgeAfter *int64 `json:"purgeAfter,omitempty"`
+	// LabelsAdded and LabelsRemoved say what the write did to the message's
+	// labels, including an Archive that core attached as the `orphans`
+	// fallback when the write would otherwise have left the message in no
+	// label at all. Absent on a write that touched no labels.
+	LabelsAdded   []string `json:"labelsAdded,omitempty"`
+	LabelsRemoved []string `json:"labelsRemoved,omitempty"`
 }
 
 // DeleteResult is the DELETE message union (three shapes, all HTTP 200):

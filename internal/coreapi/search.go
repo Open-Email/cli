@@ -52,6 +52,11 @@ type EmailSearchRequest struct {
 	// BODY criteria) and would otherwise download bodies to decide. Not
 	// combinable with Snippet.
 	Fields string `json:"fields,omitempty"`
+	// ExcludeRoles names system-label roles (inbox, sent, drafts, trash,
+	// archive, junk) whose mail the query must not return, whatever else the
+	// message carries: `["trash","junk"]` is an All-Mail view. A role no label
+	// answers to excludes nothing.
+	ExcludeRoles []string `json:"excludeRoles,omitempty"`
 }
 
 // EmailSearchSnippet is one highlighted excerpt. Matched terms are wrapped in
