@@ -870,17 +870,19 @@ func newMessageUnjunkCmd(a *app) *cobra.Command {
 		Use:   "unjunk <messageId> [messageId...]",
 		Short: "Take messages out of Junk, back to where they were filed",
 		Long: "Removes the Junk label and puts each message back where it came from.\n\n" +
-			"Where it lands is core's record, not a guess: reporting spam records the\n" +
-			"filing a message had before Junk swallowed it, and this restores exactly\n" +
-			"that. Failing a record, whatever the message still carries besides Junk;\n" +
-			"failing that, INBOX. Removing the label by hand with `messages label`\n" +
-			"does none of this: it drops Junk and leaves the message wherever you\n" +
-			"happen to name.\n\n" +
-			"This does NOT train the spam filter. If the message was misclassified\n" +
-			"rather than merely misfiled, follow with `openemail messages not-junk`,\n" +
-			"which trains and does not move.\n\n" +
-			"Several ids are ONE call against the mailbox. Up to 200 at a time. A\n" +
-			"message that exists but is not in Junk is reported `not_junked` on its own\n" +
+			"It keeps any labels the message still carries besides Junk. If none\n" +
+			"remain, it restores core's recorded filing from before the move to Junk,\n" +
+			"or falls back to INBOX. Removing the label by hand with `messages label`\n" +
+			"does not restore that filing.\n\n" +
+			"Taking a message out of Junk automatically schedules ham training after\n" +
+			"core's configured undo window, unless the message remains in Trash.\n" +
+			"Moving it back to Junk during that window cancels the pending training.\n" +
+			"A separate `openemail messages not-junk` call is not needed; that command\n" +
+			"requests training without waiting for the window and does not move mail.\n" +
+			"Recovery can succeed even if the spam filter is unavailable.\n\n" +
+			"Several ids are ONE call against the mailbox. Up to 200 at a time; repeated\n" +
+			"ids are handled once, in first-occurrence order.\n" +
+			"A message that exists but is not in Junk is reported `not_junked` on its own\n" +
 			"row and does not stop the others; an expunged id is `not_found` here, and\n" +
 			"belongs to `openemail messages restore` instead. The command exits\n" +
 			"non-zero if any row is not `unjunked`, so a script notices without parsing\n" +
@@ -895,7 +897,17 @@ func newMessageUnjunkCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := client.UnjunkMessages(cmd.Context(), mbx, args)
+			// Core applies every occurrence in order. Sending an ID twice would
+			// restore it once, then answer not_junked and mask that success.
+			ids := make([]string, 0, len(args))
+			seen := make(map[string]bool, len(args))
+			for _, id := range args {
+				if !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
+			}
+			res, err := client.UnjunkMessages(cmd.Context(), mbx, ids)
 			if err != nil {
 				return err
 			}
@@ -906,8 +918,8 @@ func newMessageUnjunkCmd(a *app) *cobra.Command {
 			a.out.Emit(res, func(w io.Writer) {
 				// Ranged over the REQUEST, not the response, so an id the server
 				// said nothing about still gets a row rather than vanishing.
-				rows := make([][]string, 0, len(args))
-				for _, id := range args {
+				rows := make([][]string, 0, len(ids))
+				for _, id := range ids {
 					e, ok := byID[id]
 					if !ok {
 						rows = append(rows, []string{id, "no answer", "—"})
@@ -922,16 +934,16 @@ func newMessageUnjunkCmd(a *app) *cobra.Command {
 				printTable(w, a.out, []string{"MESSAGE", "STATUS", "LABELS"}, rows)
 			})
 			unjunked := 0
-			for _, id := range args {
+			for _, id := range ids {
 				if e, ok := byID[id]; ok && e.Status == "unjunked" {
 					unjunked++
 				}
 			}
-			if unjunked == len(args) {
+			if unjunked == len(ids) {
 				a.out.Successf("Unjunked %d message(s) in one call", unjunked)
 				return nil
 			}
-			a.out.Warnf("Unjunked %d of %d; the rest were not in Junk, or not found", unjunked, len(args))
+			a.out.Warnf("Unjunked %d of %d; the rest were not in Junk, or not found", unjunked, len(ids))
 			return silentExit(1)
 		},
 	}

@@ -31509,7 +31509,7 @@
         ]
       },
       "get": {
-        "description": "Returns all system and custom labels with message counts, unread counts, UID validity, and next UID sequence numbers. For the owner identity it also reports how many sends are scheduled and not yet released, so a client can decide whether to offer a Scheduled view without a second request.",
+        "description": "Returns all system and custom labels with message counts, unread counts, UID validity, and next UID sequence numbers. Listing requires the lookup (`l`) right. With `name`, returns only that exact label's statistics and requires read (`r`) instead, so a reader can check a known folder without enumerating the mailbox. An unknown or out-of-scope name returns an empty labels array; wildcard characters are literal. For the owner identity, an unfiltered listing also reports how many sends are scheduled and not yet released, so a client can decide whether to offer a Scheduled view without a second request.",
         "operationId": "get_LabelList",
         "parameters": [
           {
@@ -31519,6 +31519,18 @@
             "required": true,
             "schema": {
               "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact label name for a read-authorized statistics query; no wildcard expansion",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "description": "Exact label name for a read-authorized statistics query; no wildcard expansion",
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -31583,6 +31595,16 @@
               }
             },
             "description": "List of labels"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — malformed name"
           },
           "401": {
             "content": {
@@ -34315,6 +34337,44 @@
                     "minItems": 1,
                     "type": "array"
                   },
+                  "ifInLabel": {
+                    "additionalProperties": false,
+                    "description": "Apply each explicit ID only while it has the given UID in this label and UIDVALIDITY epoch. Checked atomically with the write; the identity condition alone permits intervening flag changes. Missing UID entries, absent or replaced memberships, and inaccessible labels answer not_in_label per entry, with nothing written. Cannot be combined with threadIds.",
+                    "properties": {
+                      "label": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "uidValidity": {
+                        "maximum": 4294967295,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "uids": {
+                        "additionalProperties": {
+                          "maximum": 4294967295,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "type": "object"
+                      },
+                      "unchangedSince": {
+                        "additionalProperties": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "description": "Optional per-ID modseq ceilings in this label (at most 200 entries). A newer membership answers modified with its currentModseq; a missing entry answers not_in_label. Zero refuses every existing membership. Checked in addition to the top-level unchangedSince, if supplied.",
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "uidValidity",
+                      "uids"
+                    ],
+                    "type": "object"
+                  },
                   "keywordsClear": {
                     "description": "Custom keywords to remove",
                     "items": {
@@ -34424,7 +34484,7 @@
                 }
               }
             },
-            "description": "Batch update results per message. An entry answers not_in_label when flagLabel names a label that message is not filed in (nothing written for it)"
+            "description": "Batch update results per message. An entry answers not_in_label when flagLabel names a label that message is not filed in, or ifInLabel does not match its current accessible membership (nothing written for it)"
           },
           "400": {
             "content": {
@@ -34434,7 +34494,7 @@
                 }
               }
             },
-            "description": "validation_failed (including flagLabel without `deleted` in either flag list), invalid label/keyword, target_required (neither ids nor threadIds given), thread_context_required (threadLabelOnly without threadLabel), or thread_too_large"
+            "description": "validation_failed (including flagLabel without `deleted` in either flag list, malformed ifInLabel, or ifInLabel with threadIds), invalid label/keyword, target_required (neither ids nor threadIds given), thread_context_required (threadLabelOnly without threadLabel), or thread_too_large"
           },
           "401": {
             "content": {
@@ -37756,7 +37816,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/learn": {
       "post": {
-        "description": "Submits spam or ham training feedback for a specific email message to tune the spam filter.",
+        "description": "Submits spam or ham training feedback for a specific email message to tune the spam filter. Idempotent per message and class: if this message was already taught this class — by an earlier call, or by the user moving it into or out of Junk (which trains on its own after a short undo window) — the call answers 202 without sending it again, and it supersedes a move-triggered sample still waiting out that window. The opposite class is always sent.",
         "operationId": "post_MessageLearn",
         "parameters": [
           {
@@ -37861,7 +37921,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/messages/learn": {
       "post": {
-        "description": "Submits spam or ham training feedback for a batch of messages in a single request.",
+        "description": "Submits spam or ham training feedback for a batch of messages in a single request. Same per-message idempotence as the single form: a message already taught this class is answered `accepted` but not sent again.",
         "operationId": "post_MessageBatchLearn",
         "parameters": [
           {

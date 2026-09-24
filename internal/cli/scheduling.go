@@ -38,6 +38,9 @@ func newAdminSchedulingCmd(a *app) *cobra.Command {
 			}
 			data, err := client.GetMailboxScheduling(ctx, mailboxID, uid, limit)
 			if err != nil {
+				if coreapi.IsNotFound(err) {
+					return fmt.Errorf("mailbox %s has no calendar store initialized", mailboxID)
+				}
 				return err
 			}
 			a.out.Emit(data, func(w io.Writer) { renderMailboxScheduling(w, a.out, data) })

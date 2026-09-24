@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -42,5 +44,49 @@ func TestRenderMailboxScheduling(t *testing.T) {
 	renderMailboxScheduling(&out, &Printer{}, empty)
 	if !strings.Contains(out.String(), "nothing pending") || !strings.Contains(out.String(), "no failures") {
 		t.Errorf("an idle mailbox should say so:\n%s", out.String())
+	}
+}
+
+func TestSchedulingNotFoundMessage(t *testing.T) {
+	const mailboxID = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+	for _, status := range []int{http.StatusNotFound, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			requests := make(chan struct{}, 1)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/system/mailboxes/"+mailboxID+"/scheduling" {
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+				requests <- struct{}{}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(status)
+				if status == http.StatusNotFound {
+					_, _ = w.Write([]byte(`{"error":"not_found"}`))
+				} else {
+					_, _ = w.Write([]byte(`{"error":"forbidden"}`))
+				}
+			}))
+			defer srv.Close()
+			var stdout, stderr bytes.Buffer
+			a := &app{apiURL: srv.URL, token: "test-token", tokenSource: "flag",
+				out: &Printer{out: &stdout, err: &stderr}}
+			cmd := newAdminSchedulingCmd(a)
+			cmd.SilenceErrors, cmd.SilenceUsage = true, true
+			cmd.SetArgs([]string{mailboxID})
+			err := cmd.Execute()
+			if len(requests) != 1 || err == nil {
+				t.Fatalf("want a failed HTTP request, got %d requests and error %v", len(requests), err)
+			}
+			if status == http.StatusNotFound {
+				want := "mailbox " + mailboxID + " has no calendar store initialized"
+				if err.Error() != want {
+					t.Errorf("error = %q, want %q", err, want)
+				}
+			} else if ae, ok := coreapi.AsAPIError(err); !ok || ae.Status != status {
+				t.Errorf("non-404 API error was not preserved: %v", err)
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("failed read printed data: %s", stdout.String())
+			}
+		})
 	}
 }
