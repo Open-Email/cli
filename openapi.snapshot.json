@@ -8029,6 +8029,75 @@
         ],
         "type": "object"
       },
+      "ObjectSchedulingLog": {
+        "properties": {
+          "entries": {
+            "description": "Oldest first, the latest 500 at most. Kept 14 days like every scheduling log row; the SCHEDULE-STATUS on the event outlives them",
+            "items": {
+              "properties": {
+                "counterpart": {
+                  "description": "The recipient's address, lowercased",
+                  "type": "string"
+                },
+                "createdAt": {
+                  "description": "When it was recorded, unix seconds",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "Row ULID",
+                  "type": "string"
+                },
+                "method": {
+                  "description": "iTIP METHOD this store sent: REQUEST, CANCEL or REPLY",
+                  "type": "string"
+                },
+                "outcome": {
+                  "description": "delivered (written into a calendar on this platform), sent (handed to the relay), retryable (being retried), refused, failed (a remote server refused it after the relay took it) or skipped (never sent: a group or webhook address, one the organizer may not invite, a delegate's remote send, SCHEDULE-AGENT=CLIENT)",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "description": "Why, when the outcome was not a delivery; for a remote failure, the remote server's reply",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "description": "The RFC 6638 SCHEDULE-STATUS this result stamped (1.0, 1.1, 1.2, 3.7, 3.8, 5.1, 5.2, 5.3), or null",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "method",
+                "counterpart",
+                "outcome",
+                "reason",
+                "status",
+                "createdAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "uid": {
+            "description": "The event's UID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "entries"
+        ],
+        "type": "object"
+      },
       "PasswordChanged": {
         "properties": {
           "changed": {
@@ -11752,6 +11821,93 @@
         ],
         "type": "object"
       },
+      "SchedulingByMailbox": {
+        "properties": {
+          "accountId": {
+            "description": "The owning account, or null when unknown",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "description": "Its primary address now, or null when the directory no longer knows the id",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failedJobs": {
+            "description": "Scheduling jobs that ended without success (deadline, refused recipient, missing plan): sampled estimate",
+            "format": "int64",
+            "type": "integer"
+          },
+          "mailboxId": {
+            "description": "The organizing (or replying) mailbox's ULID",
+            "type": "string"
+          },
+          "refusedRecipients": {
+            "description": "Recipients those jobs' deliveries refused",
+            "format": "int64",
+            "type": "integer"
+          },
+          "rejectedDeliveries": {
+            "description": "Deliveries a remote server refused after the relay took them",
+            "format": "int64",
+            "type": "integer"
+          },
+          "unreachedRecipients": {
+            "description": "Recipients those jobs never reached before their deadline",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mailboxId",
+          "address",
+          "accountId",
+          "failedJobs",
+          "refusedRecipients",
+          "unreachedRecipients",
+          "rejectedDeliveries"
+        ],
+        "type": "object"
+      },
+      "SchedulingByReason": {
+        "properties": {
+          "events": {
+            "description": "Jobs or rejections with this reason",
+            "format": "int64",
+            "type": "integer"
+          },
+          "outcome": {
+            "description": "`failed` for a job, `rejected` for one remote refusal",
+            "type": "string"
+          },
+          "reason": {
+            "description": "retry_deadline, recipient_refused or missing_prepared_plan for a job; unknown_address or remote_rejected for a rejection",
+            "type": "string"
+          },
+          "refused": {
+            "description": "Recipients refused under this reason",
+            "format": "int64",
+            "type": "integer"
+          },
+          "unreached": {
+            "description": "Recipients never reached under this reason",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "outcome",
+          "reason",
+          "events",
+          "refused",
+          "unreached"
+        ],
+        "type": "object"
+      },
       "SchedulingInboxPage": {
         "properties": {
           "entries": {
@@ -11848,6 +12004,92 @@
         },
         "required": [
           "entries"
+        ],
+        "type": "object"
+      },
+      "SchedulingJobSummary": {
+        "properties": {
+          "attempts": {
+            "description": "Executions so far",
+            "type": "integer"
+          },
+          "completed": {
+            "description": "Deliveries with a result so far; null once finished",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "description": "When it was admitted, unix seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "dueAt": {
+            "description": "Its next attempt, unix seconds; null once finished",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expiresAt": {
+            "description": "Its deadline, unix seconds: a pending job past it retires as retry_deadline",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Job id in the mailbox's store, in admission order",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastError": {
+            "description": "Why its last attempt did not finish, or why it failed",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recipients": {
+            "description": "Deliveries in its plan; null once finished, when the plan is gone",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "refused": {
+            "description": "Of those, refusals; null once finished",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "state": {
+            "description": "pending while it runs or retries; done or failed once finished",
+            "enum": [
+              "pending",
+              "done",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "uid": {
+            "description": "The scheduling object's UID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uid",
+          "state",
+          "attempts",
+          "createdAt",
+          "dueAt",
+          "expiresAt",
+          "lastError",
+          "recipients",
+          "completed",
+          "refused"
         ],
         "type": "object"
       },
@@ -12919,6 +13161,96 @@
         ],
         "type": "object"
       },
+      "SystemMailboxScheduling": {
+        "properties": {
+          "failures": {
+            "description": "The latest outbound log rows reporting a failure (3.x or 5.x), newest first; kept 14 days",
+            "items": {
+              "properties": {
+                "counterpart": {
+                  "description": "The recipient's address, lowercased",
+                  "type": "string"
+                },
+                "createdAt": {
+                  "description": "When it was recorded, unix seconds",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "Row ULID",
+                  "type": "string"
+                },
+                "method": {
+                  "description": "iTIP METHOD this store sent: REQUEST, CANCEL or REPLY",
+                  "type": "string"
+                },
+                "outcome": {
+                  "description": "delivered (written into a calendar on this platform), sent (handed to the relay), retryable (being retried), refused, failed (a remote server refused it after the relay took it) or skipped (never sent: a group or webhook address, one the organizer may not invite, a delegate's remote send, SCHEDULE-AGENT=CLIENT)",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "description": "Why, when the outcome was not a delivery; for a remote failure, the remote server's reply",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "description": "The RFC 6638 SCHEDULE-STATUS this result stamped (1.0, 1.1, 1.2, 3.7, 3.8, 5.1, 5.2, 5.3), or null",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "uid": {
+                  "description": "The scheduling object's UID",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "uid",
+                "id",
+                "method",
+                "counterpart",
+                "outcome",
+                "reason",
+                "status",
+                "createdAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "mailboxId": {
+            "description": "The mailbox asked about",
+            "type": "string"
+          },
+          "pending": {
+            "description": "Jobs still running or retrying, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/SchedulingJobSummary"
+            },
+            "type": "array"
+          },
+          "recent": {
+            "description": "The latest finished jobs, newest first",
+            "items": {
+              "$ref": "#/components/schemas/SchedulingJobSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mailboxId",
+          "pending",
+          "recent",
+          "failures"
+        ],
+        "type": "object"
+      },
       "SystemPickups": {
         "properties": {
           "counts": {
@@ -13091,6 +13423,111 @@
           "truncated",
           "poolSource",
           "ips"
+        ],
+        "type": "object"
+      },
+      "SystemScheduling": {
+        "properties": {
+          "byMailbox": {
+            "description": "Mailboxes ranked by failed jobs plus rejected deliveries, most first",
+            "items": {
+              "$ref": "#/components/schemas/SchedulingByMailbox"
+            },
+            "type": "array"
+          },
+          "byReason": {
+            "description": "Every reason seen, most events first",
+            "items": {
+              "$ref": "#/components/schemas/SchedulingByReason"
+            },
+            "type": "array"
+          },
+          "estimated": {
+            "description": "Always true: the source is the sampled Analytics Engine aggregate",
+            "type": "boolean"
+          },
+          "range": {
+            "description": "Time range queried",
+            "type": "string"
+          },
+          "retentionDays": {
+            "description": "Analytics retention window in days",
+            "type": "integer"
+          },
+          "series": {
+            "description": "One point per bucket that saw a failure, oldest first; the bucket width follows the range as on /system/traffic",
+            "items": {
+              "properties": {
+                "bucket": {
+                  "description": "Bucket start as Analytics Engine reports it (UTC, 'YYYY-MM-DD HH:MM:SS')",
+                  "type": "string"
+                },
+                "failedJobs": {
+                  "description": "Jobs that ended without success in this bucket",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "rejectedDeliveries": {
+                  "description": "Remote rejections in this bucket",
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bucket",
+                "failedJobs",
+                "rejectedDeliveries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "description": "Deployment-wide totals for the window",
+            "properties": {
+              "failedJobs": {
+                "description": "Scheduling jobs that ended without success (deadline, refused recipient, missing plan): sampled estimate",
+                "format": "int64",
+                "type": "integer"
+              },
+              "refusedRecipients": {
+                "description": "Recipients those jobs' deliveries refused",
+                "format": "int64",
+                "type": "integer"
+              },
+              "rejectedDeliveries": {
+                "description": "Deliveries a remote server refused after the relay took them",
+                "format": "int64",
+                "type": "integer"
+              },
+              "unreachedRecipients": {
+                "description": "Recipients those jobs never reached before their deadline",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "failedJobs",
+              "refusedRecipients",
+              "unreachedRecipients",
+              "rejectedDeliveries"
+            ],
+            "type": "object"
+          },
+          "truncated": {
+            "description": "True when a grouped query hit its row bound, so the figures may be incomplete. Narrow the range.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "range",
+          "estimated",
+          "retentionDays",
+          "truncated",
+          "totals",
+          "byReason",
+          "series",
+          "byMailbox"
         ],
         "type": "object"
       },
@@ -32985,6 +33422,16 @@
             },
             "description": "Not found or not accessible"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "conflict: destination configuration changed or a handoff is pending; retry"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -33056,6 +33503,16 @@
               }
             },
             "description": "Not found or not accessible"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "conflict: destination configuration changed or a handoff is pending; retry"
           }
         },
         "summary": "Delete a POP3 pickup source",
@@ -33225,6 +33682,16 @@
               }
             },
             "description": "unknown_source or mailbox_gone"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "conflict: pickup configuration handoff is not ready; retry without deleting upstream mail"
           },
           "411": {
             "content": {
@@ -42131,6 +42598,26 @@
               }
             },
             "description": "No such collection, or mailbox not accessible"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; no deletion committed"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_backlog_full: pending-work or batch budget exhausted; no deletion committed"
           }
         },
         "summary": "Delete calendar",
@@ -42620,6 +43107,16 @@
             },
             "description": "object_too_large (max 1048576 bytes)"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; no mutation committed"
+          },
           "507": {
             "content": {
               "application/json": {
@@ -42628,7 +43125,7 @@
                 }
               }
             },
-            "description": "too_many_objects (collection or store object cap) or store_full (the store's 268435456-byte total would be exceeded)"
+            "description": "scheduling_backlog_full, too_many_objects (collection or store object cap) or store_full (the store's 268435456-byte total would be exceeded)"
           }
         },
         "summary": "Create or replace calendar object",
@@ -42880,6 +43377,26 @@
               }
             },
             "description": "precondition_failed: If-Match not satisfied"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; no deletion committed"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_backlog_full: scheduling admission budget exhausted; no deletion committed"
           }
         },
         "summary": "Delete calendar object",
@@ -43226,6 +43743,94 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}/scheduling": {
+      "get": {
+        "description": "Every invitation, update, cancellation and reply this identity sent for the event, and what became of each delivery: delivered, sent, being retried, refused, rejected by the remote server, or never sent and why. Owner-only.",
+        "operationId": "get_CalendarObjectScheduling",
+        "parameters": [
+          {
+            "description": "Mailbox identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox identity ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Collection ULID or its name slug",
+            "in": "path",
+            "name": "calendarId",
+            "required": true,
+            "schema": {
+              "description": "Collection ULID or its name slug",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The object's href: its filename segment within the collection (e.g. 1a2b3c.ics)",
+            "in": "path",
+            "name": "href",
+            "required": true,
+            "schema": {
+              "description": "The object's href: its filename segment within the collection (e.g. 1a2b3c.ics)",
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows, the latest ones (default and max 500)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Rows, the latest ones (default and max 500)",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectSchedulingLog"
+                }
+              }
+            },
+            "description": "The event's outbound scheduling record, oldest first"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such object, collection, or mailbox, or not this principal's own"
+          }
+        },
+        "summary": "List what was sent for one event",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/identities/{identityId}/calendars/{calendarId}/trash": {
       "get": {
         "description": "The objects deleted out of this calendar within the last fourteen days, newest first, metadata only (a restore is how the body comes back). Owner only.",
@@ -43475,6 +44080,16 @@
             },
             "description": "href_taken: a live object now holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it)"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; nothing restored"
+          },
           "507": {
             "content": {
               "application/json": {
@@ -43483,7 +44098,7 @@
                 }
               }
             },
-            "description": "too_many_objects: the collection or store object cap"
+            "description": "scheduling_backlog_full or too_many_objects: the scheduling or object cap; nothing restored"
           }
         },
         "summary": "Restore deleted calendar object",
@@ -44479,6 +45094,16 @@
             },
             "description": "name_taken: a live collection of this kind now holds the deleted one's name; rename it first"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; nothing restored"
+          },
           "507": {
             "content": {
               "application/json": {
@@ -44487,7 +45112,7 @@
                 }
               }
             },
-            "description": "too_many_collections (the per-mailbox collection cap) or too_many_objects (the store object cap): the restore would exceed it"
+            "description": "scheduling_backlog_full, too_many_collections, or too_many_objects: the restore would exceed the admission budget"
           }
         },
         "summary": "Restore deleted calendar",
@@ -45338,6 +45963,26 @@
               }
             },
             "description": "No such collection, or mailbox not accessible"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; no deletion committed"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_backlog_full: pending-work or batch budget exhausted; no deletion committed"
           }
         },
         "summary": "Delete addressbook",
@@ -45748,6 +46393,16 @@
             },
             "description": "object_too_large (max 1048576 bytes)"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; no mutation committed"
+          },
           "507": {
             "content": {
               "application/json": {
@@ -45756,7 +46411,7 @@
                 }
               }
             },
-            "description": "too_many_objects (collection or store object cap) or store_full (the store's 268435456-byte total would be exceeded)"
+            "description": "scheduling_backlog_full, too_many_objects (collection or store object cap) or store_full (the store's 268435456-byte total would be exceeded)"
           }
         },
         "summary": "Create or replace addressbook object",
@@ -45994,6 +46649,26 @@
               }
             },
             "description": "precondition_failed: If-Match not satisfied"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; no deletion committed"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_backlog_full: scheduling admission budget exhausted; no deletion committed"
           }
         },
         "summary": "Delete addressbook object",
@@ -46421,6 +47096,16 @@
             },
             "description": "href_taken: a live object now holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it)"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; nothing restored"
+          },
           "507": {
             "content": {
               "application/json": {
@@ -46429,7 +47114,7 @@
                 }
               }
             },
-            "description": "too_many_objects: the collection or store object cap"
+            "description": "scheduling_backlog_full or too_many_objects: the scheduling or object cap; nothing restored"
           }
         },
         "summary": "Restore deleted addressbook object",
@@ -47411,6 +48096,16 @@
             },
             "description": "name_taken: a live collection of this kind now holds the deleted one's name; rename it first"
           },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "scheduling_unavailable: preparation could not complete; nothing restored"
+          },
           "507": {
             "content": {
               "application/json": {
@@ -47419,7 +48114,7 @@
                 }
               }
             },
-            "description": "too_many_collections (the per-mailbox collection cap) or too_many_objects (the store object cap): the restore would exceed it"
+            "description": "scheduling_backlog_full, too_many_collections, or too_many_objects: the restore would exceed the admission budget"
           }
         },
         "summary": "Restore deleted addressbook",
@@ -49736,6 +50431,210 @@
           }
         },
         "summary": "Rank outbound senders by volume (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/scheduling": {
+      "get": {
+        "description": "Failed scheduling jobs and remote rejections of invitations over a window: totals, the reasons, a time series and the mailboxes they come from, from the sampled `pim_scheduling` Analytics Engine dataset (90-day retention) joined to the directory. A lead, not a record: each mailbox's own scheduling log holds the rows.",
+        "operationId": "get_SystemSchedulingGet",
+        "parameters": [
+          {
+            "description": "Time window ('1h', '6h', '24h', '7d', '30d')",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "description": "Time window ('1h', '6h', '24h', '7d', '30d')",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Mailboxes in the ranking (default 25, max 200)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Mailboxes in the ranking (default 25, max 200)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemScheduling"
+                }
+              }
+            },
+            "description": "Totals, reasons, a time series and the mailboxes ranked by failures"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed: unknown range or limit out of bounds"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_query_failed: upstream Analytics Engine error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_unavailable: no analytics token configured"
+          }
+        },
+        "summary": "Calendar invitations that did not arrive (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/mailboxes/{mailboxId}/scheduling": {
+      "get": {
+        "description": "The mailbox's scheduling jobs still running or retrying (attempts, next try, deadline, progress), its latest finished jobs, and its latest outbound failures from the scheduling log, optionally for one event. What support reads when someone says an invitation never arrived.",
+        "operationId": "get_SystemMailboxSchedulingGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this event's jobs and failures",
+            "in": "query",
+            "name": "uid",
+            "required": false,
+            "schema": {
+              "description": "Only this event's jobs and failures",
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows per list (default 50, max 200)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Rows per list (default 50, max 200)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemMailboxScheduling"
+                }
+              }
+            },
+            "description": "Pending jobs, recent finished jobs and recent failures"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed: a limit out of bounds"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no calendar store for this mailbox"
+          }
+        },
+        "summary": "Inspect one mailbox's calendar scheduling (system only)",
         "tags": [
           "System"
         ]

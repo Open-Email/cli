@@ -95,7 +95,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
 | `deliver` | `check --to <addr>` (RCPT pre-flight), `inbound` (inject a test message) |
 | `api` | call any route directly (escape hatch) |
-| `admin` | operator-only (system keys): `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,add,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys) |
+| `admin` | operator-only (system keys): `hold`/`release` (a sender's sending), `verify-sending`, `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,add,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys), `scheduling <mailbox>` (calendar invitations still being sent, the latest finished jobs, and who was not reached and why; `--uid` for one event) |
 | `completion` / `upgrade` / `version` | shells, upgrade help, version |
 
 Run `openemail <group> --help` for the full flag set of any command.
@@ -236,6 +236,8 @@ openemail lists check partner@spammer.example --direction inbound --scope-mailbo
 openemail admin suppressions get bounced@example.com
 openemail admin suppressions list --all
 openemail admin suppressions lift bounced@example.com   # only once the cause is fixed
+openemail admin scheduling ada@example.com              # an invitation that never arrived
+openemail admin scheduling ada@example.com --uid 5f3c…  # one event only
 
 # Operator: a real complaint the feedback-loop consumer refused to act on.
 # It suppresses only what it can prove we sent, so a complaint about mail with
