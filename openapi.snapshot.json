@@ -10940,6 +10940,13 @@
       },
       "ReplyContext": {
         "properties": {
+          "from": {
+            "description": "Suggested sending address: the one the newest message reached this mailbox at, or was sent from when it is our own. Not re-checked against routing; the reply route uses it only while it still routes to this mailbox",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "inReplyTo": {
             "description": "Message-ID to set as In-Reply-To header",
             "type": [
@@ -10981,6 +10988,7 @@
           "references",
           "subject",
           "to",
+          "from",
           "inboundSourceId"
         ],
         "type": "object"
@@ -39461,8 +39469,17 @@
                     "maxItems": 50,
                     "type": "array"
                   },
+                  "fromAddress": {
+                    "description": "Address to send the reply as; must be one this mailbox may send as (else 403 sender_not_owned). Defaults to the address the conversation reached this mailbox at, while it still routes here, else the primary address",
+                    "format": "email",
+                    "maxLength": 254,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "fromName": {
-                    "description": "Display name for the From header; the address is always this mailbox's",
+                    "description": "Display name for the From header",
                     "maxLength": 320,
                     "type": [
                       "string",
@@ -39549,7 +39566,7 @@
                 }
               }
             },
-            "description": "validation_failed, no_reply_target (the thread has no answerable address, e.g. a null-sender DSN), no_primary_address, delivery_id_too_long, reserved_delivery_id, or a refused build"
+            "description": "validation_failed, no_reply_target (the thread has no answerable address, e.g. a null-sender DSN), no_primary_address (no fromAddress was given, the conversation's own address does not route here, and the mailbox has no primary address to fall back on), delivery_id_too_long, reserved_delivery_id, or a refused build"
           },
           "401": {
             "content": {

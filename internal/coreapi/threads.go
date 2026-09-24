@@ -45,6 +45,11 @@ type ThreadParticipant struct {
 
 // ReplyContext is the pre-computed reply scaffolding for a thread.
 type ReplyContext struct {
+	// From is core's suggested sending address: the one the newest message
+	// reached this mailbox at, or was sent from when it is your own. It is not
+	// re-checked against routing; core's reply route uses it only while the
+	// address still routes to this mailbox.
+	From       *string  `json:"from"`
 	InReplyTo  *string  `json:"inReplyTo"`
 	References []string `json:"references"`
 	Subject    *string  `json:"subject"`
