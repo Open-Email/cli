@@ -164,6 +164,27 @@ type PimInstance struct {
 	// — which is not the same as having failed to answer.
 	FBType        *string `json:"fbType,omitempty"` // BUSY | BUSY-TENTATIVE
 	OwnerPartstat *string `json:"ownerPartstat,omitempty"`
+	// Scheduling is the organizer and attendees of the component this
+	// occurrence was expanded from, a moved occurrence or a THISANDFUTURE
+	// override included. Present only with expand=true and fields=json. An
+	// override that carries no status reports none, never the master's.
+	Scheduling *PimOccurrenceScheduling `json:"scheduling,omitempty"`
+}
+
+// PimOccurrenceScheduling is one occurrence's participants (PimInstance.Scheduling).
+type PimOccurrenceScheduling struct {
+	Organizer *PimOccurrenceParticipant  `json:"organizer"`
+	Attendees []PimOccurrenceParticipant `json:"attendees"`
+}
+
+// PimOccurrenceParticipant is an organizer or attendee of one occurrence.
+// Email has the mailto: prefix removed; ScheduleStatus is the SCHEDULE-STATUS
+// core stamps on the organizer's copy.
+type PimOccurrenceParticipant struct {
+	Email          string  `json:"email"`
+	Name           *string `json:"name,omitempty"`
+	Partstat       *string `json:"partstat,omitempty"`
+	ScheduleStatus *string `json:"scheduleStatus,omitempty"`
 }
 
 // PimWindow echoes the effective range a ranged query actually answered.

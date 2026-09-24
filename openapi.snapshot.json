@@ -8797,6 +8797,66 @@
               "null"
             ]
           },
+          "scheduling": {
+            "description": "Effective occurrence participants, including RANGE overrides; present with expand=true and fields=json. Missing statuses are not inherited from the master",
+            "properties": {
+              "attendees": {
+                "items": {
+                  "properties": {
+                    "email": {
+                      "description": "Calendar address with the mailto prefix removed",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "partstat": {
+                      "type": "string"
+                    },
+                    "scheduleStatus": {
+                      "description": "Server-owned SCHEDULE-STATUS on this participant",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "email"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "organizer": {
+                "properties": {
+                  "email": {
+                    "description": "Calendar address with the mailto prefix removed",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "partstat": {
+                    "type": "string"
+                  },
+                  "scheduleStatus": {
+                    "description": "Server-owned SCHEDULE-STATUS on this participant",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "organizer",
+              "attendees"
+            ],
+            "type": "object"
+          },
           "start": {
             "description": "Occurrence start timestamp in epoch seconds",
             "format": "int64",
@@ -49424,7 +49484,7 @@
                 }
               }
             },
-            "description": "analytics_unavailable — no analytics token configured"
+            "description": "analytics_unavailable: no analytics token or account id configured"
           }
         },
         "summary": "Get platform telemetry (system only)",
@@ -49874,7 +49934,7 @@
                 }
               }
             },
-            "description": "analytics_unavailable — no analytics token or QUEUE_IDS configured"
+            "description": "analytics_unavailable: no analytics token, account id or QUEUE_IDS configured"
           }
         },
         "summary": "Get queue history metrics",
@@ -50127,7 +50187,7 @@
                 }
               }
             },
-            "description": "analytics_unavailable — no analytics token configured"
+            "description": "analytics_unavailable: no analytics token or account id configured"
           }
         },
         "summary": "Get platform traffic aggregates (system only)",
@@ -50382,7 +50442,7 @@
                 }
               }
             },
-            "description": "analytics_unavailable — no R2 SQL token configured"
+            "description": "analytics_unavailable: no R2 SQL token or account id configured"
           }
         },
         "summary": "List platform traffic events (system only)",
@@ -50487,7 +50547,7 @@
                 }
               }
             },
-            "description": "analytics_unavailable — no analytics token configured"
+            "description": "analytics_unavailable: no analytics token or account id configured"
           }
         },
         "summary": "Rank outbound senders by volume (system only)",
@@ -50592,7 +50652,7 @@
                 }
               }
             },
-            "description": "analytics_unavailable: no analytics token configured"
+            "description": "analytics_unavailable: no analytics token or account id configured"
           }
         },
         "summary": "Calendar invitations that did not arrive (system only)",
