@@ -42,6 +42,9 @@ func contractPairings() []pairing {
 	return []pairing{
 		// Directory / control plane.
 		{val: Domain{}, comp: "Domain"},
+		// Support's read of one mailbox's calendar scheduling (core's reader C).
+		{val: MailboxScheduling{}, comp: "SystemMailboxScheduling"},
+		{val: SchedulingJob{}, comp: "SchedulingJobSummary"},
 		{val: DNSStatus{}, comp: "DnsStatus"},
 		// The onboarding/health records. Pinned because their fields are the ones
 		// a customer copy-pastes into a zone: a field core adds and this client

@@ -439,15 +439,15 @@ type BatchUnjunkResult struct {
 // the "not spam" verb, and the counterpart of RestoreMessages for the other
 // state label.
 //
-// Where each one lands is core's record, not a guess. A label write that left
-// a message carrying only Junk recorded the filing it had beforehand, and this
-// puts that back; failing that, whatever the message carries besides Junk;
-// failing that, INBOX. Removing the Junk label by hand (a PatchInput with
-// LabelsRemove) does none of that: it drops the label and leaves the message
-// wherever the caller happened to name.
+// Labels besides Junk are kept. If none remain, core restores the filing
+// recorded before the move to Junk, falling back to INBOX if none survives.
+// Removing the Junk label by hand (a PatchInput with LabelsRemove) does not
+// restore that filing.
 //
-// It does NOT train the spam filter. Pair it with LearnMessages(class "ham")
-// when the message was misclassified, rather than merely misfiled.
+// A move out of Junk automatically schedules ham training after core's undo
+// window, unless the message remains in Trash. Moving it back during the window
+// cancels the pending training. A separate LearnMessages call is not needed;
+// explicit learning bypasses the delay. Learning failures do not fail recovery.
 func (c *Client) UnjunkMessages(ctx context.Context, mailboxID string, ids []string) (*BatchUnjunkResult, error) {
 	var out BatchUnjunkResult
 	err := c.doJSON(ctx, request{
