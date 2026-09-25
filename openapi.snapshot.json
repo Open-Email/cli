@@ -12373,6 +12373,35 @@
         ],
         "type": "object"
       },
+      "SendAsAddresses": {
+        "properties": {
+          "addresses": {
+            "description": "Primary address first, then the mailbox's other routed addresses on domains that may send, then wildcards; at most 100 addresses. Not exhaustive: an address a narrower catch-all pattern routes here is sendable without being listed",
+            "items": {
+              "properties": {
+                "email": {
+                  "description": "A lowercased address this mailbox may send as, or `*@domain` where a catch-all lets it send as any address on that domain (RFC 8621 §6's wildcard)",
+                  "type": "string"
+                },
+                "subaddressing": {
+                  "description": "Whether `local+tag@domain` forms of this address are sendable too. Always false on a wildcard, which already covers every local part",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "email",
+                "subaddressing"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "addresses"
+        ],
+        "type": "object"
+      },
       "SendRecipientResult": {
         "properties": {
           "address": {
@@ -16235,7 +16264,7 @@
     },
     "/api/v1/accounts/{accountId}/plan": {
       "post": {
-        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label, plus who applied it and when. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` with every key present, sorted, omitted numbers as null and the gate as false — so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Content is the caller's for the tiers tooling owns; omit `limits` to apply one of core's own presets by name — the vetting axis, `untrusted` (what every signup starts on) and `trusted` (lifted by an operator after looking) — and a name core does not define is refused 400 unknown_plan.",
+        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label, plus who applied it and when. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` of the DEFINITION — for caller content every key present, sorted, omitted numbers as null and the gate as false, so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Content is the caller's for the tiers tooling owns; omit `limits` to apply one of core's own presets by name — the vetting axis, `untrusted` (what every signup starts on) and `trusted` (lifted by an operator after looking) — and a name core does not define is refused 400 unknown_plan. Applying a vetting preset by name stamps only the columns core's table defines (every number, no feature gate) and leaves every other plan column exactly as the account has it: `vanityHosts` is a billing feature an operator opens with PATCH, not a trust verdict, so re-vetting or revoking never closes a gate that was opened. Caller content stamps every column, the gate included.",
         "operationId": "post_AccountPlanApply",
         "parameters": [
           {
@@ -16256,7 +16285,7 @@
                 "properties": {
                   "limits": {
                     "additionalProperties": false,
-                    "description": "The preset's column set. EVERY plan column is stamped: a key the preset omits is set to its neutral value (null = the platform default for a number; the vanity-host gate off), never left at the previous plan's value. Unknown fields are refused. Omit it entirely to apply a preset core defines itself (`untrusted`, `trusted`)",
+                    "description": "The preset's column set. EVERY plan column is stamped: a key the preset omits is set to its neutral value (null = the platform default for a number; the vanity-host gate off), never left at the previous plan's value. Unknown fields are refused. Omit it entirely to apply a preset core defines itself (`untrusted`, `trusted`), which stamps only the columns that preset defines and keeps the account's current value for the rest, `vanityHosts` included",
                     "properties": {
                       "addressCreatesPerDay": {
                         "description": "Addresses (routes) this account may CREATE per rolling day (null = platform default, 0 = UNLIMITED)",
@@ -25253,6 +25282,60 @@
           }
         },
         "summary": "List mailboxes shared with you",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/send-as": {
+      "get": {
+        "description": "Returns the addresses this mailbox may use as From, primary first: its routed addresses on domains that may send, then `*@domain` wherever a catch-all on a sending domain lands in it (RFC 8621 §6's wildcard, any address on that domain). The same list JMAP Identity/get reports. `subaddressing` says whether an address's `+tag` forms are sendable too. A domain-scoped key sees only its own domains. Suggestions for a From picker, not an authorization list: an address a narrower catch-all pattern routes here is sendable without being listed, and the list stops at 100 addresses, so submission decides.",
+        "operationId": "get_MailboxSendAsList",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendAsAddresses"
+                }
+              }
+            },
+            "description": "The addresses, primary first"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List the addresses a mailbox may send as",
         "tags": [
           "Mailboxes"
         ]
