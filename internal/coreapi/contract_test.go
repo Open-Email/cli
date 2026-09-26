@@ -224,6 +224,17 @@ func contractPairings() []pairing {
 		{val: MessageInvitation{}, comp: "MessageInvitation"},
 		{val: PimRsvpResult{}, comp: "PimRsvpResult"},
 		{val: Prefs{}, comp: "Prefs"},
+		// Tenant mail templates (core docs/templated-mail-design.md §VI). Pinned
+		// because a backend's script reads these: the render report and the send
+		// rows are how it learns what went out and what to retry.
+		{val: MailTemplate{}, comp: "MailTemplate"},
+		{val: MailTemplateList{}, comp: "MailTemplateList"},
+		{val: MailTemplateDetail{}, comp: "MailTemplateDetail"},
+		{val: MailTemplateVariant{}, comp: "MailTemplateVariant"},
+		{val: MailTemplateRender{}, comp: "MailTemplateRender"},
+		{val: MailTemplateVariable{}, comp: "MailTemplateVariable"},
+		{val: MailTemplateSend{}, comp: "MailTemplateSend"},
+		{val: MailTemplateSendRow{}, comp: "MailTemplateSendRow"},
 	}
 }
 
