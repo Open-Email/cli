@@ -61,6 +61,14 @@
               "null"
             ]
           },
+          "maxMailTemplates": {
+            "description": "Stored mail templates this account may hold (null = the platform default, MAX_MAIL_TEMPLATES_DEFAULT; 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "maxMailboxes": {
             "description": "Maximum allowed mailboxes (null = the platform default, MAX_MAILBOXES_DEFAULT)",
             "format": "int64",
@@ -72,6 +80,13 @@
           "name": {
             "description": "Account name",
             "type": "string"
+          },
+          "noticeLanguage": {
+            "description": "The language platform mail to a recipient with no identity here is written in (BCP 47, lowercased; null = English)",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "noticeMailboxId": {
             "description": "Mailbox that receives limit notices as local postmaster mail (null = console-only)",
@@ -217,6 +232,8 @@
           "plan",
           "storageLimitBytes",
           "retentionDays",
+          "maxMailTemplates",
+          "noticeLanguage",
           "vanityHosts",
           "semantic",
           "recoverySelfService",
@@ -6495,6 +6512,329 @@
           "rights",
           "labelScope",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "MailTemplate": {
+        "properties": {
+          "createdAt": {
+            "type": "integer"
+          },
+          "defaultLang": {
+            "type": "string"
+          },
+          "from": {
+            "description": "The From address; always set on a template this API created",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "languages": {
+            "description": "The languages this template has copy for",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "replyTo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "slug": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "integer"
+          },
+          "variables": {
+            "additionalProperties": {
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "sample": {
+                  "anyOf": [
+                    {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "description": "Dummy data for the preview. A flag's sample is a boolean: the string \"false\" is truthy"
+                }
+              },
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "version": {
+            "description": "Bumped by every write that changes what a send would produce",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "from",
+          "replyTo",
+          "variables",
+          "defaultLang",
+          "version",
+          "languages",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "MailTemplateDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MailTemplate"
+          },
+          {
+            "properties": {
+              "variants": {
+                "items": {
+                  "$ref": "#/components/schemas/MailTemplateVariant"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "variants"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "MailTemplateList": {
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/MailTemplate"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "type": "object"
+      },
+      "MailTemplateRender": {
+        "properties": {
+          "html": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "langUsed": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "source": {
+            "description": "`draft` when the call carried copy to preview, `stored` when it rendered the template's own copy",
+            "enum": [
+              "stored",
+              "draft"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "templateVersion": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "variables": {
+            "items": {
+              "$ref": "#/components/schemas/MailTemplateVariable"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "slug",
+          "langUsed",
+          "templateVersion",
+          "subject",
+          "text",
+          "html",
+          "variables",
+          "source"
+        ],
+        "type": "object"
+      },
+      "MailTemplateSend": {
+        "properties": {
+          "deliveryId": {
+            "description": "The batch id; retry with it to converge only the failures",
+            "type": "string"
+          },
+          "langUsed": {
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/MailTemplateSendRow"
+            },
+            "type": "array"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "templateVersion": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "langUsed",
+          "templateVersion",
+          "deliveryId",
+          "results"
+        ],
+        "type": "object"
+      },
+      "MailTemplateSendRow": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "deliveryId": {
+            "description": "This recipient's leg key, the same shape /send answers",
+            "type": "string"
+          },
+          "error": {
+            "description": "Why, when failed",
+            "type": "string"
+          },
+          "retryAfterSeconds": {
+            "description": "Set on the rows a temporary refusal stopped: retry this recipient after this long",
+            "type": "integer"
+          },
+          "sentCopy": {
+            "enum": [
+              "saved",
+              "duplicate",
+              "over_quota"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "delivered",
+              "queued",
+              "filtered",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "status",
+          "deliveryId"
+        ],
+        "type": "object"
+      },
+      "MailTemplateVariable": {
+        "properties": {
+          "bodies": {
+            "description": "Which fields reference it",
+            "items": {
+              "enum": [
+                "subject",
+                "text",
+                "html"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filledFromSample": {
+            "description": "True when the preview's sample stood in for a value not passed",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "sample",
+          "bodies",
+          "filledFromSample"
+        ],
+        "type": "object"
+      },
+      "MailTemplateVariant": {
+        "properties": {
+          "html": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lang": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lang",
+          "subject",
+          "text",
+          "html",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -15975,6 +16315,15 @@
                       "null"
                     ]
                   },
+                  "maxMailTemplates": {
+                    "description": "Stored mail templates this ACCOUNT may hold (docs/templated-mail-design.md D1). null = the platform default (MAX_MAIL_TEMPLATES_DEFAULT); 0 = unlimited. Over it, creating a template answers 409 template_limit_reached carrying the effective number",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "maxMailboxes": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
@@ -15987,6 +16336,16 @@
                     "maxLength": 255,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "noticeLanguage": {
+                    "description": "The language platform mail is written in when the RECIPIENT has no identity here: an invitee, a nominated recovery address, a forwarding destination asked to confirm (templated-mail-design.md §V step 2). A BCP 47 tag, stored lowercased; null = English. A recipient who does have an identity gets their own webmail language first",
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "noticeMailboxId": {
                     "description": "Where limit notices are delivered: a mailbox this account owns, which receives a postmaster message (local mail, one per limit episode, at most one per limit per day) when a send or receive allowance fires. null = no mail; incidents stay readable at GET /accounts/:accountId/limit-incidents",
@@ -16316,6 +16675,15 @@
                       },
                       "mailboxCreatesPerDay": {
                         "description": "Mailboxes this account may CREATE per rolling day (null = platform default, 0 = UNLIMITED). A churn bound, not a ceiling — maxMailboxes is the ceiling",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "maxMailTemplates": {
+                        "description": "Stored mail templates the account may hold (null = the platform default, MAX_MAIL_TEMPLATES_DEFAULT; 0 = UNLIMITED)",
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
@@ -19863,7 +20231,7 @@
               "schema": {
                 "properties": {
                   "surface": {
-                    "description": "The calling frontend's display name, shown in the message so a user can tell a code they asked for from one they did not",
+                    "description": "Where the reset was asked from, named in the message so a user can tell a code they asked for from one they did not. Webmail sends the hostname it was reached on, which on a vanity deployment is the name the user would recognise. Kept to letters, digits, spaces, dots and hyphens, at most 32 characters, and printed as text, never as a link",
                     "maxLength": 64,
                     "type": "string"
                   },
@@ -48893,6 +49261,1274 @@
         ]
       }
     },
+    "/api/v1/accounts/{accountId}/templates": {
+      "get": {
+        "description": "Every stored template this account owns, with the languages each one has copy for. Needs an unscoped account key: a domain-scoped one is refused on the whole account surface.",
+        "operationId": "get_TemplateIndex",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTemplateList"
+                }
+              }
+            },
+            "description": "The account's templates"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          }
+        },
+        "summary": "List this account's mail templates",
+        "tags": [
+          "Templates"
+        ]
+      },
+      "post": {
+        "description": "Registers a template. The From address must be one this account may already send as; the copy is added per language afterwards.",
+        "operationId": "post_TemplateCreate",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "defaultLang": {
+                    "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+                    "type": "string"
+                  },
+                  "from": {
+                    "format": "email",
+                    "maxLength": 320,
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "replyTo": {
+                    "format": "email",
+                    "maxLength": 320,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "slug": {
+                    "description": "The template's name within this account.",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[a-z0-9][a-z0-9_-]*$",
+                    "type": "string"
+                  },
+                  "variables": {
+                    "additionalProperties": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "description": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "sample": {
+                          "anyOf": [
+                            {
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ],
+                          "description": "Dummy data for the preview. A flag's sample is a boolean: the string \"false\" is truthy"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "description": "Documentation and dummy data per variable. Never a schema: a body may use what this omits.",
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "slug",
+                  "name",
+                  "from"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTemplate"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "reserved_slug, from_not_sendable or an invalid variable declaration"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "slug_taken, or template_limit_reached carrying the effective ceiling"
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "length_required: Content-Length is required"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: the JSON body exceeds 2 MiB"
+          }
+        },
+        "summary": "Create a mail template",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/templates/{slug}": {
+      "get": {
+        "description": "The template's metadata, its variable declarations, and the stored copy for every language it has.",
+        "operationId": "get_TemplateGet",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The template's name within this account.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The template's name within this account.",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTemplateDetail"
+                }
+              }
+            },
+            "description": "The template"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          }
+        },
+        "summary": "Get one mail template",
+        "tags": [
+          "Templates"
+        ]
+      },
+      "patch": {
+        "description": "Changes the name, From, Reply-To, default language or variable declarations. Only fields that differ are written: a PATCH that changes nothing is a no-op. The version moves only when From, Reply-To or the default language changes, since those are what a send reads; a name or a declaration moves `updatedAt` alone.",
+        "operationId": "patch_TemplatePatch",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The template's name within this account.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The template's name within this account.",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "defaultLang": {
+                    "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+                    "type": "string"
+                  },
+                  "from": {
+                    "format": "email",
+                    "maxLength": 320,
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "replyTo": {
+                    "format": "email",
+                    "maxLength": 320,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "variables": {
+                    "additionalProperties": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "description": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "sample": {
+                          "anyOf": [
+                            {
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ],
+                          "description": "Dummy data for the preview. A flag's sample is a boolean: the string \"false\" is truthy"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "description": "Documentation and dummy data per variable. Never a schema: a body may use what this omits.",
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTemplate"
+                }
+              }
+            },
+            "description": "Updated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "from_not_sendable or an invalid variable declaration"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "length_required: Content-Length is required"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: the JSON body exceeds 2 MiB"
+          }
+        },
+        "summary": "Update a template's metadata",
+        "tags": [
+          "Templates"
+        ]
+      },
+      "delete": {
+        "description": "Removes the template and every language's copy. Messages already sent are unaffected; a send naming this slug afterwards answers not_found.",
+        "operationId": "delete_TemplateDelete",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The template's name within this account.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The template's name within this account.",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "enum": [
+                        true
+                      ],
+                      "type": "boolean"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "slug",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          }
+        },
+        "summary": "Delete a mail template",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/templates/{slug}/variants/{lang}": {
+      "put": {
+        "description": "Stores the subject and bodies for one language. A plain-text body is required; HTML is optional and builds a multipart/alternative message beside it.",
+        "operationId": "put_TemplateVariantPut",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The template's name within this account.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The template's name within this account.",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+              "maxLength": 35,
+              "minLength": 2,
+              "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "html": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "subject": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "text": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "subject",
+                  "text"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "changed": {
+                      "description": "False when this language already held exactly this copy: nothing was written",
+                      "type": "boolean"
+                    },
+                    "lang": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "stored": {
+                      "enum": [
+                        true
+                      ],
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "slug",
+                    "lang",
+                    "stored",
+                    "changed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Stored"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "template_invalid, text_required, subject_too_long or body_too_large"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "variant_limit_reached"
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "length_required: Content-Length is required"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: the JSON body exceeds 2 MiB"
+          }
+        },
+        "summary": "Write one language's copy",
+        "tags": [
+          "Templates"
+        ]
+      },
+      "delete": {
+        "description": "Drops a language. The template keeps its other languages; a send asking for this one falls to the template's default language, or is refused when there is none.",
+        "operationId": "delete_TemplateVariantDelete",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The template's name within this account.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The template's name within this account.",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+              "maxLength": 35,
+              "minLength": 2,
+              "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "lang": {
+                      "type": "string"
+                    },
+                    "removed": {
+                      "type": "boolean"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "slug",
+                    "lang",
+                    "removed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Removed, or already absent"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          }
+        },
+        "summary": "Remove one language's copy",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/templates/{slug}/render": {
+      "post": {
+        "description": "Returns the subject and bodies a send would produce, and a report on every variable: what the declaration says, which body uses it, and whether a sample filled it. With `preview`, any variable the caller omits is filled from its declared sample. With `draft`, it renders that copy instead of the stored one, under the checks a save makes, and stores nothing: saving a variant publishes it, so this is how copy is seen before it is live.",
+        "operationId": "post_TemplateRender",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The template's name within this account.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The template's name within this account.",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "draft": {
+                    "additionalProperties": false,
+                    "description": "Copy not stored yet, rendered in the language asked for (else the template's default) with no fallback, since it IS that language's copy. Held to the checks a save makes, so a broken draft gets the refusal saving it would; nothing is written.",
+                    "properties": {
+                      "html": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "subject": {
+                        "maxLength": 500,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "text": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "subject",
+                      "text"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "lang": {
+                    "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "preview": {
+                    "type": "boolean"
+                  },
+                  "recipient": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "email": {
+                        "format": "email",
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 200,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "email"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "vars": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTemplateRender"
+                }
+              }
+            },
+            "description": "The rendered message"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "missing_variable, rendered_too_large, rendered_subject_too_long, template_invalid, no_variant_for_language, a draft's own refusal (text_required, subject_too_long, body_too_large, as a save answers it), or validation_failed for an unknown key"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found"
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "length_required: Content-Length is required"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: the JSON body exceeds 2 MiB"
+          }
+        },
+        "summary": "Render a template without sending it",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/templates/{slug}/send": {
+      "post": {
+        "description": "Renders the template once per recipient, with that recipient's own variables layered over the shared ones, and sends each as its own message, now. There is no `sendAt`: scheduling belongs to the mailbox product, and an unknown key is refused.",
+        "operationId": "post_TemplateSend",
+        "parameters": [
+          {
+            "description": "Account ULID identifier.",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The template's name within this account.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The template's name within this account.",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Idempotency key. Each recipient's message derives its own from this, the template and the recipient's address, so a retry converges per recipient whatever the order or subset of the list it carries, and the same key used for a different template is a different message. At most 200 characters; `#` is reserved.",
+            "in": "header",
+            "name": "x-delivery-id",
+            "required": false,
+            "schema": {
+              "description": "Idempotency key. Each recipient's message derives its own from this, the template and the recipient's address, so a retry converges per recipient whatever the order or subset of the list it carries, and the same key used for a different template is a different message. At most 200 characters; `#` is reserved.",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "bounce": {
+                    "type": "boolean"
+                  },
+                  "headers": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Extra headers for every message. Auto-Submitted, X-Auto-Response-Suppress and Content-Language are the route's own and are refused in any spelling.",
+                    "type": "object"
+                  },
+                  "lang": {
+                    "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "replyTo": {
+                    "format": "email",
+                    "maxLength": 320,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "save": {
+                    "description": "Keep a Sent copy. Default FALSE here, unlike /send.",
+                    "type": "boolean"
+                  },
+                  "to": {
+                    "description": "One message is built per entry, and an address may appear once. No cc or bcc: personalisation makes shared bytes meaningless.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "email": {
+                          "format": "email",
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 200,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "vars": {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "email"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "vars": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "to"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTemplateSend"
+                }
+              }
+            },
+            "description": "Every recipient was accepted"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailTemplateSend"
+                }
+              }
+            },
+            "description": "Mixed: at least one recipient failed. Retry with the same delivery id to converge only the failures; rows a temporary refusal stopped carry `retryAfterSeconds`, and the response carries `Retry-After`"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "missing_variable, rendered_too_large, rendered_subject_too_long or template_invalid (refused before ANY recipient is touched: one template serves the whole batch, so a render fault is one cause and not fifty failures), duplicate_recipient, reserved_header, no_variant_for_language, from_not_sendable, reserved_delivery_id, delivery_id_too_long, validation_failed for an unknown key, or the first message's own refusal as /send answers it"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "sending_disabled: the account's From is frozen"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found, including a sender mailbox torn down before the first message (a later recipient's row says mailbox_gone instead)"
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "length_required: Content-Length is required"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: the JSON body exceeds 2 MiB"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "sending_paused or rate_limited on the first message, with Retry-After: nothing was sent, retry the whole call",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "mailbox_closing or mailbox_reopening on the first message, with Retry-After: retry the whole call"
+          }
+        },
+        "summary": "Send a template to one or more recipients",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
     "/api/v1/dkim": {
       "get": {
         "description": "Returns platform DKIM key status, active selector, DNS record names, and resolver visibility (system callers only).",
@@ -49176,6 +50812,556 @@
         "summary": "Activate staged DKIM key",
         "tags": [
           "DKIM"
+        ]
+      }
+    },
+    "/api/v1/system/mail-slots": {
+      "get": {
+        "description": "Every piece of mail the platform writes about an account, with its contract and which languages an operator has overridden (system callers only).",
+        "operationId": "get_MailSlotIndex",
+        "responses": {
+          "200": {
+            "description": "The registry, joined to the overrides that exist"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "List the platform mail slots",
+        "tags": [
+          "Platform mail"
+        ]
+      }
+    },
+    "/api/v1/system/mail-slots/{slug}": {
+      "get": {
+        "description": "The slot's contract, its compiled-in default source, and any operator override, side by side (system callers only).",
+        "operationId": "get_MailSlotGet",
+        "parameters": [
+          {
+            "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The slot, its default and its overrides"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unknown_slot"
+          }
+        },
+        "summary": "Get one platform mail slot",
+        "tags": [
+          "Platform mail"
+        ]
+      }
+    },
+    "/api/v1/system/mail-slots/{slug}/render": {
+      "post": {
+        "description": "Renders the slot as it would be sent, filling any variable the caller omits from the registry's sample. Sends nothing (system callers only).",
+        "operationId": "post_MailSlotRender",
+        "parameters": [
+          {
+            "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "draft": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "html": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "subject": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "subject",
+                      "text"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "lang": {
+                    "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "vars": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "The rendered subject and bodies, which language answered, and each variable's report"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "missing_variable, rendered_too_large or template_invalid"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unknown_slot"
+          }
+        },
+        "summary": "Preview a platform mail slot",
+        "tags": [
+          "Platform mail"
+        ]
+      }
+    },
+    "/api/v1/system/mail-slots/{slug}/variants/{lang}": {
+      "put": {
+        "description": "Replaces the copy for one language. The variant is held to the slot's contract before it is stored (system callers only).",
+        "operationId": "put_MailSlotVariantPut",
+        "parameters": [
+          {
+            "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+              "maxLength": 35,
+              "minLength": 2,
+              "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "html": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "subject": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "text": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "subject",
+                  "text"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stored"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "slot_constraint (the slot forbids it: a link in a code mail, an HTML body on a text-only slot, a missing must-reference), undeclared_variable, unguarded_optional, template_invalid, text_required, subject_too_long or body_too_large"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unknown_slot"
+          }
+        },
+        "summary": "Override one language of a platform mail slot",
+        "tags": [
+          "Platform mail"
+        ]
+      },
+      "delete": {
+        "description": "Drops an override so the slot renders its compiled-in default again. Removing the last language removes the slot's row entirely (system callers only).",
+        "operationId": "delete_MailSlotVariantDelete",
+        "parameters": [
+          {
+            "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+              "maxLength": 35,
+              "minLength": 2,
+              "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed, or already absent"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unknown_slot"
+          }
+        },
+        "summary": "Remove one language's override",
+        "tags": [
+          "Platform mail"
+        ]
+      }
+    },
+    "/api/v1/system/mail-slots/{slug}/test": {
+      "post": {
+        "description": "Renders the slot and sends it to an address the operator names, over the slot's own channel. Only slots that leave by Email Sending can be tested this way (system callers only).",
+        "operationId": "post_MailSlotTest",
+        "parameters": [
+          {
+            "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "A registry slug, e.g. `oe_recovery_reset_code`.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "draft": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "html": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "subject": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "subject",
+                      "text"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "lang": {
+                    "description": "Language tag, e.g. `en` or `de-AT`. Stored lowercased.",
+                    "maxLength": 35,
+                    "minLength": 2,
+                    "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "to": {
+                    "format": "email",
+                    "maxLength": 320,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "to"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Handed to Email Sending"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "slot_channel_not_testable (a local-injection slot has no address to send to; preview it instead), template_invalid, a draft that breaks the slot's contract (the fault a save would answer), or validation_failed for any key besides `to`, `lang` and `draft`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unknown_slot"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The sender refused it: `error` names which half (platform_refused or recipient_refused) and `reason` says why. `slot_test_budget` means the deployment's hourly allowance of test sends is spent, which never touches the recovery breaker"
+          }
+        },
+        "summary": "Send one real copy of a platform mail slot",
+        "tags": [
+          "Platform mail"
         ]
       }
     },
@@ -52819,8 +55005,16 @@
       "name": "PIM"
     },
     {
+      "description": "Stored, per-language messages this account sends by name with variables: create, write the copy, preview, send.",
+      "name": "Templates"
+    },
+    {
       "description": "Operator-only: signing key state and rotation.",
       "name": "DKIM"
+    },
+    {
+      "description": "Operator-only: the copy of every message the platform writes about an account, editable per language without a deploy.",
+      "name": "Platform mail"
     },
     {
       "description": "Operator-only: background maintenance controls.",

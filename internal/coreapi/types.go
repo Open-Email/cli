@@ -126,6 +126,17 @@ type Account struct {
 	// StorageLimitBytes is the account storage pool: NIL = platform default,
 	// 0 = explicitly unlimited/metered.
 	StorageLimitBytes *int64 `json:"storageLimitBytes"`
+	// MaxMailTemplates is the ceiling on the account's stored mail templates
+	// (core templated-mail-design D1): NIL = the platform default, 0 =
+	// unlimited. The vetting presets set it (untrusted holds five, trusted
+	// lifts it to the default); over it, a create answers 409
+	// template_limit_reached carrying the effective number. System-written.
+	MaxMailTemplates *int64 `json:"maxMailTemplates"`
+	// NoticeLanguage is the language platform mail about this account is
+	// written in when the recipient has no identity here (an invitee, a
+	// forwarding destination): a BCP 47 tag, NIL = English. Someone with an
+	// identity gets their own webmail language first. System-written.
+	NoticeLanguage *string `json:"noticeLanguage"`
 	// VanityHosts is whether this account may claim VANITY HOSTNAMES — its own
 	// `mail.`/`smtp.`/`webmail.`/`dav.` names in front of the platform services.
 	// Off by default: each one costs a certificate order and a persistent key on

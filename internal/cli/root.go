@@ -129,6 +129,7 @@ func newRootCmd(a *app) *cobra.Command {
 		newKeysCmd(a),
 		newMailboxesCmd(a),
 		newAccountsCmd(a),
+		newTemplatesCmd(a),
 		newDomainsCmd(a),
 		newRoutesCmd(a),
 		newPatternsCmd(a),

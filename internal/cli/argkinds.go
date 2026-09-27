@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,8 @@ const (
 	kindDomain                 // a bare hostname: no '@', at least one dot
 	kindAddress                // user@domain
 	kindULIDOrAddress
+	kindSlug // a template or mail-slot slug: lowercase letters, digits, - and _
+	kindLang // a BCP 47 language tag, as core's LANG accepts it
 )
 
 // argKinds maps a placeholder name (as it appears between < and > in Use) to
@@ -75,7 +78,21 @@ var argKinds = map[string]argKind{
 	"key=value": kindFree,
 	"accepted|declined|tentative|needs-action": kindFree,
 	"domain|mailbox|account":                   kindFree,
+	// templated mail (core docs/templated-mail-design.md)
+	"slug": kindSlug,
+	"lang": kindLang,
 }
+
+// slugPattern is core's template slug rule, which every mail-slot slug
+// (oe_recovery_reset_code) also satisfies.
+var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// languageTagPattern is core's LANG: a primary subtag of two or three letters,
+// then subtags of two to eight letters or digits, at most 35 characters.
+var languageTagPattern = regexp.MustCompile(`^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
+
+// isLanguageTag reports whether s is a language tag core would accept.
+func isLanguageTag(s string) bool { return len(s) <= 35 && languageTagPattern.MatchString(s) }
 
 // ulidAlphabet is Crockford base32 as core mints it: upper-case, no I, L, O, U.
 const ulidAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -159,6 +176,14 @@ func checkArg(placeholder, value string, kind argKind) error {
 			return usageError(fmt.Errorf("<%s> %q is lower-case; ids are looked up exactly as minted — did you mean %s?", placeholder, value, up))
 		}
 		return usageError(fmt.Errorf("<%s> %q is neither an id (26 upper-case characters) nor an address (user@domain)", placeholder, value))
+	case kindSlug:
+		if !slugPattern.MatchString(value) {
+			return usageError(fmt.Errorf("<%s> %q is not a slug: lowercase letters, digits, - and _, starting with a letter or digit", placeholder, value))
+		}
+	case kindLang:
+		if !isLanguageTag(value) {
+			return usageError(fmt.Errorf("<%s> %q is not a language tag (like en, de or pt-br)", placeholder, value))
+		}
 	}
 	return nil
 }
