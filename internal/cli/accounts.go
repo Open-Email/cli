@@ -150,9 +150,12 @@ func newAccountListCmd(a *app) *cobra.Command {
 					case "paused":
 						sending = "PAUSED"
 					}
-					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "unlimited"), fmtEpoch(ac.CreatedAt)})
+					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "unlimited"), fmtEpoch(ac.CreatedAt), fmtLastClient(ac.LastClientAt)})
 				}
-				printTable(w, a.out, []string{"ID", "NAME", "SENDING", "MAX MAILBOXES", "CREATED"}, rows)
+				// LAST CLIENT is the dormancy sweep: the list is where an operator
+				// looks for the tenant nobody has logged into, and that needs a
+				// column to scan, not a detail to open per row.
+				printTable(w, a.out, []string{"ID", "NAME", "SENDING", "MAX MAILBOXES", "CREATED", "LAST CLIENT"}, rows)
 				a.moreHint(next)
 			})
 			return nil
@@ -289,11 +292,16 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},
 		{"Max mailboxes", int64Or(acc.MaxMailboxes, "unlimited")},
 		{"Storage pool", fmtStoragePool(acc.StorageLimitBytes)},
+		{"Mail templates", fmtTemplateCeiling(acc.MaxMailTemplates)},
+		{"Notice language", strOr(acc.NoticeLanguage, "en (default)")},
 		{"Vanity hostnames", boolYN(acc.VanityHosts)},
 		// The plan gate, not the state: "yes" means mailboxes MAY opt in, never
 		// that any has. `mailboxes get` answers for a mailbox.
 		{"Semantic search", boolYN(acc.Semantic)},
 		{"Created", fmtEpoch(acc.CreatedAt)},
+		// Any identity, any protocol — the stamp an offboarding decision reads,
+		// and not credentials' lastUsedAt, which frontend caching under-reports.
+		{"Last client", fmtLastClient(acc.LastClientAt)},
 	})
 }
 
@@ -320,6 +328,20 @@ func fmtStoragePool(p *int64) string {
 	return fmtBytes(*p)
 }
 
+// fmtTemplateCeiling names the template ceiling's three states. Unlike the
+// mailbox cap, null here is the PLATFORM DEFAULT and 0 is unlimited, the send
+// caps' vocabulary (core templated-mail-design D1).
+func fmtTemplateCeiling(p *int64) string {
+	switch {
+	case p == nil:
+		return "platform default"
+	case *p == 0:
+		return "unlimited"
+	default:
+		return fmt.Sprintf("%d", *p)
+	}
+}
+
 func fmtAccountSendState(sendHold *string) string {
 	disabled, paused := hold(sendHold) == "disabled", hold(sendHold) == "paused"
 	switch {
@@ -339,11 +361,13 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		vanityHosts         string
 		storageLimit        string
 		semantic            string
+		maxTemplates        string
+		noticeLanguage      string
 	)
 	cmd := &cobra.Command{
 		Use:     "update <accountId>",
 		Aliases: []string{"patch"},
-		Short:   "Update an account's name, caps, storage pool, vanity-hostname or semantic-search gate (system callers only)",
+		Short:   "Update an account's name, caps, storage pool, gates, template ceiling or notice language (system callers only)",
 		Long: "Update a tenant account. Holding or stopping the tenant's outbound mail is an operator\n" +
 			"action of its own: openemail admin hold account <id> --pause|--stop (and admin release).\n" +
 			"Both cover every mailbox on every domain the account owns, queued relay backlog included,\n" +
@@ -422,8 +446,32 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 				}
 				patch["semantic"] = v
 			}
+			// The template CEILING. The send caps' parser, because it shares
+			// their three states exactly: "default" is null (the platform
+			// number), "unlimited" is 0, anything else is the number. The
+			// vetting presets set it too; this is the per-tenant override.
+			if cmd.Flags().Changed("max-mail-templates") {
+				v, perr := parseSendCapFlag(maxTemplates)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch["maxMailTemplates"] = v
+			}
+			// The language platform mail is written in for a recipient with no
+			// identity here (an invitee, a forwarding destination). "default"
+			// clears it back to English.
+			if cmd.Flags().Changed("notice-language") {
+				switch t := strings.TrimSpace(noticeLanguage); {
+				case strings.EqualFold(t, "default") || t == "":
+					patch["noticeLanguage"] = nil
+				case isLanguageTag(t):
+					patch["noticeLanguage"] = strings.ToLower(t)
+				default:
+					return usageError(fmt.Errorf("--notice-language %q is not a language tag (like de, fr or pt-br), or 'default' for English", noticeLanguage))
+				}
+			}
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update — pass --name, --max-mailboxes, --send-*-per-day, --storage-limit, --vanity-hosts or --semantic (to hold or stop sending: openemail admin hold account)"))
+				return usageError(errors.New("nothing to update: pass --name, --max-mailboxes, --send-*-per-day, --storage-limit, --vanity-hosts, --semantic, --max-mail-templates or --notice-language (to hold or stop sending: openemail admin hold account)"))
 			}
 			acc, err := client.UpdateAccount(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -442,6 +490,8 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
 	cmd.Flags().StringVar(&storageLimit, "storage-limit", "", "account-wide storage POOL across every mailbox it owns: a size like 50G, 'unlimited' (metered — overage billed, never refused), or 'default' for the platform pool")
 	cmd.Flags().StringVar(&vanityHosts, "vanity-hosts", "", "may this account claim VANITY HOSTNAMES (its own mail./smtp./webmail./dav. names): true|false. Gates claiming only — turning it off never revokes hostnames already serving clients")
+	cmd.Flags().StringVar(&maxTemplates, "max-mail-templates", "", "stored mail templates this account may hold: a number, 'unlimited', or 'default' for the platform number (the vetting presets set it too)")
+	cmd.Flags().StringVar(&noticeLanguage, "notice-language", "", "the language platform mail about this account is written in for recipients with no identity here: a tag like de, or 'default' for English")
 	cmd.Flags().StringVar(&semantic, "semantic", "", "may this account's mailboxes enable SEMANTIC (meaning-based) search: true|false. The plan gate only — each mailbox still opts in for itself (openemail mailboxes update <id> --semantic true). Refused while a mailbox is still opted in")
 	return cmd
 }
@@ -560,7 +610,10 @@ func newAccountTrafficCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(tr, func(w io.Writer) {
 				a.out.Msgf("%s — %s (estimated, ~%dd retention)", a.out.Bold(tr.AccountID), tr.Range, tr.RetentionDays)
-				a.out.Msgf("  total: %d events, %s across %d domain(s)", tr.Totals.Events, fmtBytes(tr.Totals.Bytes), len(tr.Domains))
+				// Forwarded is the inbound-driven SUBSET of outbound, billed on its
+				// own axis; the outcome table below cannot show it (route kind is
+				// how a message matched, not why it left), so the total names it.
+				a.out.Msgf("  total: %d events (%d forwarded), %s across %d domain(s)", tr.Totals.Events, tr.Totals.Forwarded, fmtBytes(tr.Totals.Bytes), len(tr.Domains))
 				if tr.DomainsTruncated {
 					// Never let a partial total read as a complete one — this is
 					// the number someone decides to freeze an account on.

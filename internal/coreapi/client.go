@@ -226,6 +226,8 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 		hr.Body.Close()
 		cancel()
 		ae := decodeAPIError(hr.StatusCode, data)
+		ae.Method = r.method
+		ae.Path = u.Path[len(c.base.Path)+len("/api/v1"):]
 		if shouldRetryStatus(hr.StatusCode, r) {
 			return true, ae
 		}

@@ -69,7 +69,7 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `ui` (alias `console`) | full-screen console: sidebar + tables for mailboxes/domains/routes/patterns/keys/accounts (plus Suppressions and DKIM on a system key) with create/edit forms, confirm-gated deletes, and group-member editing. A mailbox row drills into credentials, filters (and Sieve scripts behind them), calendars, addressbooks, pickups and preferences; enter opens a live message list (events WebSocket) with compose, reply, search, previews (`S` shows the raw MIME source), invitation RSVP, junk training, flag toggles, label editing, and a trash view with restore |
 | `mailboxes` | create/list/get/update/delete/restore, `use` (set default), `webhook {get,set,delete,test}` (the per-mailbox event webhook: signed, fact-only event batches; the secret is write-only — `--secret` rotates, `--clear-secret` removes, omit keeps), `retention {get,set,clear}` (the time-based retention window: mail older than N days moves to trash on the mailbox's own schedule, restorable 14 days; `get --days 30,90,365` previews what each window would move BEFORE you set one; account key only — an app password may read, never set) |
 | `keys` | account API keys: create/list/revoke. `create --domain <name>` (repeatable) mints a DOMAIN-SCOPED key — it reaches only those domains' directory and the mailboxes with an address on one of them; other domains and their mailboxes answer 404, and account-level surfaces (the account itself, its keys, its audit trail, JMAP) answer 403 `account_credentials_required`. A scope narrows and never grants (a delegation inside one account, not a tenancy boundary) and is fixed for the key's life: revoke and re-mint to change it. The SCOPE column of `keys list` reads `all` for a key without one and `none` for one whose stored scope core cannot read; `whoami` shows the scope of the key you are using. The `ui` keys screen shows the same column, and its form offers the account's domains as a multi-select |
-| `accounts` | accounts (create/list/update are system-only), get, `traffic`, `send-usage`; `create --with-key` also mints the account's first API key; holding or stopping a tenant's sending is `admin hold account <id> --pause|--stop` (covers every mailbox on every domain the account owns, queued relay backlog included; a stop bounces that backlog while a pause defers it; neither touches inbound), `update --send-*-per-day` sets the tenant-scale volume caps, `traffic` is the cross-mailbox rollup of what went OUT and `send-usage` of what is LEFT; `retention {get,set,clear}` is the account DEFAULT retention window, applied to every mailbox without a window of its own — existing mailboxes included — so `retention get --days 90` previews, per mailbox, what a default would move to trash before you set it (`--account` names the tenant for a system key) |
+| `accounts` | accounts (create/list/update are system-only), get, `traffic`, `send-usage`; `create --with-key` also mints the account's first API key; holding or stopping a tenant's sending is `admin hold account <id> --pause|--stop` (covers every mailbox on every domain the account owns, queued relay backlog included; a stop bounces that backlog while a pause defers it; neither touches inbound), `update --send-*-per-day` sets the tenant-scale volume caps, `traffic` is the cross-mailbox rollup of what went OUT and `send-usage` of what is LEFT; `retention {get,set,clear}` is the account DEFAULT retention window, applied to every mailbox without a window of its own — existing mailboxes included — so `retention get --days 90` previews, per mailbox, what a default would move to trash before you set it (`--account` names the tenant for a system key); `update --max-mail-templates N\|unlimited\|default` sets the template ceiling and `--notice-language <tag>\|default` the language platform mail is written in for recipients with no identity here |
 | `domains` | domains (`create` is create-or-advance: requires your verification TXT, activates sending once the oe-bounce CNAME + both DKIM CNAMEs resolve), `dns <domain>` (required records + liveness) + `traffic <domain> --range 1h\|6h\|24h\|7d\|30d`, `events <domain>` (per-event log), `webhook {get,set,delete,test} <domain>` (the per-domain event webhook — every mailbox on the domain plus lifecycle and send outcomes; take a baseline after `set`), and the DMARC aggregate-report views: `dmarc <domain>` (enforcement readiness) and `dmarc-sources <domain>` take `--range 7d\|30d\|90d`; `dmarc-reports <domain>` pages the raw reports over the full retention (`--limit/--cursor/--all`, no window) |
 | `routes` | address routes + `members list\|add\|remove\|replace` |
 | `patterns` | per-domain pattern routes |
@@ -90,12 +90,13 @@ resolved via its route); set a per-profile default with `openemail mailboxes use
 | `prefs` | the opaque client-preferences document: `get`/`put`/`set` with compare-and-swap on its version |
 | `pickups` | POP3 pickup sources: create/list/get/update/delete/`run` |
 | `send` | submit an outbound message (compose or raw MIME) |
+| `templates` | prepared emails (account key; `--account` names the tenant for a system key): `list`, `get`, `create` (a slug your code sends it by, `--from` an address the account may send as, `--variables-file` documenting each variable with a sample), `update`, `delete`; `variants {get,put,delete} <slug> <lang>` for one language's copy (`put` PUBLISHES it: the next send in that language uses it); `render` shows what a send would produce and, given `--subject`/`--text`, previews a DRAFT through core without storing it; `send` renders one message per recipient (`--to`, repeatable, or `--to-file` for per-recipient values) under a `--delivery-id` a retry reuses, so only the failed recipients go out again (exit 1 when any failed) |
 | `do-not-send` (alias `suppressions`) | the account's OWN do-not-send list: `list`/`check`/`add`/`remove` — addresses this account never mails; `remove` also lifts a platform hard-bounce block on the address (the deployment-global evidence list stays under `admin suppressions`). One address list, kept as its own command because it is the combination people want most |
 | `lists` | address lists in full: named allow/block lists at account, domain or mailbox scope, inbound or outbound. `list`/`show`/`create`/`rename`/`delete`, `add`/`remove`/`import` patterns, and `check` — the same evaluator the delivery path runs, naming the pattern that decided |
 | `watch` | tail a mailbox's live events over WebSocket (`--until <glob>` exit on match, `--timeout <dur>`, `--exec <cmd>` per-event handler, `--fetch` hydrate message frames) |
 | `deliver` | `check --to <addr>` (RCPT pre-flight), `inbound` (inject a test message) |
 | `api` | call any route directly (escape hatch) |
-| `admin` | operator-only (system keys): `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,add,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys) |
+| `admin` | operator-only (system keys): `hold`/`release` (a sender's sending), `verify-sending`, `reindex`, `verify-login`, `pickup ingest\|report`, `suppressions {list,get,add,lift}` (the deployment-global do-not-send list), `dkim {status,rotate,activate}` (platform signing keys), `scheduling <mailbox>` (calendar invitations still being sent, the latest finished jobs, and who was not reached and why; `--uid` for one event); `mail-slots {list,get,put,delete,render,test}` re-words the platform's own mail per language (core holds each override to the slot's rules; `delete` reverts to the default; `render`/`test` take `--subject`/`--text` to try a draft first) |
 | `completion` / `upgrade` / `version` | shells, upgrade help, version |
 
 Run `openemail <group> --help` for the full flag set of any command.
@@ -229,13 +230,15 @@ openemail lists add <list-id> @spammer.example
 # …and rescue one sender from that block, for one mailbox only. A narrower
 # allow also exempts them from the spam filter.
 openemail lists create "Trusted" --direction inbound --verdict allow --scope mailbox:<id>
-openemail lists add <list-id> partner@spammer.example
+openemail lists add <list-id> partner@spammer.example --expires 30d   # drops out by itself
 openemail lists check partner@spammer.example --direction inbound --scope-mailbox <id>
 
 # Operator: is an address on the do-not-send list, and why? (system key)
 openemail admin suppressions get bounced@example.com
 openemail admin suppressions list --all
 openemail admin suppressions lift bounced@example.com   # only once the cause is fixed
+openemail admin scheduling ada@example.com              # an invitation that never arrived
+openemail admin scheduling ada@example.com --uid 5f3c…  # one event only
 
 # Operator: a real complaint the feedback-loop consumer refused to act on.
 # It suppresses only what it can prove we sent, so a complaint about mail with
@@ -285,6 +288,14 @@ check (which runs at most once per day, on a TTY only).
 - One-time secrets (a new key/app-password token) print once to **stdout**, with a
   "shown once" warning on stderr.
 - Exit codes: `0` ok · `1` error · `2` usage · `4` authentication required.
+- Arguments are shape-checked before any request is sent: an id where an address
+  goes (or the reverse), a lower-cased id, a domain that is really an address,
+  a non-numeric pattern id, and an unknown subcommand under any group are all
+  refused locally with exit `2` and a message naming the argument. Core's 404 is
+  the bare word `not_found` by design, so when one does come back the CLI names
+  what it asked for (`no mailbox "…"`), how to list them, and — because core
+  answers a missing and an inaccessible resource identically — that either may
+  be the case.
 - Color is emitted only on a TTY with `NO_COLOR` unset and `--no-color` off.
 
 See [docs/OUTPUT.md](docs/OUTPUT.md) for the `--json` contract and

@@ -137,6 +137,9 @@ func domainsDesc() resourceDesc {
 				{v: "Traffic (24h, sampled)"},
 				{k: "events", v: fmt.Sprintf("%d", t.Totals.Events)},
 				{k: "bytes", v: fmtBytes(t.Totals.Bytes)},
+				// A subset of outbound, not a third direction — billed on its own
+				// axis, and invisible in the per-outcome lines below.
+				{k: "forwarded", v: fmt.Sprintf("%d", t.Totals.Forwarded)},
 			}
 			outcome = make([]string, 0, len(t.ByOutcome))
 			for o := range t.ByOutcome {
@@ -568,6 +571,8 @@ func accountsDesc() resourceDesc {
 			{title: "NAME", flex: true},
 			{title: "MAX MBX", width: 7},
 			{title: "CREATED", width: 16},
+			// The dormancy sweep column — see the CLI's accounts list.
+			{title: "LAST CLIENT", width: 16},
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
 			pg, err := c.ListAccounts(ctx, pageLimit, cursor)
@@ -588,7 +593,7 @@ func accountsDesc() resourceDesc {
 					name += " [PAUSED]"
 				}
 				rows[i] = rowData{
-					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "∞"), fmtEpoch(a.CreatedAt)},
+					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "∞"), fmtEpoch(a.CreatedAt), lastClientOr(a.LastClientAt)},
 					item:  a,
 				}
 			}
@@ -619,6 +624,7 @@ func accountsDesc() resourceDesc {
 				{k: "storage pool", v: storagePoolOr(a.StorageLimitBytes)},
 				{k: "vanity hostnames", v: yn(a.VanityHosts)},
 				{k: "created", v: fmtEpoch(a.CreatedAt)},
+				{k: "last client", v: lastClientOr(a.LastClientAt)},
 			}
 		},
 		actions: []action{
@@ -1020,6 +1026,17 @@ func int32Ptr(p *int32) string {
 // the current window stays visible without extra chrome. R cycles the range in
 // place (mutate state → refetch). Figures are sampled Analytics-Engine
 // estimates (~90-day retention); see core README §"Traffic log & analytics".
+// trafficTotals is the summary row's item on the traffic screen: its own type
+// rather than a TrafficRow with Outcome "TOTALS", so `enter` can show the one
+// figure the outcome rows do not carry (forwarded) instead of pretending the
+// total is an outcome.
+type trafficTotals struct {
+	Range     string
+	Events    int64
+	Bytes     int64
+	Forwarded int64
+}
+
 func trafficDesc(domain string) resourceDesc {
 	st := newTrafficState()
 	return resourceDesc{
@@ -1053,11 +1070,25 @@ func trafficDesc(domain string) resourceDesc {
 			}
 			rows = append(rows, rowData{
 				cells: []string{fmt.Sprintf("TOTALS (%s)", rng), "—", fmtInt(t.Totals.Events), fmtBytes(t.Totals.Bytes)},
-				item:  coreapi.TrafficRow{Outcome: "TOTALS", Events: t.Totals.Events, Bytes: t.Totals.Bytes},
+				item:  trafficTotals{Range: rng, Events: t.Totals.Events, Bytes: t.Totals.Bytes, Forwarded: t.Totals.Forwarded},
 			})
 			return rows, "", nil // aggregate is single-shot; no pagination
 		},
 		detail: func(item any) []kv {
+			footer := kv{v: "sampled Analytics-Engine estimates · ~90-day retention"}
+			// The summary row carries what no outcome row can: the forwarded
+			// share, a subset of outbound that route kind (HOW a message
+			// matched) never reveals.
+			if tot, ok := item.(trafficTotals); ok {
+				return []kv{
+					{k: "window", v: tot.Range},
+					{k: "events", v: fmtInt(tot.Events)},
+					{k: "bytes", v: fmtBytes(tot.Bytes)},
+					{k: "forwarded", v: fmtInt(tot.Forwarded) + " (of outbound)"},
+					{},
+					footer,
+				}
+			}
 			r := item.(coreapi.TrafficRow)
 			return []kv{
 				{k: "outcome", v: r.Outcome},
@@ -1065,7 +1096,7 @@ func trafficDesc(domain string) resourceDesc {
 				{k: "events", v: fmtInt(r.Events)},
 				{k: "bytes", v: fmtBytes(r.Bytes)},
 				{},
-				{v: "sampled Analytics-Engine estimates · ~90-day retention"},
+				footer,
 			}
 		},
 		actions: []action{

@@ -34,8 +34,15 @@ type Identity struct {
 	// Semantic — see Mailbox.Semantic: whether meaning-based search is on for
 	// this identity's mail store. The Identity component composes Mailbox, so
 	// this field is always present.
-	Semantic bool           `json:"semantic"`
-	Facets   IdentityFacets `json:"facets"`
+	Semantic bool `json:"semantic"`
+	// LastClientAt is when a client last reached THIS identity, in epoch seconds
+	// coalesced to five minutes — read from its client history, so IMAP, DAV,
+	// JMAP and webmail all count; nil when none inside the 90-day client
+	// retention. OMITTED, not null, for a grant holder reading a mailbox shared
+	// with them: the owner's client history is theirs alone, like the client
+	// list itself.
+	LastClientAt *int64         `json:"lastClientAt,omitempty"`
+	Facets       IdentityFacets `json:"facets"`
 }
 
 // IdentityFacets maps each bound store to its usage. A key is present iff a

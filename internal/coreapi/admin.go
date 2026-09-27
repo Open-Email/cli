@@ -33,6 +33,12 @@ type VerifyResult struct {
 	Semantic bool `json:"semantic"`
 	// Facets lists the identity's bound stores ("mail", "pim").
 	Facets []string `json:"facets"`
+	// ItipAuto is true when this login's domain auto-processes arriving
+	// scheduling messages (`domains.itip`). RFC 6638 §4 makes auto-processing
+	// what `calendar-auto-schedule` MEANS, so a gateway claims the class PER
+	// PRINCIPAL off this field rather than server-wide — a constant would
+	// promise §4 to principals for whom it is false.
+	ItipAuto bool `json:"itipAuto"`
 	// SecondFactor ("webauthn") is present when the matched credential is a
 	// password and the identity has WebAuthn keys enrolled: the frontend this
 	// login came through should demand the second factor. Advisory, like

@@ -44,6 +44,15 @@ type AddressListEntry struct {
 	Pattern   string  `json:"pattern"`
 	Note      *string `json:"note"`
 	CreatedAt int64   `json:"createdAt"`
+	// ExpiresAt is when the entry stops applying and disappears from the list
+	// (epoch seconds), or nil for never. Core prunes on write rather than on a
+	// clock, so an expired entry may still be stored — it is never returned.
+	ExpiresAt *int64 `json:"expiresAt"`
+	// HitCount is how many evaluations this entry DECIDED, and LastHitAt when
+	// the last one was (nil = never matched). A floor, not an exact count: hits
+	// within ten seconds of the previous recorded one are folded into it.
+	HitCount  int64  `json:"hitCount"`
+	LastHitAt *int64 `json:"lastHitAt"`
 }
 
 // AddressListBatchResult reports an import: what was written, and what core
@@ -51,6 +60,10 @@ type AddressListEntry struct {
 type AddressListBatchResult struct {
 	Added   int64    `json:"added"`
 	Invalid []string `json:"invalid"`
+	// InvalidCount is the TOTAL of invalid rows when Invalid was truncated —
+	// a CSV import reports at most the first 100 there. Absent outside a CSV
+	// import, where len(Invalid) is already the whole story.
+	InvalidCount int64 `json:"invalidCount,omitempty"`
 }
 
 // AddressListVerdict is what the `evaluate` verb answers — the ONE read that
@@ -78,6 +91,10 @@ type AddressListCreate struct {
 type AddressListEntryInput struct {
 	Pattern string `json:"pattern"`
 	Note    string `json:"note,omitempty"`
+	// ExpiresAt is when the entry should stop applying (epoch seconds, in the
+	// future); nil for never. A repeat add REPLACES the previous expiry, so
+	// re-adding without one makes a temporary entry permanent.
+	ExpiresAt *int64 `json:"expiresAt,omitempty"`
 }
 
 // AddressListEvaluateInput asks what the lists decide for one address. Domain

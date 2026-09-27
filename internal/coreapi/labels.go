@@ -32,13 +32,17 @@ type LabelInfo struct {
 	IsSubscribed bool `json:"isSubscribed"`
 	// HighestModseq is the label's RFC 7162 HIGHESTMODSEQ (CONDSTORE).
 	HighestModseq int64 `json:"highestModseq"`
+	// Color is the label's presentation colour, "#rrggbb", or nil when the
+	// user has not chosen one. Presentation only: no protocol reads it.
+	Color *string `json:"color"`
 }
 
 // CreatedLabel is the (smaller) create response.
 type CreatedLabel struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	UIDValidity int64  `json:"uidValidity"`
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	UIDValidity int64   `json:"uidValidity"`
+	Color       *string `json:"color"`
 }
 
 func (c *Client) labelsPath(mailboxID string) string {
@@ -78,10 +82,39 @@ func (c *Client) CreateLabel(ctx context.Context, mailboxID, name string) (*Crea
 
 // RenameLabel renames a user label. The body field is "name" (the new name).
 // 403 system_label, 409 exists.
-func (c *Client) RenameLabel(ctx context.Context, mailboxID, label, newName string) error {
+// RenameLabelOpts carries the part of a rename that is not the new name.
+type RenameLabelOpts struct {
+	// WithChildren carries every `Old/…` sub-label along in the same commit.
+	//
+	// Hierarchy in core is NAMING, not structure: `Work/Clients` is one label
+	// whose name contains a slash, so renaming `Work` on its own leaves
+	// `Work/Clients` behind, beneath a parent that no longer exists. IMAP
+	// RENAME (RFC 9051 §6.3.6) and JMAP `Mailbox/set` both cascade, so a bare
+	// rename here is the one surface on the platform that does not.
+	//
+	// Core validates the whole move before writing any of it, so the cascade
+	// cannot half-apply: a sub-label whose new name would collide or exceed
+	// 255 characters refuses the rename entire. A collision answers 409 with
+	// the occupied name in `clash`, which may be a sub-label the caller never
+	// typed.
+	WithChildren bool
+}
+
+// RenameLabel renames a user label. System labels cannot be renamed (403).
+// A name already in use is 409, whose envelope carries `clash`: the name that
+// is actually taken, which under WithChildren can be a sub-label's target
+// rather than the name given here.
+func (c *Client) RenameLabel(ctx context.Context, mailboxID, label, newName string, opts RenameLabelOpts) error {
+	body := map[string]any{"name": newName}
+	// Sent only when asserted. False is core's default, and core reads an
+	// always-echoed `withChildren: false` as saying nothing; omitting it keeps
+	// the body to what the caller actually asked for.
+	if opts.WithChildren {
+		body["withChildren"] = true
+	}
 	return c.doJSON(ctx, request{
 		method: http.MethodPatch, path: c.labelPath(mailboxID, label),
-		body: mustJSON(map[string]string{"name": newName}), contentType: "application/json",
+		body: mustJSON(body), contentType: "application/json",
 	}, nil)
 }
 

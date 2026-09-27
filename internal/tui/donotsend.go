@@ -37,6 +37,8 @@ func doNotSendDesc(accountID string) resourceDesc {
 		columns: []column{
 			{title: "ADDRESS", flex: true},
 			{title: "ADDED", width: 16},
+			{title: "EXPIRES", width: 16},
+			{title: "HITS", width: 7},
 			{title: "NOTE", width: 40},
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
@@ -56,7 +58,7 @@ func doNotSendDesc(accountID string) resourceDesc {
 			rows := make([]rowData, len(pg.Items))
 			for i, e := range pg.Items {
 				rows[i] = rowData{
-					cells: []string{e.Pattern, fmtEpoch(e.CreatedAt), truncate(strOr(e.Note, "—"), 40)},
+					cells: []string{e.Pattern, fmtEpoch(e.CreatedAt), fmtEpochPtr(e.ExpiresAt), fmtInt(e.HitCount), truncate(strOr(e.Note, "—"), 40)},
 					item:  e,
 				}
 			}
@@ -67,6 +69,10 @@ func doNotSendDesc(accountID string) resourceDesc {
 			return []kv{
 				{k: "pattern", v: e.Pattern},
 				{k: "added", v: fmtEpoch(e.CreatedAt)},
+				{k: "expires", v: fmtEpochPtr(e.ExpiresAt)},
+				// A floor: core folds hits within ten seconds of the last one.
+				{k: "hits", v: fmtInt(e.HitCount)},
+				{k: "last hit", v: fmtEpochPtr(e.LastHitAt)},
 				{},
 				{v: "Note"},
 				{v: strOr(e.Note, "(none)")},

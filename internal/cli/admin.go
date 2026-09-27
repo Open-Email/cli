@@ -23,6 +23,8 @@ func newAdminCmd(a *app) *cobra.Command {
 		newAdminPickupCmd(a),
 		newAdminSuppressionsCmd(a),
 		newAdminDkimCmd(a),
+		newAdminSchedulingCmd(a),
+		newAdminMailSlotsCmd(a),
 	)
 	a.adminCmd = cmd
 	return cmd

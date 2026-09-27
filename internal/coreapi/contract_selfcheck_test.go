@@ -78,6 +78,78 @@ func TestContractHarnessFlagsDrift(t *testing.T) {
 	}
 }
 
+// A nested INLINE object is descended into; a $ref is not. The first half is
+// the gap that let `forwarded` into both traffic totals unnoticed — `totals`
+// matched as object-vs-struct and its contents were never read. The second
+// half is deliberate: a $ref names a component pinned on its own row, and
+// following it would report one drift once per referrer.
+func TestContractHarnessDescendsInlineObjects(t *testing.T) {
+	schemas := map[string]any{
+		"Leaf": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"deep": map[string]any{"type": "string"}},
+		},
+		"Bar": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"totals": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"events":    map[string]any{"type": "integer", "format": "int64"},
+						"forwarded": map[string]any{"type": "integer", "format": "int64"},
+					},
+				},
+				"leaf": map[string]any{"$ref": "#/components/schemas/Leaf"},
+			},
+		},
+	}
+	props := schemas["Bar"].(map[string]any)["properties"].(map[string]any)
+	issuesFor := func(v any) []string {
+		return compare(pairing{comp: "Bar"}, schemas, props, flattenGoFields(reflect.TypeOf(v)))
+	}
+
+	type leaf struct {
+		Deep string `json:"deep"`
+	}
+	type whole struct {
+		Totals struct {
+			Events    int64 `json:"events"`
+			Forwarded int64 `json:"forwarded"`
+		} `json:"totals"`
+		Leaf leaf `json:"leaf"`
+	}
+	if got := issuesFor(whole{}); len(got) != 0 {
+		t.Fatalf("matching nested struct should have no issues, got: %v", got)
+	}
+
+	type shallow struct {
+		Totals struct {
+			Events int64 `json:"events"`
+		} `json:"totals"`
+		Leaf leaf `json:"leaf"`
+	}
+	got := issuesFor(shallow{})
+	if !hasIssue(got, "no Go field") {
+		t.Error("expected the missing nested property to be flagged")
+	}
+	if !hasIssue(got, "Bar.totals:") {
+		t.Errorf("expected the issue to name the nested path Bar.totals, got: %v", got)
+	}
+
+	// The $ref side: an EMPTY struct behind `leaf` must stay unreported here,
+	// or every referrer would repeat the component's own drift.
+	type refDrift struct {
+		Totals struct {
+			Events    int64 `json:"events"`
+			Forwarded int64 `json:"forwarded"`
+		} `json:"totals"`
+		Leaf struct{} `json:"leaf"`
+	}
+	if got := issuesFor(refDrift{}); len(got) != 0 {
+		t.Errorf("a $ref property must not be descended into, got: %v", got)
+	}
+}
+
 func hasIssue(issues []string, substr string) bool {
 	for _, i := range issues {
 		if strings.Contains(i, substr) {

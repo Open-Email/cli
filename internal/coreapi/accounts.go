@@ -147,6 +147,10 @@ type AccountTraffic struct {
 	Totals           struct {
 		Events int64 `json:"events"`
 		Bytes  int64 `json:"bytes"`
+		// Forwarded is the inbound-driven subset of the outbound events in this
+		// window — see TrafficSeriesPoint.Forwarded. Never added to a total; it
+		// is already inside one.
+		Forwarded int64 `json:"forwarded"`
 	} `json:"totals"`
 	ByOutcome map[string]int64 `json:"byOutcome"`
 	Rows      []TrafficRow     `json:"rows"`

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
+	"time"
 )
 
 // newListsCmd is the ADDRESS LIST surface (core migration 0040) — the tenant's
@@ -214,9 +215,9 @@ func newListsShowCmd(a *app) *cobra.Command {
 				})
 				rows := make([][]string, 0, len(items))
 				for _, e := range items {
-					rows = append(rows, []string{e.Pattern, fmtEpoch(e.CreatedAt), truncate(strOr(e.Note, "—"), 40)})
+					rows = append(rows, entryCells(e, 40))
 				}
-				printTable(w, a.out, []string{"PATTERN", "ADDED", "NOTE"}, rows)
+				printTable(w, a.out, entryHeaders("PATTERN"), rows)
 				a.moreHint(next)
 			})
 			return nil
@@ -365,7 +366,7 @@ func newListsDeleteCmd(a *app) *cobra.Command {
 func newListsAddCmd(a *app) *cobra.Command {
 	var (
 		account, mailbox string
-		note             string
+		note, expires    string
 	)
 	cmd := &cobra.Command{
 		Use:   "add <list-id> <pattern>",
@@ -373,9 +374,15 @@ func newListsAddCmd(a *app) *cobra.Command {
 		Long: "Patterns: an address (`jo@acme.example`), a whole domain\n" +
 			"(`@acme.example`), a domain and its subdomains (`@.acme.example`), or a\n" +
 			"local-part glob (`sales-*@acme.example`). Repeat adds converge on one\n" +
-			"entry — the note refreshes, the original added-at stays.",
+			"entry — the note refreshes, the expiry is REPLACED (so a repeat add\n" +
+			"without --expires makes a temporary entry permanent), and the original\n" +
+			"added-at stays.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			expiresAt, err := parseExpiresFlag(expires)
+			if err != nil {
+				return usageError(err)
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -386,7 +393,7 @@ func newListsAddCmd(a *app) *cobra.Command {
 				return err
 			}
 			e, err := client.AddAddressListEntry(ctx, fam, args[0], coreapi.AddressListEntryInput{
-				Pattern: args[1], Note: note,
+				Pattern: args[1], Note: note, ExpiresAt: expiresAt,
 			})
 			if err != nil {
 				return err
@@ -395,6 +402,10 @@ func newListsAddCmd(a *app) *cobra.Command {
 				// The stored spelling, not the typed one: core normalizes, and a
 				// user who typed `@acme.example` needs to see `*@acme.example` to
 				// recognize it in a listing.
+				if e.ExpiresAt != nil {
+					a.out.Successf("Added %s (expires %s)", e.Pattern, fmtEpoch(*e.ExpiresAt))
+					return
+				}
 				a.out.Successf("Added %s", e.Pattern)
 			})
 			return nil
@@ -402,7 +413,67 @@ func newListsAddCmd(a *app) *cobra.Command {
 	}
 	listScopeFlags(cmd, &account, &mailbox)
 	cmd.Flags().StringVar(&note, "note", "", "why — stored on the entry, display only")
+	cmd.Flags().StringVar(&expires, "expires", "", expiresFlagHelp)
 	return cmd
+}
+
+const expiresFlagHelp = "when the entry stops applying and drops out of the list: an age from now (30d, 12h), a date (YYYY-MM-DD, midnight UTC), RFC3339, or unix seconds; omit for never"
+
+// parseExpiresFlag turns --expires into the epoch core wants, or nil when the
+// flag was not given. Relative ages go through parseLifetime (the "90d" that
+// credentials already accept) and absolute forms through parseTimeArg, so the
+// vocabulary is one the rest of the CLI already speaks. The future check is
+// local on purpose: core refuses a past expiry too, but with a round trip and a
+// bare invalid_expiry, and the common mistake — a date typed as today — is
+// better named here.
+func parseExpiresFlag(s string) (*int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	var at int64
+	if d, err := parseLifetime(s); err == nil {
+		if d <= 0 {
+			return nil, fmt.Errorf("--expires %q: an age must be positive", s)
+		}
+		at = time.Now().Add(d).Unix()
+	} else {
+		abs, err := parseTimeArg(s)
+		if err != nil {
+			return nil, fmt.Errorf("--expires %q: expected an age (30d, 12h), a date (2026-01-31), RFC3339, or unix seconds", s)
+		}
+		at = abs
+	}
+	if at <= time.Now().Unix() {
+		return nil, fmt.Errorf("--expires %q is not in the future (%s)", s, fmtEpoch(at))
+	}
+	return &at, nil
+}
+
+// entryHeaders and entryCells are the ONE spelling of an address-list entry
+// row, shared by `lists show` and `do-not-send list` so the two cannot drift
+// (they did once: one truncated the note at 40, the other at 50). The first
+// column is named by the caller because the do-not-send shortcut lists
+// addresses, not patterns, and says so.
+//
+// EXPIRES, HITS and LAST HIT are the columns that make a listing actionable
+// rather than merely complete: an entry with an expiry that displayed as
+// permanent was a lie, and an entry that has never decided anything is the one
+// to prune. HITS is a floor — core folds hits within ten seconds of the last
+// recorded one into it.
+func entryHeaders(first string) []string {
+	return []string{first, "ADDED", "EXPIRES", "HITS", "LAST HIT", "NOTE"}
+}
+
+func entryCells(e coreapi.AddressListEntry, noteWidth int) []string {
+	return []string{
+		e.Pattern,
+		fmtEpoch(e.CreatedAt),
+		fmtEpochPtr(e.ExpiresAt),
+		fmtCount(e.HitCount),
+		fmtEpochPtr(e.LastHitAt),
+		truncate(strOr(e.Note, "—"), noteWidth),
+	}
 }
 
 func newListsRemoveCmd(a *app) *cobra.Command {
@@ -436,15 +507,20 @@ func newListsRemoveCmd(a *app) *cobra.Command {
 }
 
 func newListsImportCmd(a *app) *cobra.Command {
-	var account, mailbox string
+	var account, mailbox, expires string
 	cmd := &cobra.Command{
 		Use:   "import <list-id> <pattern>...",
 		Short: "Add many patterns at once",
 		Long: "Up to 500 per call. Anything that is not a pattern is REPORTED rather than\n" +
 			"failing the import — a suppression export from another provider routinely\n" +
-			"carries a few rows that are not addresses.",
+			"carries a few rows that are not addresses. --expires applies to every\n" +
+			"pattern in the call.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			expiresAt, err := parseExpiresFlag(expires)
+			if err != nil {
+				return usageError(err)
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -456,7 +532,7 @@ func newListsImportCmd(a *app) *cobra.Command {
 			}
 			entries := make([]coreapi.AddressListEntryInput, 0, len(args)-1)
 			for _, p := range args[1:] {
-				entries = append(entries, coreapi.AddressListEntryInput{Pattern: p})
+				entries = append(entries, coreapi.AddressListEntryInput{Pattern: p, ExpiresAt: expiresAt})
 			}
 			res, err := client.AddAddressListEntries(ctx, fam, args[0], entries)
 			if err != nil {
@@ -472,6 +548,7 @@ func newListsImportCmd(a *app) *cobra.Command {
 		},
 	}
 	listScopeFlags(cmd, &account, &mailbox)
+	cmd.Flags().StringVar(&expires, "expires", "", expiresFlagHelp)
 	return cmd
 }
 

@@ -46,6 +46,17 @@ type EmailSearchRequest struct {
 	CalculateTotal  bool  `json:"calculateTotal,omitempty"`
 	CollapseThreads bool  `json:"collapseThreads,omitempty"`
 	Snippet         bool  `json:"snippet,omitempty"`
+	// Fields asks for a REDUCED answer. The only value is "ids": the matching
+	// message ids alone, in query order, under `ids` — no metadata rows, page
+	// cap 2000. For a caller that needs an id set (an IMAP SEARCH with header or
+	// BODY criteria) and would otherwise download bodies to decide. Not
+	// combinable with Snippet.
+	Fields string `json:"fields,omitempty"`
+	// ExcludeRoles names system-label roles (inbox, sent, drafts, trash,
+	// archive, junk) whose mail the query must not return, whatever else the
+	// message carries: `["trash","junk"]` is an All-Mail view. A role no label
+	// answers to excludes nothing.
+	ExcludeRoles []string `json:"excludeRoles,omitempty"`
 }
 
 // EmailSearchSnippet is one highlighted excerpt. Matched terms are wrapped in
@@ -114,6 +125,14 @@ type SemanticSearchResult struct {
 	NextCursor string           `json:"nextCursor"`
 	Coverage   SemanticCoverage `json:"coverage"`
 	Scoped     string           `json:"scoped,omitempty"`
+	// Fused reports whether the lexical (BM25) ranking was fused in by
+	// reciprocal rank. True is the default, and it is FORCED whenever a DO-side
+	// filter such as a label is given: the semantic candidate list is bounded at
+	// 100 before that filter, so a narrow scope would otherwise starve.
+	Fused bool `json:"fused"`
+	// Snippets are the highlighted excerpts, present when snippet=true was
+	// asked for.
+	Snippets []EmailSearchSnippet `json:"snippets,omitempty"`
 }
 
 // SemanticSearch runs a MEANING-based query over a mailbox

@@ -392,7 +392,9 @@ func newDomainTrafficCmd(a *app) *cobra.Command {
 			}
 			a.out.Emit(tr, func(w io.Writer) {
 				a.out.Msgf("%s — %s (estimated, ~%dd retention)", a.out.Bold(tr.Domain), tr.Range, tr.RetentionDays)
-				a.out.Msgf("  total: %d events, %s", tr.Totals.Events, fmtBytes(tr.Totals.Bytes))
+				// See newAccountTrafficCmd: forwarded is a subset of outbound the
+				// outcome table cannot otherwise show.
+				a.out.Msgf("  total: %d events (%d forwarded), %s", tr.Totals.Events, tr.Totals.Forwarded, fmtBytes(tr.Totals.Bytes))
 				rows := make([][]string, 0, len(tr.Rows))
 				for _, r := range tr.Rows {
 					rows = append(rows, []string{r.Outcome, r.RouteKind, fmt.Sprintf("%d", r.Events), fmtBytes(r.Bytes)})

@@ -218,10 +218,31 @@ func runSemanticSearch(cmd *cobra.Command, a *app, client *coreapi.Client, mbx, 
 	}
 	a.out.Emit(res, func(w io.Writer) {
 		printTable(w, a.out, messageListHeaders, messageListRows(res.Results, ""))
+		// The same footer the structured route prints. --snippet was already
+		// passed through to core on this route and the excerpts came back;
+		// they were dropped on the floor because the result struct did not
+		// know about them.
+		if sf.snippet {
+			printSnippets(a, res.Snippets)
+		}
+		printSemanticFusedNote(a, fuse, res)
 		printSemanticCoverage(a, res)
 		a.moreHint(res.NextCursor)
 	})
 	return nil
+}
+
+// printSemanticFusedNote says so when core overrode the ranking the user asked
+// for. `--mode semantic` sends fuse=none, but a --label narrows the vector list
+// AFTER it is cut at 100 candidates, so core forces the word ranking back in
+// rather than let a narrow scope starve — and answers with fused=true. Silent,
+// that is a user who asked for one ranking, got another, and has no way to
+// know; said once, it is a documented trade.
+func printSemanticFusedNote(a *app, fuse string, res *coreapi.SemanticSearchResult) {
+	if fuse != "none" || !res.Fused {
+		return
+	}
+	a.out.Msgf("note: the word ranking was fused in anyway — a --label filter forces it, because the vector list is cut at 100 candidates before the label applies")
 }
 
 // printSemanticCoverage warns when the ranking above is PARTIAL.

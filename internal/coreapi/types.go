@@ -102,6 +102,16 @@ type Account struct {
 	// backstop, not a plan axis: over it inbound is DEFERRED, never bounced.
 	RecvMsgsPerDay  *int64 `json:"recvMsgsPerDay"`
 	RecvBytesPerDay *int64 `json:"recvBytesPerDay"`
+	// The per-day CREATE bounds — churn limits, not ceilings: MaxMailboxes is
+	// the ceiling, and these bound how fast the account may walk toward it.
+	// Same nil/0 spelling as the send axes.
+	MailboxCreatesPerDay *int64 `json:"mailboxCreatesPerDay"`
+	AddressCreatesPerDay *int64 `json:"addressCreatesPerDay"`
+	DomainCreatesPerDay  *int64 `json:"domainCreatesPerDay"`
+	// ForwardMsgsPerDay is inbound-driven EGRESS: mail leaving because a route
+	// was configured, with no local sender to charge. Its ledger is per DOMAIN,
+	// so N domains get N times this, and it never spends the send allowance.
+	ForwardMsgsPerDay *int64 `json:"forwardMsgsPerDay"`
 	// RetentionDays is the account DEFAULT time-based age window, applied to
 	// every mailbox with no window of its own; nil = none, which is the
 	// default. Deliberately OUTSIDE the plan system, and written only through
@@ -116,6 +126,17 @@ type Account struct {
 	// StorageLimitBytes is the account storage pool: NIL = platform default,
 	// 0 = explicitly unlimited/metered.
 	StorageLimitBytes *int64 `json:"storageLimitBytes"`
+	// MaxMailTemplates is the ceiling on the account's stored mail templates
+	// (core templated-mail-design D1): NIL = the platform default, 0 =
+	// unlimited. The vetting presets set it (untrusted holds five, trusted
+	// lifts it to the default); over it, a create answers 409
+	// template_limit_reached carrying the effective number. System-written.
+	MaxMailTemplates *int64 `json:"maxMailTemplates"`
+	// NoticeLanguage is the language platform mail about this account is
+	// written in when the recipient has no identity here (an invitee, a
+	// forwarding destination): a BCP 47 tag, NIL = English. Someone with an
+	// identity gets their own webmail language first. System-written.
+	NoticeLanguage *string `json:"noticeLanguage"`
 	// VanityHosts is whether this account may claim VANITY HOSTNAMES — its own
 	// `mail.`/`smtp.`/`webmail.`/`dav.` names in front of the platform services.
 	// Off by default: each one costs a certificate order and a persistent key on
@@ -134,6 +155,13 @@ type Account struct {
 	// was already issued instead of forcing every user to re-enrol.
 	RecoverySelfService bool  `json:"recoverySelfService"`
 	CreatedAt           int64 `json:"createdAt"`
+	// LastClientAt is when a client last reached ANY identity in this account,
+	// in epoch seconds coalesced to five minutes — the dormancy and offboarding
+	// stamp. Core reads it from the client history, so IMAP, SMTP, DAV, JMAP and
+	// webmail all count; nil when nothing has been seen inside the 90-day client
+	// retention. Not credentials' lastUsedAt, which frontend caching
+	// under-reports.
+	LastClientAt *int64 `json:"lastClientAt"`
 	// Deletion lifecycle (core migration 0038). All three are epoch SECONDS and
 	// all three are nil on a live account.
 	//
@@ -159,9 +187,12 @@ type Account struct {
 // promised. Idempotent: a repeat answers the FIRST call's instants, so a
 // retried command never silently extends a window somebody is waiting out.
 type AccountDeleteResult struct {
-	ID        string `json:"id"`
-	DeletedAt int64  `json:"deletedAt"`
-	PurgeAt   int64  `json:"purgeAt"`
+	ID string `json:"id"`
+	// Deleted is core's own confirmation that the soft delete took. The two
+	// instants below are meaningless without it.
+	Deleted   bool  `json:"deleted"`
+	DeletedAt int64 `json:"deletedAt"`
+	PurgeAt   int64 `json:"purgeAt"`
 	// Restorable is false only for a ?purge=true delete, which starts the
 	// teardown at once.
 	Restorable bool `json:"restorable"`

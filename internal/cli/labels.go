@@ -6,6 +6,8 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 func newLabelsCmd(a *app) *cobra.Command {
@@ -93,10 +95,22 @@ func newLabelCreateCmd(a *app) *cobra.Command {
 }
 
 func newLabelRenameCmd(a *app) *cobra.Command {
-	return &cobra.Command{
+	var withChildren bool
+	cmd := &cobra.Command{
 		Use:   "rename <label> <newName>",
 		Short: "Rename a user label (UIDs preserved; system labels cannot be renamed)",
-		Args:  cobra.ExactArgs(2),
+		Long: "Renames a user label, keeping its UIDs and UIDVALIDITY so IMAP clients do not\n" +
+			"resynchronise the folder.\n\n" +
+			"Sub-labels are NOT carried unless you ask. Nesting in core is naming:\n" +
+			"`Work/Clients` is one label whose name contains a slash, not a child record,\n" +
+			"so renaming `Work` to `Job` on its own leaves `Work/Clients` sitting under a\n" +
+			"parent that no longer exists. Pass --with-children to move the whole subtree\n" +
+			"in the same commit, which is what IMAP RENAME and JMAP already do.\n\n" +
+			"The cascade is validated whole before anything is written, so it cannot\n" +
+			"half-apply: if any sub-label's new name is taken or would exceed 255\n" +
+			"characters, nothing moves. A taken name is reported as `clash`, and under\n" +
+			"--with-children that may be a sub-label you never typed.",
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -106,15 +120,26 @@ func newLabelRenameCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := client.RenameLabel(cmd.Context(), mbx, args[0], args[1]); err != nil {
+			opts := coreapi.RenameLabelOpts{WithChildren: withChildren}
+			if err := client.RenameLabel(cmd.Context(), mbx, args[0], args[1], opts); err != nil {
 				return err
 			}
-			a.out.Emit(map[string]any{"renamed": true, "from": args[0], "to": args[1]}, func(w io.Writer) {
-				a.out.Successf("Renamed label %q → %q", args[0], args[1])
-			})
+			a.out.Emit(
+				map[string]any{"renamed": true, "from": args[0], "to": args[1], "withChildren": withChildren},
+				func(w io.Writer) {
+					if withChildren {
+						a.out.Successf("Renamed label %q → %q, sub-labels carried", args[0], args[1])
+						return
+					}
+					a.out.Successf("Renamed label %q → %q", args[0], args[1])
+				},
+			)
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&withChildren, "with-children", false,
+		"also rename every sub-label beneath it, in the same commit")
+	return cmd
 }
 
 func newLabelDeleteCmd(a *app) *cobra.Command {

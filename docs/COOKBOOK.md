@@ -147,12 +147,33 @@ openemail messages not-junk 01MSGID…   # this was wrongly classified
 openemail messages junk 01A 01B 01C
 ```
 
+The explicit `junk` and `not-junk` commands train without moving mail. To take
+mail out of Junk and teach the filter, use `unjunk`:
+
+```sh
+openemail messages unjunk 01MSGID…     # recover its filing and schedule ham training
+openemail messages unjunk 01A 01B 01C  # one call, up to 200
+```
+
+`unjunk` keeps any labels the message still carries besides Junk. If none
+remain, it restores core's recorded filing from before the move to Junk,
+falling back to INBOX if none survives. Removing the label by hand with
+`messages label` does not restore that filing. Repeated IDs are handled once,
+in first-occurrence order. A message that exists but is not in Junk answers
+`not_junked`, which is deliberately not `not_found`: an expunged id belongs to
+`messages restore`.
+
+Taking a message out of Junk automatically schedules ham training after core's
+configured undo window, unless it remains in Trash. Moving it back during that
+window cancels the pending training. A separate `not-junk` call is not needed;
+explicit learning requests training without waiting for that window. Recovery
+can succeed even if the spam filter is unavailable.
+
 The sample trains **this mailbox's** personal overlay, so one person's idea of
-junk never becomes another's. It is training only: nothing is moved, flagged or
-deleted — pair it with `openemail messages move` if you also want it out of the
-inbox. Accepted fire-and-forget (a success means submitted, not learned), and
-repeated calls on the same message dedupe filter-side. A deployment with no spam
-filter configured answers `learning_unavailable`.
+junk never becomes another's. The explicit training commands do not move, flag
+or delete mail. They are accepted fire-and-forget (a success means submitted,
+not learned), and core suppresses repeated training for the same message and
+class. A deployment with no spam filter configured answers `learning_unavailable`.
 
 ## Read a message and download an attachment
 
@@ -670,6 +691,7 @@ DAV/JMAP clients but can never send or receive mail. `openemail whoami` and
 openemail messages list --trash                     # what's in the trash
 openemail messages restore <id>                     # undo one soft-delete
 openemail messages restore <id> <id> <id>           # undo a bulk delete, atomically
+openemail messages unjunk <id>                      # the Junk counterpart (see "Train the spam filter")
 openemail messages trash empty                       # purge all (typed confirm)
 openemail messages delete <id> --purge               # hard-delete one (typed confirm)
 ```
