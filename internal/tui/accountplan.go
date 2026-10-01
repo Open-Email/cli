@@ -14,7 +14,7 @@ import (
 // The account PLAN screen: every per-account governance knob in one form.
 //
 // Core deliberately has no plan concept — only these independent columns — so
-// "is this a paid account?" is answered by seven separate values that an
+// "is this a paid account?" is answered by a dozen separate values that an
 // operator otherwise has to remember to set one at a time, from two different
 // commands, with no single place that shows the resulting tier. Half-provisioned
 // accounts are the predictable outcome: vanity hostnames granted while the send
@@ -39,6 +39,11 @@ type accountPlan struct {
 	maxMailboxes,
 	msgsPerDay,
 	rcptsPerDay,
+	// The create VELOCITY bounds — per rolling 24h, never totals. Same three
+	// states as the send caps.
+	mailboxCreates,
+	addressCreates,
+	domainCreates,
 	storage string
 }
 
@@ -59,6 +64,10 @@ func planFromAccount(a coreapi.Account) accountPlan {
 		msgsPerDay:   planCapText(a.SendMsgsPerDay),
 		rcptsPerDay:  planCapText(a.SendRcptsPerDay),
 		storage:      planBytesText(a.StorageLimitBytes),
+
+		mailboxCreates: planCapText(a.MailboxCreatesPerDay),
+		addressCreates: planCapText(a.AddressCreatesPerDay),
+		domainCreates:  planCapText(a.DomainCreatesPerDay),
 	}
 	switch sendHoldOf(a.SendHold) {
 	case "disabled":
@@ -130,18 +139,21 @@ func parsePlanBytes(field, s string) (*int64, error) {
 	return &n, nil
 }
 
-// parsePlanMailboxCap is the TWO-state one, and the difference is worth its own
-// function: a nil maxMailboxes means UNLIMITED, not "platform default", so
-// reusing the cap parser here would silently turn "unlimited" into a bound
-// (or the reverse) on the one knob where that mistake creates mailboxes.
+// parsePlanMailboxCap is the TWO-state one: a positive number, or blank for
+// the platform default (core reads a null maxMailboxes as
+// MAX_MAILBOXES_DEFAULT). Unlike the caps above there is no unlimited value —
+// core's column is `.positive()` — so 'unlimited' is refused rather than
+// quietly sent as null, which would set the platform default instead.
 func parsePlanMailboxCap(s string) (*int64, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "", "unlimited", "none":
+	case "", "default":
 		return nil, nil
+	case "unlimited", "none":
+		return nil, fmt.Errorf("max mailboxes: core has no unlimited value; enter a number, or blank for the platform default")
 	}
 	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-	if err != nil || n < 0 {
-		return nil, fmt.Errorf("max mailboxes: expected a non-negative number, or blank for unlimited")
+	if err != nil || n < 1 {
+		return nil, fmt.Errorf("max mailboxes: expected a positive number, or blank for the platform default")
 	}
 	return &n, nil
 }
@@ -214,6 +226,23 @@ func accountPlanPatch(cur coreapi.Account, p accountPlan) (map[string]any, error
 		patch["sendRcptsPerDay"] = rcpts
 	}
 
+	for _, f := range []struct {
+		label, key, text string
+		cur              *int64
+	}{
+		{"mailbox creates/day", "mailboxCreatesPerDay", p.mailboxCreates, cur.MailboxCreatesPerDay},
+		{"address creates/day", "addressCreatesPerDay", p.addressCreates, cur.AddressCreatesPerDay},
+		{"domain creates/day", "domainCreatesPerDay", p.domainCreates, cur.DomainCreatesPerDay},
+	} {
+		v, err := parsePlanCap(f.label, f.text)
+		if err != nil {
+			return nil, err
+		}
+		if !int64PtrEq(v, f.cur) {
+			patch[f.key] = v
+		}
+	}
+
 	storage, err := parsePlanBytes("storage pool", p.storage)
 	if err != nil {
 		return nil, err
@@ -237,6 +266,9 @@ func planChangeSummary(patch map[string]any) string {
 		{"maxMailboxes", "max mailboxes"},
 		{"sendMsgsPerDay", "messages/day"},
 		{"sendRcptsPerDay", "recipients/day"},
+		{"mailboxCreatesPerDay", "mailbox creates/day"},
+		{"addressCreatesPerDay", "address creates/day"},
+		{"domainCreatesPerDay", "domain creates/day"},
 		{"storageLimitBytes", "storage pool"},
 		{"name", "name"},
 	}
@@ -271,10 +303,16 @@ func accountPlanFormPane(ctx context.Context, ui *Options, cur coreapi.Account) 
 					Affirmative("allowed").Negative("no").
 					Description("may this account claim its own mail./smtp./webmail./dav. names — the paid-plan gate; turning it off never revokes hostnames already serving clients"),
 				huh.NewInput().Title("Max mailboxes").Value(&p.maxMailboxes).
-					Description("blank = unlimited"),
+					Description("blank = platform default · or a positive number (there is no unlimited)"),
 				huh.NewInput().Title("Messages/day").Value(&p.msgsPerDay).
 					Description("blank = platform default · 'unlimited' · or a number (account-wide, across every mailbox)"),
 				huh.NewInput().Title("Recipients/day").Value(&p.rcptsPerDay).
+					Description("blank = platform default · 'unlimited' · or a number"),
+				huh.NewInput().Title("Mailbox creates/day").Value(&p.mailboxCreates).
+					Description("blank = platform default · 'unlimited' · or a number (per rolling 24h — velocity, not the max-mailboxes ceiling)"),
+				huh.NewInput().Title("Address creates/day").Value(&p.addressCreates).
+					Description("blank = platform default · 'unlimited' · or a number"),
+				huh.NewInput().Title("Domain creates/day").Value(&p.domainCreates).
 					Description("blank = platform default · 'unlimited' · or a number"),
 				huh.NewInput().Title("Storage pool").Value(&p.storage).
 					Description("blank = platform default · 'unlimited' (metered) · or a size like 50G"),

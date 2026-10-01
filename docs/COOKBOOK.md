@@ -864,6 +864,19 @@ Note `unlimited` and `default` are different words on purpose: `default` drops
 the override and inherits the platform number, which may well be tighter than
 what you just removed.
 
+The same goes for a tenant provisioning in bulk who hits `429
+mailbox_creates_per_day`. That is the create VELOCITY bound (per rolling 24h),
+not the `--max-mailboxes` ceiling, and it drains on its own; raise it for that
+one account rather than the platform-wide var:
+
+```sh
+openemail accounts update ACC_01J… --mailbox-creates-per-day 500
+openemail accounts update ACC_01J… --address-creates-per-day 2000 --domain-creates-per-day 50
+```
+
+Vetting the account to the trusted preset stamps all three as well, so an
+override here lasts until the next preset is applied.
+
 Two independent choices: **scope** (how much) and **mode** (how permanent).
 
 Scope is scope, not strength — all three cover the same ground at different

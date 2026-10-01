@@ -593,7 +593,7 @@ func accountsDesc() resourceDesc {
 					name += " [PAUSED]"
 				}
 				rows[i] = rowData{
-					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "∞"), fmtEpoch(a.CreatedAt), lastClientOr(a.LastClientAt)},
+					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "default"), fmtEpoch(a.CreatedAt), lastClientOr(a.LastClientAt)},
 					item:  a,
 				}
 			}
@@ -616,7 +616,7 @@ func accountsDesc() resourceDesc {
 				// and it may well be the tightest bound in play.
 				{k: "messages/day", v: sendCapOr(a.SendMsgsPerDay)},
 				{k: "recipients/day", v: sendCapOr(a.SendRcptsPerDay)},
-				{k: "max mailboxes", v: int64Or(a.MaxMailboxes, "∞")},
+				{k: "max mailboxes", v: int64Or(a.MaxMailboxes, "default")},
 				// The rest of the plan. Shown here rather than only in the edit
 				// form because the question "what tier is this account on" is
 				// asked far more often than it is changed, and answering it from
