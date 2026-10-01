@@ -109,9 +109,19 @@ assets=$(gh release view "$VERSION" --repo "$REPO" --json assets --jq '.assets |
 [ "$assets" -gt 0 ] || die "no GitHub release assets for $VERSION"
 ok "release published with $assets assets"
 
-formula_version=$(curl -fsSL "https://raw.githubusercontent.com/${TAP}/main/openemail.rb" | sed -n 's/^  version "\(.*\)"/\1/p')
+# The formula is read through the contents API, never raw.githubusercontent.com:
+# that CDN caches for minutes, and v0.3.0's run read the previous formula back
+# seconds after the push had landed and died on a tap that was fine. Retried
+# briefly anyway, so a slow API replica cannot do the same.
+formula=""; formula_version=""
+for _ in $(seq 1 6); do
+  formula=$(gh api "repos/${TAP}/contents/openemail.rb" --jq .content 2>/dev/null | base64 --decode 2>/dev/null || true)
+  formula_version=$(printf '%s\n' "$formula" | sed -n 's/^  version "\(.*\)"/\1/p')
+  [ "$formula_version" = "$num" ] && break
+  sleep 5
+done
 [ "$formula_version" = "$num" ] \
-  || die "tap formula is at '$formula_version', expected '$num' — the tap push did not land (check TAP_GITHUB_TOKEN)"
+  || die "tap formula is at '${formula_version:-unreadable}', expected '$num' — the tap push did not land (check TAP_GITHUB_TOKEN)"
 ok "tap formula updated to $num"
 
 # One real download, one real checksum: the failure that shows up as a broken
@@ -124,7 +134,7 @@ curl -fsSL -o "$tmp/a.tgz" "https://github.com/${REPO}/releases/download/${VERSI
   || die "could not download $asset"
 if command -v sha256sum >/dev/null; then actual=$(sha256sum "$tmp/a.tgz" | awk '{print $1}')
 else actual=$(shasum -a 256 "$tmp/a.tgz" | awk '{print $1}'); fi
-expected=$(curl -fsSL "https://raw.githubusercontent.com/${TAP}/main/openemail.rb" \
+expected=$(printf '%s\n' "$formula" \
   | grep -A2 "${asset}" | sed -n 's/.*sha256 "\(.*\)".*/\1/p' | head -1)
 [ -n "$expected" ] || die "no sha256 for $asset in the formula"
 [ "$actual" = "$expected" ] || die "checksum mismatch for $asset — formula $expected, asset $actual"
