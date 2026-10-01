@@ -14,7 +14,7 @@ import (
 // The account PLAN screen: every per-account governance knob in one form.
 //
 // Core deliberately has no plan concept — only these independent columns — so
-// "is this a paid account?" is answered by seven separate values that an
+// "is this a paid account?" is answered by a dozen separate values that an
 // operator otherwise has to remember to set one at a time, from two different
 // commands, with no single place that shows the resulting tier. Half-provisioned
 // accounts are the predictable outcome: vanity hostnames granted while the send
@@ -39,6 +39,11 @@ type accountPlan struct {
 	maxMailboxes,
 	msgsPerDay,
 	rcptsPerDay,
+	// The create VELOCITY bounds — per rolling 24h, never totals. Same three
+	// states as the send caps.
+	mailboxCreates,
+	addressCreates,
+	domainCreates,
 	storage string
 }
 
@@ -59,6 +64,10 @@ func planFromAccount(a coreapi.Account) accountPlan {
 		msgsPerDay:   planCapText(a.SendMsgsPerDay),
 		rcptsPerDay:  planCapText(a.SendRcptsPerDay),
 		storage:      planBytesText(a.StorageLimitBytes),
+
+		mailboxCreates: planCapText(a.MailboxCreatesPerDay),
+		addressCreates: planCapText(a.AddressCreatesPerDay),
+		domainCreates:  planCapText(a.DomainCreatesPerDay),
 	}
 	switch sendHoldOf(a.SendHold) {
 	case "disabled":
@@ -214,6 +223,23 @@ func accountPlanPatch(cur coreapi.Account, p accountPlan) (map[string]any, error
 		patch["sendRcptsPerDay"] = rcpts
 	}
 
+	for _, f := range []struct {
+		label, key, text string
+		cur              *int64
+	}{
+		{"mailbox creates/day", "mailboxCreatesPerDay", p.mailboxCreates, cur.MailboxCreatesPerDay},
+		{"address creates/day", "addressCreatesPerDay", p.addressCreates, cur.AddressCreatesPerDay},
+		{"domain creates/day", "domainCreatesPerDay", p.domainCreates, cur.DomainCreatesPerDay},
+	} {
+		v, err := parsePlanCap(f.label, f.text)
+		if err != nil {
+			return nil, err
+		}
+		if !int64PtrEq(v, f.cur) {
+			patch[f.key] = v
+		}
+	}
+
 	storage, err := parsePlanBytes("storage pool", p.storage)
 	if err != nil {
 		return nil, err
@@ -237,6 +263,9 @@ func planChangeSummary(patch map[string]any) string {
 		{"maxMailboxes", "max mailboxes"},
 		{"sendMsgsPerDay", "messages/day"},
 		{"sendRcptsPerDay", "recipients/day"},
+		{"mailboxCreatesPerDay", "mailbox creates/day"},
+		{"addressCreatesPerDay", "address creates/day"},
+		{"domainCreatesPerDay", "domain creates/day"},
 		{"storageLimitBytes", "storage pool"},
 		{"name", "name"},
 	}
@@ -275,6 +304,12 @@ func accountPlanFormPane(ctx context.Context, ui *Options, cur coreapi.Account) 
 				huh.NewInput().Title("Messages/day").Value(&p.msgsPerDay).
 					Description("blank = platform default · 'unlimited' · or a number (account-wide, across every mailbox)"),
 				huh.NewInput().Title("Recipients/day").Value(&p.rcptsPerDay).
+					Description("blank = platform default · 'unlimited' · or a number"),
+				huh.NewInput().Title("Mailbox creates/day").Value(&p.mailboxCreates).
+					Description("blank = platform default · 'unlimited' · or a number (per rolling 24h — velocity, not the max-mailboxes ceiling)"),
+				huh.NewInput().Title("Address creates/day").Value(&p.addressCreates).
+					Description("blank = platform default · 'unlimited' · or a number"),
+				huh.NewInput().Title("Domain creates/day").Value(&p.domainCreates).
 					Description("blank = platform default · 'unlimited' · or a number"),
 				huh.NewInput().Title("Storage pool").Value(&p.storage).
 					Description("blank = platform default · 'unlimited' (metered) · or a size like 50G"),

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -212,5 +213,44 @@ func TestPlanChangeSummary(t *testing.T) {
 	got = planChangeSummary(map[string]any{"sendHold": "disabled"})
 	if got != "sending" {
 		t.Fatalf("want a single 'sending', got %q", got)
+	}
+}
+
+// The create-velocity fields share the send caps' three states, are seeded from
+// the account, and are sent only when they move.
+func TestAccountPlanPatchCreateVelocity(t *testing.T) {
+	cur := baseAccount()
+	cur.MailboxCreatesPerDay = i64(5000)
+	cur.AddressCreatesPerDay = i64(0)
+	p := planFromAccount(cur)
+	if p.mailboxCreates != "5000" || p.addressCreates != "unlimited" || p.domainCreates != "" {
+		t.Fatalf("seeded %q / %q / %q; want 5000 / unlimited / blank", p.mailboxCreates, p.addressCreates, p.domainCreates)
+	}
+	if patch, err := accountPlanPatch(cur, p); err != nil || len(patch) != 0 {
+		t.Fatalf("an untouched plan must round-trip clean, got %v (%v)", patch, err)
+	}
+
+	p.mailboxCreates = ""
+	p.domainCreates = "20"
+	patch, err := accountPlanPatch(cur, p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v, ok := patch["mailboxCreatesPerDay"]; !ok || v.(*int64) != nil {
+		t.Fatalf("blank must send null (platform default), got %v", patch)
+	}
+	if v, _ := patch["domainCreatesPerDay"].(*int64); v == nil || *v != 20 {
+		t.Fatalf("want domainCreatesPerDay 20, got %v", patch["domainCreatesPerDay"])
+	}
+	if _, ok := patch["addressCreatesPerDay"]; ok || len(patch) != 2 {
+		t.Fatalf("want only the two moved fields, got %v", patch)
+	}
+	if got := planChangeSummary(patch); got != "mailbox creates/day, domain creates/day" {
+		t.Fatalf("summary = %q", got)
+	}
+
+	p.addressCreates = "-1"
+	if _, err := accountPlanPatch(cur, p); err == nil || !strings.Contains(err.Error(), "address creates/day") {
+		t.Fatalf("want an error naming address creates/day, got %v", err)
 	}
 }

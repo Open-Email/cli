@@ -291,6 +291,11 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Messages/day", fmtSendCap(acc.SendMsgsPerDay)},
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},
 		{"Max mailboxes", int64Or(acc.MaxMailboxes, "unlimited")},
+		// Velocity, not holdings: how fast the account may walk toward the
+		// ceiling above. Core refuses past them with a 429 that drains.
+		{"Mailbox creates/day", fmtSendCap(acc.MailboxCreatesPerDay)},
+		{"Address creates/day", fmtSendCap(acc.AddressCreatesPerDay)},
+		{"Domain creates/day", fmtSendCap(acc.DomainCreatesPerDay)},
 		{"Storage pool", fmtStoragePool(acc.StorageLimitBytes)},
 		{"Mail templates", fmtTemplateCeiling(acc.MaxMailTemplates)},
 		{"Notice language", strOr(acc.NoticeLanguage, "en (default)")},
@@ -358,6 +363,9 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		name                string
 		maxMailboxes        string
 		sendMsgs, sendRcpts string
+		mailboxCreates      string
+		addressCreates      string
+		domainCreates       string
 		vanityHosts         string
 		storageLimit        string
 		semantic            string
@@ -367,7 +375,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "update <accountId>",
 		Aliases: []string{"patch"},
-		Short:   "Update an account's name, caps, storage pool, gates, template ceiling or notice language (system callers only)",
+		Short:   "Update an account's name, caps, create velocity, storage pool, gates, template ceiling or notice language (system callers only)",
 		Long: "Update a tenant account. Holding or stopping the tenant's outbound mail is an operator\n" +
 			"action of its own: openemail admin hold account <id> --pause|--stop (and admin release).\n" +
 			"Both cover every mailbox on every domain the account owns, queued relay backlog included,\n" +
@@ -399,13 +407,21 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 			}{
 				{"send-msgs-per-day", "sendMsgsPerDay", &sendMsgs},
 				{"send-rcpts-per-day", "sendRcptsPerDay", &sendRcpts},
+				// The create VELOCITY bounds: how many of each the account may
+				// mint per rolling 24h, never how many it may hold
+				// (--max-mailboxes is the ceiling). Same three states, and the
+				// vetting presets stamp them too, so this is the per-tenant
+				// override between presets.
+				{"mailbox-creates-per-day", "mailboxCreatesPerDay", &mailboxCreates},
+				{"address-creates-per-day", "addressCreatesPerDay", &addressCreates},
+				{"domain-creates-per-day", "domainCreatesPerDay", &domainCreates},
 			} {
 				if !cmd.Flags().Changed(f.flag) {
 					continue
 				}
 				v, perr := parseSendCapFlag(*f.val)
 				if perr != nil {
-					return usageError(perr)
+					return usageError(fmt.Errorf("--%s: %w", f.flag, perr))
 				}
 				patch[f.field] = v // nil marshals as JSON null = drop the override
 			}
@@ -471,7 +487,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 				}
 			}
 			if len(patch) == 0 {
-				return usageError(errors.New("nothing to update: pass --name, --max-mailboxes, --send-*-per-day, --storage-limit, --vanity-hosts, --semantic, --max-mail-templates or --notice-language (to hold or stop sending: openemail admin hold account)"))
+				return usageError(errors.New("nothing to update: pass --name, --max-mailboxes, --send-*-per-day, --*-creates-per-day, --storage-limit, --vanity-hosts, --semantic, --max-mail-templates or --notice-language (to hold or stop sending: openemail admin hold account)"))
 			}
 			acc, err := client.UpdateAccount(cmd.Context(), args[0], patch)
 			if err != nil {
@@ -488,6 +504,9 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&maxMailboxes, "max-mailboxes", "", "cap on mailboxes: a positive number, or 'unlimited' to clear it")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns: a number, 'unlimited', or 'default' to drop the override")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&mailboxCreates, "mailbox-creates-per-day", "", "mailboxes this account may CREATE per rolling 24h (velocity, not the --max-mailboxes ceiling): a number, 'unlimited', or 'default' for the platform number (the vetting presets set it too)")
+	cmd.Flags().StringVar(&addressCreates, "address-creates-per-day", "", "addresses this account may create per rolling 24h: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&domainCreates, "domain-creates-per-day", "", "domains this account may add per rolling 24h: a number, 'unlimited', or 'default'")
 	cmd.Flags().StringVar(&storageLimit, "storage-limit", "", "account-wide storage POOL across every mailbox it owns: a size like 50G, 'unlimited' (metered — overage billed, never refused), or 'default' for the platform pool")
 	cmd.Flags().StringVar(&vanityHosts, "vanity-hosts", "", "may this account claim VANITY HOSTNAMES (its own mail./smtp./webmail./dav. names): true|false. Gates claiming only — turning it off never revokes hostnames already serving clients")
 	cmd.Flags().StringVar(&maxTemplates, "max-mail-templates", "", "stored mail templates this account may hold: a number, 'unlimited', or 'default' for the platform number (the vetting presets set it too)")
