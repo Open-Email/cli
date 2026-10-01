@@ -72,8 +72,11 @@ type CreatedAPIKey struct {
 
 // Account is an accounts row.
 type Account struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// MaxMailboxes is how many mailboxes the account may HOLD. NIL = the
+	// platform default (MAX_MAILBOXES_DEFAULT), never unlimited: core has no
+	// unlimited value for this one (the column is positive-or-null).
 	MaxMailboxes *int64 `json:"maxMailboxes"`
 	// VerificationToken is the value this account publishes in
 	// `_openemail.<domain>` TXT to claim a domain. Per-account and stable, so it

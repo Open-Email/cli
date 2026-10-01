@@ -5,22 +5,22 @@ import (
 	"testing"
 )
 
-// --max-mailboxes and --send-*-per-day look like the same kind of flag and have
-// OPPOSITE null semantics, which is exactly the trap this parser exists to
-// avoid. On a send cap, null means "inherit the platform number" and 0 spells
-// unlimited. Here null IS unlimited, and 0 is refused by core (the column is
-// `.positive()`), so reusing parseSendCapFlag would turn `--max-mailboxes
-// unlimited` into a 400 while the identical word works everywhere else.
+// --max-mailboxes has two states where the send caps have three. Null is the
+// platform default (core reads it as MAX_MAILBOXES_DEFAULT) and there is NO
+// unlimited value: core's column is `.positive()`, so 0 is a 400. The word
+// 'unlimited' used to map to null here, which quietly set the platform default
+// on an operator who asked for no cap; it is refused now, by name.
 func TestParseMaxMailboxesFlag(t *testing.T) {
 	cases := []struct {
 		in      string
-		want    *int64 // nil = JSON null = unlimited
+		want    *int64 // nil = JSON null = the platform default
 		wantErr bool
 	}{
-		{in: "unlimited", want: nil},
-		{in: "none", want: nil},
+		{in: "default", want: nil},
+		{in: "DEFAULT", want: nil},
 		{in: "", want: nil}, // an empty --flag= is the same ask
-		{in: "UNLIMITED", want: nil},
+		{in: "unlimited", wantErr: true},
+		{in: "none", wantErr: true},
 		{in: "5", want: ptr(5)},
 		{in: " 5 ", want: ptr(5)},
 		// 0 is NOT unlimited here — core rejects a non-positive cap, so
@@ -44,7 +44,7 @@ func TestParseMaxMailboxesFlag(t *testing.T) {
 		}
 		switch {
 		case tc.want == nil && got != nil:
-			t.Errorf("parseMaxMailboxesFlag(%q) = %d; want nil (unlimited)", tc.in, *got)
+			t.Errorf("parseMaxMailboxesFlag(%q) = %d; want nil (platform default)", tc.in, *got)
 		case tc.want != nil && got == nil:
 			t.Errorf("parseMaxMailboxesFlag(%q) = nil; want %d", tc.in, *tc.want)
 		case tc.want != nil && *got != *tc.want:

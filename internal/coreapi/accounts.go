@@ -110,7 +110,7 @@ func (c *Client) CreateAccount(ctx context.Context, name string, maxMailboxes *i
 // clear its own freeze does not have one.
 //
 // The patch is a map for the same reason UpdateMailbox's is: an explicit null
-// maxMailboxes (clear the cap) must stay distinguishable from an omitted one
+// maxMailboxes (back to the platform default) must stay distinguishable from an omitted one
 // (leave unchanged), and a struct with `omitempty` collapses both to "absent".
 func (c *Client) UpdateAccount(ctx context.Context, accountID string, patch map[string]any) (*Account, error) {
 	var out Account

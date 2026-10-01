@@ -139,18 +139,21 @@ func parsePlanBytes(field, s string) (*int64, error) {
 	return &n, nil
 }
 
-// parsePlanMailboxCap is the TWO-state one, and the difference is worth its own
-// function: a nil maxMailboxes means UNLIMITED, not "platform default", so
-// reusing the cap parser here would silently turn "unlimited" into a bound
-// (or the reverse) on the one knob where that mistake creates mailboxes.
+// parsePlanMailboxCap is the TWO-state one: a positive number, or blank for
+// the platform default (core reads a null maxMailboxes as
+// MAX_MAILBOXES_DEFAULT). Unlike the caps above there is no unlimited value —
+// core's column is `.positive()` — so 'unlimited' is refused rather than
+// quietly sent as null, which would set the platform default instead.
 func parsePlanMailboxCap(s string) (*int64, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "", "unlimited", "none":
+	case "", "default":
 		return nil, nil
+	case "unlimited", "none":
+		return nil, fmt.Errorf("max mailboxes: core has no unlimited value; enter a number, or blank for the platform default")
 	}
 	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-	if err != nil || n < 0 {
-		return nil, fmt.Errorf("max mailboxes: expected a non-negative number, or blank for unlimited")
+	if err != nil || n < 1 {
+		return nil, fmt.Errorf("max mailboxes: expected a positive number, or blank for the platform default")
 	}
 	return &n, nil
 }
@@ -300,7 +303,7 @@ func accountPlanFormPane(ctx context.Context, ui *Options, cur coreapi.Account) 
 					Affirmative("allowed").Negative("no").
 					Description("may this account claim its own mail./smtp./webmail./dav. names — the paid-plan gate; turning it off never revokes hostnames already serving clients"),
 				huh.NewInput().Title("Max mailboxes").Value(&p.maxMailboxes).
-					Description("blank = unlimited"),
+					Description("blank = platform default · or a positive number (there is no unlimited)"),
 				huh.NewInput().Title("Messages/day").Value(&p.msgsPerDay).
 					Description("blank = platform default · 'unlimited' · or a number (account-wide, across every mailbox)"),
 				huh.NewInput().Title("Recipients/day").Value(&p.rcptsPerDay).

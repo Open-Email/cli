@@ -85,9 +85,9 @@ func TestAccountPlanPatchCapStates(t *testing.T) {
 	}
 }
 
-// maxMailboxes has TWO states, not three — nil means unlimited, never "platform
-// default". Reusing the cap vocabulary here would invert the meaning on the one
-// knob where being wrong creates mailboxes.
+// maxMailboxes has TWO states, not three: a positive number, or nil for the
+// platform default (core reads it as MAX_MAILBOXES_DEFAULT). There is no
+// unlimited value, so the word is refused rather than sent as null.
 func TestAccountPlanPatchMailboxCapIsTwoState(t *testing.T) {
 	cur := baseAccount()
 	cur.MaxMailboxes = i64(50)
@@ -102,13 +102,20 @@ func TestAccountPlanPatchMailboxCapIsTwoState(t *testing.T) {
 	}
 	ptr, ok := patch["maxMailboxes"].(*int64)
 	if !ok || ptr != nil {
-		t.Fatalf("blank max mailboxes must mean unlimited (null), got %v", patch["maxMailboxes"])
+		t.Fatalf("blank max mailboxes must mean the platform default (null), got %v", patch["maxMailboxes"])
 	}
 
-	// And an unlimited account seeds blank, so it round-trips.
+	for _, bad := range []string{"unlimited", "0"} {
+		p.maxMailboxes = bad
+		if _, err := accountPlanPatch(cur, p); err == nil {
+			t.Fatalf("max mailboxes %q must be refused: core has no unlimited value and 0 is a 400", bad)
+		}
+	}
+
+	// And an account on the platform default seeds blank, so it round-trips.
 	cur.MaxMailboxes = nil
 	if got := planFromAccount(cur).maxMailboxes; got != "" {
-		t.Fatalf("unlimited must seed blank, got %q", got)
+		t.Fatalf("the platform default must seed blank, got %q", got)
 	}
 }
 

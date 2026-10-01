@@ -100,7 +100,7 @@ func newAccountCreateCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&maxMailboxes, "max-mailboxes", 0, "cap on mailboxes (omit = unlimited)")
+	cmd.Flags().IntVar(&maxMailboxes, "max-mailboxes", 0, "cap on mailboxes (omit = the platform default, MAX_MAILBOXES_DEFAULT)")
 	cmd.Flags().BoolVar(&withKey, "with-key", false, "also mint the account's first API key and print its token")
 	cmd.Flags().StringVar(&keyName, "key-name", "bootstrap", "name for the minted key (with --with-key)")
 	return cmd
@@ -150,7 +150,7 @@ func newAccountListCmd(a *app) *cobra.Command {
 					case "paused":
 						sending = "PAUSED"
 					}
-					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "unlimited"), fmtEpoch(ac.CreatedAt), fmtLastClient(ac.LastClientAt)})
+					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "default"), fmtEpoch(ac.CreatedAt), fmtLastClient(ac.LastClientAt)})
 				}
 				// LAST CLIENT is the dormancy sweep: the list is where an operator
 				// looks for the tenant nobody has logged into, and that needs a
@@ -290,7 +290,7 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Sending", fmtAccountSendState(acc.SendHold)},
 		{"Messages/day", fmtSendCap(acc.SendMsgsPerDay)},
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},
-		{"Max mailboxes", int64Or(acc.MaxMailboxes, "unlimited")},
+		{"Max mailboxes", int64Or(acc.MaxMailboxes, "platform default")},
 		// Velocity, not holdings: how fast the account may walk toward the
 		// ceiling above. Core refuses past them with a 429 that drains.
 		{"Mailbox creates/day", fmtSendCap(acc.MailboxCreatesPerDay)},
@@ -395,7 +395,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 				if perr != nil {
 					return usageError(perr)
 				}
-				patch["maxMailboxes"] = v // nil marshals as JSON null = unlimited
+				patch["maxMailboxes"] = v // nil marshals as JSON null = the platform default
 			}
 			// The account-tier VOLUME caps, which reuse the send-cap parser
 			// because they share its three states exactly: "default" inherits the
@@ -501,7 +501,7 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "rename the account")
-	cmd.Flags().StringVar(&maxMailboxes, "max-mailboxes", "", "cap on mailboxes: a positive number, or 'unlimited' to clear it")
+	cmd.Flags().StringVar(&maxMailboxes, "max-mailboxes", "", "cap on mailboxes the account may HOLD: a positive number, or 'default' for the platform number (MAX_MAILBOXES_DEFAULT). Core has no unlimited value")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns: a number, 'unlimited', or 'default' to drop the override")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
 	cmd.Flags().StringVar(&mailboxCreates, "mailbox-creates-per-day", "", "mailboxes this account may CREATE per rolling 24h (velocity, not the --max-mailboxes ceiling): a number, 'unlimited', or 'default' for the platform number (the vetting presets set it too)")
@@ -588,22 +588,26 @@ func newAccountUsageCmd(a *app) *cobra.Command {
 }
 
 // parseMaxMailboxesFlag parses --max-mailboxes into the two states core
-// distinguishes: a POSITIVE integer, or null for unlimited.
+// distinguishes: a POSITIVE integer, or null for the platform default.
 //
-// Deliberately NOT parseSendCapFlag, whose null means something else entirely.
-// On a send cap, null is "inherit the platform number" and 0 spells unlimited;
-// here null IS unlimited and 0 is refused by core (the column is
-// `.positive()`), so reusing that parser would turn `--max-mailboxes none` into
-// a 400 while looking like it worked in every other command.
+// Deliberately NOT parseSendCapFlag: that one has a third state, 0 for
+// unlimited, and this cap does not. Core's column is `.positive().nullable()`
+// and its create handler reads null as MAX_MAILBOXES_DEFAULT, so there is no
+// way to spell "unlimited" on the wire. 'unlimited' is therefore REFUSED here
+// rather than mapped to null: that mapping is what this parser used to do,
+// and it quietly set the platform default (100) on an operator who asked for
+// no cap at all.
 func parseMaxMailboxesFlag(s string) (*int64, error) {
 	t := strings.ToLower(strings.TrimSpace(s))
 	switch t {
-	case "", "unlimited", "none":
+	case "", "default":
 		return nil, nil
+	case "unlimited", "none":
+		return nil, fmt.Errorf("--max-mailboxes %q: core has no unlimited mailbox cap (null is the platform default, MAX_MAILBOXES_DEFAULT); pass a number, or 'default'", s)
 	}
 	n, err := strconv.ParseInt(t, 10, 64)
 	if err != nil || n < 1 {
-		return nil, fmt.Errorf("invalid mailbox cap %q: expected a positive number, or 'unlimited'", s)
+		return nil, fmt.Errorf("invalid mailbox cap %q: expected a positive number, or 'default' for the platform number", s)
 	}
 	return &n, nil
 }
