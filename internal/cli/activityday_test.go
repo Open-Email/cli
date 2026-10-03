@@ -14,8 +14,8 @@ func TestActivityDayCLIRendering(t *testing.T) {
 	cases := []struct {
 		name, fields, account, identity string
 	}{
-		{"fresh day", `"activityDay":"2026-10-03","lastClientAt":null`, "2026-10-03 (UTC day)", "2026-10-03 (UTC day)"},
-		{"conflicting stamp", `"activityDay":"2026-10-03","lastClientAt":1735689600`, "2026-10-03 (UTC day)", "2026-10-03 (UTC day)"},
+		{"fresh day", `"activityDay":"2026-10-03","lastClientAt":null`, "2026-10-03 UTC", "2026-10-03 UTC"},
+		{"conflicting stamp", `"activityDay":"2026-10-03","lastClientAt":1735689600`, "2026-10-03 UTC", "2026-10-03 UTC"},
 		{"explicit null", `"activityDay":null,"lastClientAt":1735689600`, "none recorded", "none recorded"},
 		{"legacy stamp", `"lastClientAt":1735689600`, fmtLastClient(&stamp), fmtLastClientIdentity(&stamp)},
 		{"legacy null", `"lastClientAt":null`, fmtLastClient(nil), fmtLastClientIdentity(nil)},
