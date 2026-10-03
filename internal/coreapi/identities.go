@@ -35,7 +35,12 @@ type Identity struct {
 	// this identity's mail store. The Identity component composes Mailbox, so
 	// this field is always present.
 	Semantic bool `json:"semantic"`
-	// LastClientAt is when a client last reached THIS identity, in epoch seconds
+	// ActivityDay is the object directory's lifetime dormancy day for this
+	// identity: UTC YYYY-MM-DD, or null for no recorded activity. Its presence
+	// takes precedence over the legacy retention stamp below.
+	ActivityDay ActivityDay `json:"activityDay,omitzero"`
+	// LastClientAt is the legacy stamp when a client last reached THIS identity,
+	// in epoch seconds
 	// coalesced to five minutes — read from its client history, so IMAP, DAV,
 	// JMAP and webmail all count; nil when none inside the 90-day client
 	// retention. OMITTED, not null, for a grant holder reading a mailbox shared

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 // ansiEscape matches ANSI/VT escape sequences for stripping control sequences.
@@ -121,6 +123,18 @@ func lastClientOr(p *int64) string {
 		return "none in 90d"
 	}
 	return fmtEpoch(*p)
+}
+
+// The object directory supplies a UTC dormancy day, not an exact client stamp.
+// An explicit null means no recorded activity; only absence permits fallback.
+func accountActivityOr(account coreapi.Account) string {
+	if !account.ActivityDay.Present {
+		return lastClientOr(account.LastClientAt)
+	}
+	if account.ActivityDay.Day == nil {
+		return "none recorded"
+	}
+	return *account.ActivityDay.Day + " UTC"
 }
 
 func yn(b bool) string {

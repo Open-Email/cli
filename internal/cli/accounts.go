@@ -150,7 +150,7 @@ func newAccountListCmd(a *app) *cobra.Command {
 					case "paused":
 						sending = "PAUSED"
 					}
-					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "default"), fmtEpoch(ac.CreatedAt), fmtLastClient(ac.LastClientAt)})
+					rows = append(rows, []string{ac.ID, ac.Name, sending, int64Or(ac.MaxMailboxes, "default"), fmtEpoch(ac.CreatedAt), fmtAccountActivity(&ac)})
 				}
 				// LAST CLIENT is the dormancy sweep: the list is where an operator
 				// looks for the tenant nobody has logged into, and that needs a
@@ -306,7 +306,7 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Created", fmtEpoch(acc.CreatedAt)},
 		// Any identity, any protocol — the stamp an offboarding decision reads,
 		// and not credentials' lastUsedAt, which frontend caching under-reports.
-		{"Last client", fmtLastClient(acc.LastClientAt)},
+		{"Last client", fmtAccountActivity(acc)},
 	})
 }
 
