@@ -63,7 +63,10 @@ func contractPairings() []pairing {
 		// decoding it would report every folder-scoped grant as unrestricted.
 		{val: MailShare{}, comp: "MailShare"},
 		{val: SharedMailbox{}, comp: "SharedMailbox"},
-		{val: Account{}, comp: "Account"},
+		// Optional forward compatibility for directory partition consumers. The
+		// pinned production-core snapshot stays unchanged until core merges;
+		// activityday_test.go pins presence, null, date and legacy behavior.
+		{val: Account{}, comp: "Account", ignoreGo: []string{"activityDay"}},
 		{val: APIKey{}, comp: "ApiKey"},
 		{val: CreatedAPIKey{}, comp: "ApiKeyCreated"},
 		// Mailbox maps to the stats superset (the single hand struct carries the
@@ -199,7 +202,7 @@ func contractPairings() []pairing {
 		{val: FilterRulesPutResult{}, comp: "FilterRulesPutResult"},
 		{val: FilterRulesDeleted{}, comp: "FilterRulesDeleted"},
 		// Identities & auth introspection.
-		{val: Identity{}, comp: "Identity"},
+		{val: Identity{}, comp: "Identity", ignoreGo: []string{"activityDay"}},
 		{val: IdentityFacets{}, comp: "IdentityFacets"},
 		{val: WhoamiResult{}, comp: "WhoamiResult"},
 		// PIM (calendars/addressbooks). PimObject adds the listing-only content /
@@ -317,6 +320,12 @@ func flattenGoFields(t reflect.Type) map[string]goField {
 }
 
 func goKind(t reflect.Type) (string, bool) {
+	// ActivityDay's custom JSON methods encode a nullable string even though
+	// Go stores presence separately. Preserve that comparison when a future
+	// vendored snapshot includes it; the exception above skips only absence.
+	if t == reflect.TypeFor[ActivityDay]() {
+		return "string", true
+	}
 	nilable := false
 	if t.Kind() == reflect.Ptr {
 		nilable = true

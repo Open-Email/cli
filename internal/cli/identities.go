@@ -68,7 +68,7 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 					{"Account", strOr(id.AccountID, "—")},
 					{"Quota", fmtQuota(id.QuotaBytes)},
 					{"Created", fmtEpoch(id.CreatedAt)},
-					{"Last client", fmtLastClientIdentity(id.LastClientAt)},
+					{"Last client", fmtIdentityActivity(id)},
 					{"Sending", fmtSendState(id.SendHold)},
 				}
 				if id.SendMsgsPerDay != nil || id.SendRcptsPerDay != nil {

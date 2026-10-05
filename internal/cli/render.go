@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 
@@ -173,6 +174,32 @@ func fmtLastClientIdentity(sec *int64) string {
 		return "— (none in 90d, or a mailbox shared with you)"
 	}
 	return fmtEpoch(*sec)
+}
+
+// A present activityDay has its own lifetime meaning, including explicit null.
+// Keep the legacy retention wording only when this optional field is absent.
+func fmtActivityDay(day coreapi.ActivityDay) (string, bool) {
+	if !day.Present {
+		return "", false
+	}
+	if day.Day == nil {
+		return "none recorded", true
+	}
+	return *day.Day + " UTC", true
+}
+
+func fmtAccountActivity(account *coreapi.Account) string {
+	if value, present := fmtActivityDay(account.ActivityDay); present {
+		return value
+	}
+	return fmtLastClient(account.LastClientAt)
+}
+
+func fmtIdentityActivity(identity *coreapi.Identity) string {
+	if value, present := fmtActivityDay(identity.ActivityDay); present {
+		return value
+	}
+	return fmtLastClientIdentity(identity.LastClientAt)
 }
 
 // fmtQuota renders a nullable byte quota (null = unlimited).
