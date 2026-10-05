@@ -25,6 +25,11 @@ type EventWebhook struct {
 	LastFailure         *string `json:"lastFailure"`
 	CreatedAt           int64   `json:"createdAt"`
 	UpdatedAt           int64   `json:"updatedAt"`
+	// Degraded and RetryAfter are platform domains only: attempts above the
+	// hook's supported rate wait on their retry ladder (never dropped) until
+	// RetryAfter (epoch seconds). Core publishes them about once a minute.
+	Degraded   bool   `json:"degraded,omitempty"`
+	RetryAfter *int64 `json:"retryAfter,omitempty"`
 }
 
 // EventWebhookInput is the PUT body. The secret is THREE-WAY on the wire:

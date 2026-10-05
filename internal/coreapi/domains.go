@@ -296,6 +296,16 @@ type TrafficEvent struct {
 	BlobHash        *string `json:"blobHash"`
 	Attempt         *int32  `json:"attempt"`
 	Response        *string `json:"response"`
+	// Template is the prepared email this message was sent from; nil for any
+	// other mail.
+	Template *TrafficTemplate `json:"template"`
+}
+
+// TrafficTemplate names a traffic row's prepared email: its slug within the
+// account and the language it went out in (nil when the row recorded none).
+type TrafficTemplate struct {
+	Slug string  `json:"slug"`
+	Lang *string `json:"lang"`
 }
 
 // DomainEvents is GET /domains/:domain/events — a keyset-paginated page of the
