@@ -4,8 +4,9 @@ import "encoding/json"
 
 // ActivityDay is an optional, nullable UTC day from the object directory.
 // Present distinguishes an explicit null (no recorded activity) from an absent
-// field, which permits the legacy lastClientAt fallback. The day is a lifetime
-// dormancy signal, not an exact timestamp from retained client history.
+// field, which is core saying nothing at all (an identity withheld from a grant
+// holder). The day is a lifetime dormancy signal, not an exact timestamp from
+// retained client history.
 type ActivityDay struct {
 	Present bool
 	Day     *string

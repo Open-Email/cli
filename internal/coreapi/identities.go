@@ -36,18 +36,13 @@ type Identity struct {
 	// this field is always present.
 	Semantic bool `json:"semantic"`
 	// ActivityDay is the object directory's lifetime dormancy day for this
-	// identity: UTC YYYY-MM-DD, or null for no recorded activity. Its presence
-	// takes precedence over the legacy retention stamp below.
-	ActivityDay ActivityDay `json:"activityDay,omitzero"`
-	// LastClientAt is the legacy stamp when a client last reached THIS identity,
-	// in epoch seconds
-	// coalesced to five minutes — read from its client history, so IMAP, DAV,
-	// JMAP and webmail all count; nil when none inside the 90-day client
-	// retention. OMITTED, not null, for a grant holder reading a mailbox shared
-	// with them: the owner's client history is theirs alone, like the client
-	// list itself.
-	LastClientAt *int64         `json:"lastClientAt,omitempty"`
-	Facets       IdentityFacets `json:"facets"`
+	// identity: UTC YYYY-MM-DD, or null for no recorded activity. OMITTED, not
+	// null, for a grant holder reading a mailbox shared with them: the owner's
+	// client activity is theirs alone, like the client history itself. The
+	// retired lastClientAt stamp is not modelled; a core still sending it is
+	// decoded past, like any unknown field.
+	ActivityDay ActivityDay    `json:"activityDay,omitzero"`
+	Facets      IdentityFacets `json:"facets"`
 }
 
 // IdentityFacets maps each bound store to its usage. A key is present iff a

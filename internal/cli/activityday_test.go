@@ -9,16 +9,20 @@ import (
 	"testing"
 )
 
+// The day is the only activity the CLI shows. A retired lastClientAt that an
+// older core still sends must never surface, not even where activityDay is
+// null or absent: that would be the fallback this change removes.
 func TestActivityDayCLIRendering(t *testing.T) {
-	stamp := int64(1735689600)
+	const shared = "— (a mailbox shared with you)"
 	cases := []struct {
 		name, fields, account, identity string
 	}{
-		{"fresh day", `"activityDay":"2026-10-03","lastClientAt":null`, "2026-10-03 UTC", "2026-10-03 UTC"},
-		{"conflicting stamp", `"activityDay":"2026-10-03","lastClientAt":1735689600`, "2026-10-03 UTC", "2026-10-03 UTC"},
-		{"explicit null", `"activityDay":null,"lastClientAt":1735689600`, "none recorded", "none recorded"},
-		{"legacy stamp", `"lastClientAt":1735689600`, fmtLastClient(&stamp), fmtLastClientIdentity(&stamp)},
-		{"legacy null", `"lastClientAt":null`, fmtLastClient(nil), fmtLastClientIdentity(nil)},
+		{"fresh day", `"activityDay":"2026-10-03"`, "2026-10-03 UTC", "2026-10-03 UTC"},
+		{"explicit null", `"activityDay":null`, "No recorded activity", "No recorded activity"},
+		{"absent", `"createdAt":0`, "—", shared},
+		{"retired stamp beside a day", `"activityDay":"2026-10-03","lastClientAt":1735689600`, "2026-10-03 UTC", "2026-10-03 UTC"},
+		{"retired stamp beside null", `"activityDay":null,"lastClientAt":1735689600`, "No recorded activity", "No recorded activity"},
+		{"retired stamp alone", `"lastClientAt":1735689600`, "—", shared},
 	}
 	for _, view := range []string{"account list", "account detail", "identity detail"} {
 		for _, tc := range cases {
@@ -64,15 +68,18 @@ func TestActivityDayCLIRendering(t *testing.T) {
 					}
 					return
 				}
+				if strings.Contains(out.String(), fmtEpoch(1735689600)) {
+					t.Fatalf("retired lastClientAt rendered:\n%s", out.String())
+				}
 				for _, line := range strings.Split(out.String(), "\n") {
-					if strings.HasPrefix(line, "Last client") {
-						if got := strings.TrimSpace(strings.TrimPrefix(line, "Last client")); got != want {
-							t.Fatalf("last client = %q, want %q", got, want)
+					if strings.HasPrefix(line, "Last activity") {
+						if got := strings.TrimSpace(strings.TrimPrefix(line, "Last activity")); got != want {
+							t.Fatalf("last activity = %q, want %q", got, want)
 						}
 						return
 					}
 				}
-				t.Fatalf("missing Last client row:\n%s", out.String())
+				t.Fatalf("missing Last activity row:\n%s", out.String())
 			})
 		}
 	}

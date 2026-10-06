@@ -8,16 +8,18 @@ import (
 	"testing"
 )
 
+// Same contract as the CLI: the directory day, "No recorded activity" for an
+// explicit null, and the retired lastClientAt never used as a fallback.
 func TestActivityDayTUIAccountRendering(t *testing.T) {
-	stamp := int64(1735689600)
 	cases := []struct {
 		name, fields, want string
 	}{
-		{"fresh day", `"activityDay":"2026-10-03","lastClientAt":null`, "2026-10-03 UTC"},
-		{"conflicting stamp", `"activityDay":"2026-10-03","lastClientAt":1735689600`, "2026-10-03 UTC"},
-		{"explicit null", `"activityDay":null,"lastClientAt":1735689600`, "none recorded"},
-		{"legacy stamp", `"lastClientAt":1735689600`, lastClientOr(&stamp)},
-		{"legacy null", `"lastClientAt":null`, lastClientOr(nil)},
+		{"fresh day", `"activityDay":"2026-10-03"`, "2026-10-03 UTC"},
+		{"explicit null", `"activityDay":null`, "No recorded activity"},
+		{"absent", `"createdAt":0`, "—"},
+		{"retired stamp beside a day", `"activityDay":"2026-10-03","lastClientAt":1735689600`, "2026-10-03 UTC"},
+		{"retired stamp beside null", `"activityDay":null,"lastClientAt":1735689600`, "No recorded activity"},
+		{"retired stamp alone", `"lastClientAt":1735689600`, "—"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,14 +44,14 @@ func TestActivityDayTUIAccountRendering(t *testing.T) {
 				return
 			}
 			for _, field := range desc.detail(rows[0].item) {
-				if field.k == "last client" {
+				if field.k == "last activity" {
 					if field.v != tc.want {
 						t.Errorf("detail activity = %q, want %q", field.v, tc.want)
 					}
 					return
 				}
 			}
-			t.Fatal("missing last client detail")
+			t.Fatal("missing last activity detail")
 		})
 	}
 }
