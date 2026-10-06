@@ -175,9 +175,10 @@ func mailboxLabel(m *coreapi.Mailbox) string {
 
 func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox) pane {
 	var address, quota string
+	var pimOnly bool
 	origAddress, origQuota := "", ""
 	title := "New mailbox"
-	addrDesc := "optional — claims the address: route + primary label are created atomically (409 address_taken if routed elsewhere)"
+	addrDesc := "required unless PIM only — claims the address: route + primary label are created atomically (409 address_taken if routed elsewhere)"
 	if existing != nil {
 		address = strOr(existing.PrimaryAddress, "")
 		if existing.QuotaBytes != nil {
@@ -188,21 +189,37 @@ func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox
 		addrDesc = "must already be routed to this mailbox (bind with a route first — address_not_routed otherwise)"
 	}
 	build := func() *huh.Form {
-		return huh.NewForm(huh.NewGroup(
+		fields := []huh.Field{
 			huh.NewInput().Title("Primary address").Placeholder("alice@example.com").
 				Description(addrDesc).Value(&address).Validate(validAddress),
 			huh.NewInput().Title("Quota").Placeholder("1G").
 				Description("e.g. 500M, 1.5G — empty for unlimited").
 				Value(&quota).Validate(validBytesOrEmpty),
-		))
+		}
+		if existing == nil {
+			fields = append(fields, huh.NewConfirm().Title("PIM only").
+				Description("calendars and contacts, no email address (leave the address empty)").
+				Value(&pimOnly))
+		}
+		return huh.NewForm(huh.NewGroup(fields...))
 	}
 	submit := func(sctx context.Context, c *coreapi.Client) (string, pane, error) {
 		addr := strings.TrimSpace(address)
 		q := strings.TrimSpace(quota)
 		if existing == nil {
+			// Core takes exactly one of the two.
+			switch {
+			case pimOnly && addr != "":
+				return "", nil, errors.New("a PIM-only identity has no email address: clear the address or turn PIM only off")
+			case !pimOnly && addr == "":
+				return "", nil, errors.New("a mailbox needs a primary address (or turn PIM only on for calendars and contacts)")
+			}
 			in := coreapi.MailboxCreateInput{}
 			if addr != "" {
 				in.PrimaryAddress = &addr
+			}
+			if pimOnly {
+				in.PimOnly = &pimOnly
 			}
 			if q != "" {
 				n, err := parseBytes(q)

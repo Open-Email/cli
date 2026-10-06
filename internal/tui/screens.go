@@ -593,7 +593,7 @@ func accountsDesc() resourceDesc {
 					name += " [PAUSED]"
 				}
 				rows[i] = rowData{
-					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "default"), fmtEpoch(a.CreatedAt), lastClientOr(a.LastClientAt)},
+					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "default"), fmtEpoch(a.CreatedAt), accountActivityOr(a)},
 					item:  a,
 				}
 			}
@@ -624,7 +624,7 @@ func accountsDesc() resourceDesc {
 				{k: "storage pool", v: storagePoolOr(a.StorageLimitBytes)},
 				{k: "vanity hostnames", v: yn(a.VanityHosts)},
 				{k: "created", v: fmtEpoch(a.CreatedAt)},
-				{k: "last client", v: lastClientOr(a.LastClientAt)},
+				{k: "last client", v: accountActivityOr(a)},
 			}
 		},
 		actions: []action{

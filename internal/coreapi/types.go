@@ -158,7 +158,12 @@ type Account struct {
 	// was already issued instead of forcing every user to re-enrol.
 	RecoverySelfService bool  `json:"recoverySelfService"`
 	CreatedAt           int64 `json:"createdAt"`
-	// LastClientAt is when a client last reached ANY identity in this account,
+	// ActivityDay is the object directory's lifetime dormancy day across the
+	// account's identities: UTC YYYY-MM-DD, or null for no recorded activity.
+	// When present it takes precedence over the legacy retention stamp below.
+	ActivityDay ActivityDay `json:"activityDay,omitzero"`
+	// LastClientAt is the legacy stamp when a client last reached ANY identity
+	// in this account,
 	// in epoch seconds coalesced to five minutes — the dormancy and offboarding
 	// stamp. Core reads it from the client history, so IMAP, SMTP, DAV, JMAP and
 	// webmail all count; nil when nothing has been seen inside the 90-day client
@@ -332,8 +337,12 @@ type DeletedMailbox struct {
 // is honored only for system callers).
 type MailboxCreateInput struct {
 	PrimaryAddress *string `json:"primaryAddress,omitempty"`
-	QuotaBytes     *int64  `json:"quotaBytes,omitempty"`
-	AccountID      *string `json:"accountId,omitempty"`
+	// PimOnly creates an identity with calendars and contacts and no email
+	// address. Core takes exactly one of the two: neither is 400
+	// primary_address_required, both is 400 pim_only_has_no_address.
+	PimOnly    *bool   `json:"pimOnly,omitempty"`
+	QuotaBytes *int64  `json:"quotaBytes,omitempty"`
+	AccountID  *string `json:"accountId,omitempty"`
 }
 
 // MailboxDeleteResult is the DELETE /identities/:id body.

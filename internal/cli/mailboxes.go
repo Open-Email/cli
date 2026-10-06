@@ -67,18 +67,30 @@ func newMailboxUseCmd(a *app) *cobra.Command {
 
 func newMailboxCreateCmd(a *app) *cobra.Command {
 	var address, quota, account string
+	var pimOnly bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a mailbox",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Core takes exactly one of the two, so say which before asking it.
+			hasAddress := strings.TrimSpace(address) != ""
+			switch {
+			case pimOnly && hasAddress:
+				return usageError(errors.New("--pim-only takes no --address: a PIM-only identity has calendars and contacts and no email address"))
+			case !pimOnly && !hasAddress:
+				return usageError(errors.New("--address is required (or --pim-only for an identity with calendars and contacts and no email address)"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
 			in := coreapi.MailboxCreateInput{}
-			if cmd.Flags().Changed("address") {
+			if hasAddress {
 				in.PrimaryAddress = &address
+			}
+			if pimOnly {
+				in.PimOnly = &pimOnly
 			}
 			if cmd.Flags().Changed("quota") {
 				v, isNull, perr := parseQuotaFlag(quota)
@@ -103,7 +115,8 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&address, "address", "", "claim this address: the route is created atomically with the mailbox, which receives mail immediately (address_taken if already routed)")
+	cmd.Flags().StringVar(&address, "address", "", "claim this address: the route is created atomically with the mailbox, which receives mail immediately (address_taken if already routed); required unless --pim-only")
+	cmd.Flags().BoolVar(&pimOnly, "pim-only", false, "create an identity with calendars and contacts and no email address (takes no --address)")
 	cmd.Flags().StringVar(&quota, "quota", "", "quota in bytes, or 'unlimited'")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system callers only)")
 	return cmd
