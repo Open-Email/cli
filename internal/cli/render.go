@@ -173,11 +173,17 @@ func fmtAccountActivity(account *coreapi.Account) string {
 	return fmtActivityDay(account.ActivityDay)
 }
 
-// fmtIdentityActivity names the one reason core omits an identity's day: a
-// grant holder reading a mailbox shared with them, whose owner's client
-// activity is theirs alone.
-func fmtIdentityActivity(identity *coreapi.Identity) string {
-	if !identity.ActivityDay.Present {
+// fmtIdentityActivity renders an identity's day the way fmtActivityDay renders
+// an account's: a null day, which is what core sends for an identity it has no
+// client activity on record for (the caller's own included), is "No recorded
+// activity". An ABSENT day has more than one cause: core withholds it from a
+// grant holder reading a mailbox shared with them (the owner's client activity
+// is theirs alone), and equally from a mailbox credential scoped below `full`
+// reading its own identity. So the shared-mailbox wording is used only when the
+// caller has established that this row is a mailbox shared with the bearer;
+// any other absence is the plain dash, core having said nothing.
+func fmtIdentityActivity(identity *coreapi.Identity, shared bool) string {
+	if !identity.ActivityDay.Present && shared {
 		return "— (a mailbox shared with you)"
 	}
 	return fmtActivityDay(identity.ActivityDay)

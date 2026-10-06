@@ -57,7 +57,9 @@ func TestParseMaxMailboxesFlag(t *testing.T) {
 
 // A null day is a finding about recorded activity, not "never": the words an
 // offboarding decision reads must not overclaim. Absence is core saying
-// nothing, and for an identity it has exactly one reading, a shared mailbox.
+// nothing; for an identity it names a shared mailbox only when the caller knows
+// the row is one, since core also withholds the day from a scoped credential's
+// own identity.
 func TestFmtActivityDay(t *testing.T) {
 	day := "2026-10-03"
 	if got := fmtActivityDay(coreapi.ActivityDay{Present: true}); got != "No recorded activity" {
@@ -74,8 +76,17 @@ func TestFmtActivityDay(t *testing.T) {
 			t.Fatalf("null = %q overclaims with %q", got, word)
 		}
 	}
-	if got := fmtIdentityActivity(&coreapi.Identity{}); !strings.Contains(got, "shared with you") {
-		t.Fatalf("identity absent = %q, should name the shared-mailbox reading", got)
+	if got := fmtIdentityActivity(&coreapi.Identity{}, true); !strings.Contains(got, "shared with you") {
+		t.Fatalf("shared identity absent = %q, should name the shared-mailbox reading", got)
+	}
+	if got := fmtIdentityActivity(&coreapi.Identity{}, false); got != "—" {
+		t.Fatalf("unclassified identity absent = %q, want a plain dash", got)
+	}
+	if got := fmtIdentityActivity(&coreapi.Identity{ActivityDay: coreapi.ActivityDay{Present: true}}, false); got != "No recorded activity" {
+		t.Fatalf("own identity null = %q", got)
+	}
+	if got := fmtIdentityActivity(&coreapi.Identity{ActivityDay: coreapi.ActivityDay{Present: true}}, true); got != "No recorded activity" {
+		t.Fatalf("null is a finding even on a row thought shared, got %q", got)
 	}
 }
 

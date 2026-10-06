@@ -36,9 +36,11 @@ type Identity struct {
 	// this field is always present.
 	Semantic bool `json:"semantic"`
 	// ActivityDay is the object directory's lifetime dormancy day for this
-	// identity: UTC YYYY-MM-DD, or null for no recorded activity. OMITTED, not
-	// null, for a grant holder reading a mailbox shared with them: the owner's
-	// client activity is theirs alone, like the client history itself. The
+	// identity: UTC YYYY-MM-DD, or null for no recorded activity (the bearer's
+	// own identity included). OMITTED, not null, for a grant holder reading a
+	// mailbox shared with them (the owner's client activity is theirs alone,
+	// like the client history itself) and for a mailbox credential scoped below
+	// `full`, the rung the client history demands. The
 	// retired lastClientAt stamp is not modelled; a core still sending it is
 	// decoded past, like any unknown field.
 	ActivityDay ActivityDay    `json:"activityDay,omitzero"`
