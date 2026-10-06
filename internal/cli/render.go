@@ -153,53 +153,40 @@ func fmtEpochPtr(sec *int64) string {
 	return fmtEpoch(*sec)
 }
 
-// fmtLastClient renders an account's dormancy stamp. nil is NOT "—": core
-// answers null when no client has reached any identity inside the 90-day
-// client retention, which is a positive finding — the one an offboarding
-// decision turns on — and a dash would read as "never", a different claim
-// about a different span.
-func fmtLastClient(sec *int64) string {
-	if sec == nil {
-		return "none in 90d"
-	}
-	return fmtEpoch(*sec)
-}
-
-// fmtLastClientIdentity is fmtLastClient for one identity, where an absent
-// value has a second reading: core OMITS it for a grant holder reading a
-// mailbox shared with them, because the owner's client history is theirs
-// alone. The CLI cannot tell the two apart from the response, so it says both.
-func fmtLastClientIdentity(sec *int64) string {
-	if sec == nil {
-		return "— (none in 90d, or a mailbox shared with you)"
-	}
-	return fmtEpoch(*sec)
-}
-
-// A present activityDay has its own lifetime meaning, including explicit null.
-// Keep the legacy retention wording only when this optional field is absent.
-func fmtActivityDay(day coreapi.ActivityDay) (string, bool) {
+// fmtActivityDay renders the directory's dormancy day, shown as returned (a
+// UTC day, never converted to local time). An explicit null is a positive
+// finding, the one an offboarding decision turns on, so it is spelled out
+// rather than dashed; and it says what was looked at, never "Never used" or
+// "Inactive", which claim more than a missing record does. Only an ABSENT
+// field is a dash: core said nothing.
+func fmtActivityDay(day coreapi.ActivityDay) string {
 	if !day.Present {
-		return "", false
+		return "—"
 	}
 	if day.Day == nil {
-		return "none recorded", true
+		return "No recorded activity"
 	}
-	return *day.Day + " UTC", true
+	return *day.Day + " UTC"
 }
 
 func fmtAccountActivity(account *coreapi.Account) string {
-	if value, present := fmtActivityDay(account.ActivityDay); present {
-		return value
-	}
-	return fmtLastClient(account.LastClientAt)
+	return fmtActivityDay(account.ActivityDay)
 }
 
-func fmtIdentityActivity(identity *coreapi.Identity) string {
-	if value, present := fmtActivityDay(identity.ActivityDay); present {
-		return value
+// fmtIdentityActivity renders an identity's day the way fmtActivityDay renders
+// an account's: a null day, which is what core sends for an identity it has no
+// client activity on record for (the caller's own included), is "No recorded
+// activity". An ABSENT day has more than one cause: core withholds it from a
+// grant holder reading a mailbox shared with them (the owner's client activity
+// is theirs alone), and equally from a mailbox credential scoped below `full`
+// reading its own identity. So the shared-mailbox wording is used only when the
+// caller has established that this row is a mailbox shared with the bearer;
+// any other absence is the plain dash, core having said nothing.
+func fmtIdentityActivity(identity *coreapi.Identity, shared bool) string {
+	if !identity.ActivityDay.Present && shared {
+		return "— (a mailbox shared with you)"
 	}
-	return fmtLastClientIdentity(identity.LastClientAt)
+	return fmtActivityDay(identity.ActivityDay)
 }
 
 // fmtQuota renders a nullable byte quota (null = unlimited).

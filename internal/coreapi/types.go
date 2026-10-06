@@ -159,17 +159,12 @@ type Account struct {
 	RecoverySelfService bool  `json:"recoverySelfService"`
 	CreatedAt           int64 `json:"createdAt"`
 	// ActivityDay is the object directory's lifetime dormancy day across the
-	// account's identities: UTC YYYY-MM-DD, or null for no recorded activity.
-	// When present it takes precedence over the legacy retention stamp below.
+	// account's identities: UTC YYYY-MM-DD, or null for no recorded activity —
+	// the dormancy and offboarding signal. Every protocol counts, and it is not
+	// credentials' lastUsedAt, which frontend caching under-reports. The
+	// retired lastClientAt stamp is not modelled; a core still sending it is
+	// decoded past, like any unknown field.
 	ActivityDay ActivityDay `json:"activityDay,omitzero"`
-	// LastClientAt is the legacy stamp when a client last reached ANY identity
-	// in this account,
-	// in epoch seconds coalesced to five minutes — the dormancy and offboarding
-	// stamp. Core reads it from the client history, so IMAP, SMTP, DAV, JMAP and
-	// webmail all count; nil when nothing has been seen inside the 90-day client
-	// retention. Not credentials' lastUsedAt, which frontend caching
-	// under-reports.
-	LastClientAt *int64 `json:"lastClientAt"`
 	// Deletion lifecycle (core migration 0038). All three are epoch SECONDS and
 	// all three are nil on a live account.
 	//

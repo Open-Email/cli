@@ -5,19 +5,22 @@ import (
 	"testing"
 )
 
-// activityDay is optional while consumers support both directory authorities.
-// Its explicit null must survive decoding and JSON output, rather than become
-// indistinguishable from an absent field that permits the legacy fallback.
+// activityDay is omitted for a grant holder reading a shared identity, so its
+// explicit null must survive decoding and JSON output rather than become
+// indistinguishable from that absence. The retired lastClientAt must decode
+// whether core still sends it or not, and never come back out in --json.
 func TestActivityDayWireRoundTrip(t *testing.T) {
 	cases := []struct {
 		name, body, want string
 		present          bool
 	}{
-		{"fresh day", `{"activityDay":"2026-10-03","lastClientAt":null}`, `"2026-10-03"`, true},
-		{"conflicting stamp", `{"activityDay":"2026-10-03","lastClientAt":1735689600}`, `"2026-10-03"`, true},
-		{"explicit null", `{"activityDay":null,"lastClientAt":1735689600}`, `null`, true},
-		{"legacy stamp", `{"lastClientAt":1735689600}`, "", false},
-		{"legacy null", `{"lastClientAt":null}`, "", false},
+		{"fresh day", `{"activityDay":"2026-10-03"}`, `"2026-10-03"`, true},
+		{"explicit null", `{"activityDay":null}`, `null`, true},
+		{"absent", `{}`, "", false},
+		{"retired stamp beside a day", `{"activityDay":"2026-10-03","lastClientAt":1735689600}`, `"2026-10-03"`, true},
+		{"retired stamp beside null", `{"activityDay":null,"lastClientAt":1735689600}`, `null`, true},
+		{"retired stamp alone", `{"lastClientAt":1735689600}`, "", false},
+		{"retired null alone", `{"lastClientAt":null}`, "", false},
 	}
 	for _, entity := range []string{"account", "identity"} {
 		for _, tc := range cases {
@@ -43,8 +46,8 @@ func TestActivityDayWireRoundTrip(t *testing.T) {
 				if present != tc.present || string(value) != tc.want {
 					t.Fatalf("activityDay = %s (present %v), want %s (present %v)", value, present, tc.want, tc.present)
 				}
-				if tc.name == "legacy stamp" && string(fields["lastClientAt"]) != "1735689600" {
-					t.Fatalf("legacy stamp changed: %s", encoded)
+				if _, leaked := fields["lastClientAt"]; leaked {
+					t.Fatalf("retired lastClientAt re-encoded: %s", encoded)
 				}
 			})
 		}

@@ -572,7 +572,8 @@ func accountsDesc() resourceDesc {
 			{title: "MAX MBX", width: 7},
 			{title: "CREATED", width: 16},
 			// The dormancy sweep column — see the CLI's accounts list.
-			{title: "LAST CLIENT", width: 16},
+			// Wide enough for "No recorded activity" to read whole.
+			{title: "LAST ACTIVITY", width: 20},
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
 			pg, err := c.ListAccounts(ctx, pageLimit, cursor)
@@ -624,7 +625,7 @@ func accountsDesc() resourceDesc {
 				{k: "storage pool", v: storagePoolOr(a.StorageLimitBytes)},
 				{k: "vanity hostnames", v: yn(a.VanityHosts)},
 				{k: "created", v: fmtEpoch(a.CreatedAt)},
-				{k: "last client", v: accountActivityOr(a)},
+				{k: "last activity", v: accountActivityOr(a)},
 			}
 		},
 		actions: []action{

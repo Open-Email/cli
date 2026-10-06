@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/Open-Email/cli/internal/coreapi"
 )
 
 // --max-mailboxes has two states where the send caps have three. Null is the
@@ -53,27 +55,45 @@ func TestParseMaxMailboxesFlag(t *testing.T) {
 	}
 }
 
+// A null day is a finding about recorded activity, not "never": the words an
+// offboarding decision reads must not overclaim. Absence is core saying
+// nothing; for an identity it names a shared mailbox only when the caller knows
+// the row is one, since core also withholds the day from a scoped credential's
+// own identity.
+func TestFmtActivityDay(t *testing.T) {
+	day := "2026-10-03"
+	if got := fmtActivityDay(coreapi.ActivityDay{Present: true}); got != "No recorded activity" {
+		t.Fatalf("null = %q", got)
+	}
+	if got := fmtActivityDay(coreapi.ActivityDay{Present: true, Day: &day}); got != "2026-10-03 UTC" {
+		t.Fatalf("set = %q", got)
+	}
+	if got := fmtActivityDay(coreapi.ActivityDay{}); got != "—" {
+		t.Fatalf("absent = %q", got)
+	}
+	for _, word := range []string{"Never", "Inactive", "90d"} {
+		if got := fmtActivityDay(coreapi.ActivityDay{Present: true}); strings.Contains(got, word) {
+			t.Fatalf("null = %q overclaims with %q", got, word)
+		}
+	}
+	if got := fmtIdentityActivity(&coreapi.Identity{}, true); !strings.Contains(got, "shared with you") {
+		t.Fatalf("shared identity absent = %q, should name the shared-mailbox reading", got)
+	}
+	if got := fmtIdentityActivity(&coreapi.Identity{}, false); got != "—" {
+		t.Fatalf("unclassified identity absent = %q, want a plain dash", got)
+	}
+	if got := fmtIdentityActivity(&coreapi.Identity{ActivityDay: coreapi.ActivityDay{Present: true}}, false); got != "No recorded activity" {
+		t.Fatalf("own identity null = %q", got)
+	}
+	if got := fmtIdentityActivity(&coreapi.Identity{ActivityDay: coreapi.ActivityDay{Present: true}}, true); got != "No recorded activity" {
+		t.Fatalf("null is a finding even on a row thought shared, got %q", got)
+	}
+}
+
 // The account freeze is the widest abuse control the CLI exposes, so its
 // rendering must be unmissable when disabled and quiet when not — and it must say
 // the SCOPE, since the reason to reach for it over the per-mailbox freeze is
 // that it also covers mailboxes the tenant has not created yet.
-// nil is a finding about the 90-day retention window, not "never": the word
-// an offboarding decision reads must not overclaim.
-func TestFmtLastClient(t *testing.T) {
-	if got := fmtLastClient(nil); got != "none in 90d" {
-		t.Fatalf("nil = %q", got)
-	}
-	when := int64(1735689600)
-	if got := fmtLastClient(&when); got != fmtEpoch(when) {
-		t.Fatalf("set = %q", got)
-	}
-	// The identity spelling has to admit the second reading of an absence —
-	// core omits the field for a grant holder — because the CLI cannot tell.
-	if got := fmtLastClientIdentity(nil); !strings.Contains(got, "shared with you") || !strings.Contains(got, "90d") {
-		t.Fatalf("identity nil = %q, should name both readings", got)
-	}
-}
-
 func TestFmtAccountSendState(t *testing.T) {
 	if got := fmtAccountSendState(nil); got != "enabled" {
 		t.Errorf("fmtAccountSendState(live) = %q; want %q", got, "enabled")

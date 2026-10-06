@@ -115,24 +115,16 @@ func storagePoolOr(p *int64) string {
 	return fmtBytes(*p)
 }
 
-// lastClientOr mirrors the CLI's fmtLastClient: a nil stamp is "none in 90d",
-// never a dash, because core's null here is a finding about a span — no client
-// inside the 90-day retention — and a dash would read as "never".
-func lastClientOr(p *int64) string {
-	if p == nil {
-		return "none in 90d"
-	}
-	return fmtEpoch(*p)
-}
-
-// The object directory supplies a UTC dormancy day, not an exact client stamp.
-// An explicit null means no recorded activity; only absence permits fallback.
+// accountActivityOr mirrors the CLI's fmtActivityDay: the directory's UTC
+// dormancy day as returned, an explicit null spelled "No recorded activity"
+// (a finding, never a dash, and never "Never used"), and a dash only when core
+// sent no field at all.
 func accountActivityOr(account coreapi.Account) string {
 	if !account.ActivityDay.Present {
-		return lastClientOr(account.LastClientAt)
+		return "—"
 	}
 	if account.ActivityDay.Day == nil {
-		return "none recorded"
+		return "No recorded activity"
 	}
 	return *account.ActivityDay.Day + " UTC"
 }

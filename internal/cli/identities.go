@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +39,7 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 			// password learns its ULID from /auth/whoami, which is the one call
 			// that can answer it.
 			var ref string
+			var principal *coreapi.Principal
 			switch {
 			case len(args) == 1:
 				ref = args[0]
@@ -47,19 +49,38 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 					return err
 				}
 			default:
-				principal, rerr := client.Resolve(cmd.Context())
+				p, rerr := client.Resolve(cmd.Context())
 				if rerr != nil {
 					return rerr
 				}
-				if principal.MailboxID == "" {
+				if p.MailboxID == "" {
 					return usageError(errors.New(
 						"no identity — pass an identityId, or set a default with `openemail mailboxes use <id>`"))
 				}
-				ref = principal.MailboxID
+				principal = &p
+				ref = p.MailboxID
 			}
 			id, err := client.GetIdentity(cmd.Context(), ref)
 			if err != nil {
 				return err
+			}
+			// An absent activity day reads as a shared mailbox only when it IS
+			// one: a mailbox bearer reading an identity other than its own,
+			// which core answers only through a grant. The same absence on the
+			// bearer's own identity (a credential below `full`) or on an
+			// account/system key's read is not that, so the bearer is classified
+			// here, and only when the day is absent. Should whoami fail, the
+			// row stays unclassified and renders as a plain dash rather than a
+			// guess.
+			shared := false
+			if !id.ActivityDay.Present {
+				if principal == nil {
+					if p, rerr := client.Resolve(cmd.Context()); rerr == nil {
+						principal = &p
+					}
+				}
+				shared = principal != nil && principal.Type == coreapi.PrincipalMailbox &&
+					principal.MailboxID != "" && principal.MailboxID != id.ID
 			}
 			a.out.Emit(id, func(w io.Writer) {
 				rows := [][]string{
@@ -68,7 +89,7 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 					{"Account", strOr(id.AccountID, "—")},
 					{"Quota", fmtQuota(id.QuotaBytes)},
 					{"Created", fmtEpoch(id.CreatedAt)},
-					{"Last client", fmtIdentityActivity(id)},
+					{"Last activity", fmtIdentityActivity(id, shared)},
 					{"Sending", fmtSendState(id.SendHold)},
 				}
 				if id.SendMsgsPerDay != nil || id.SendRcptsPerDay != nil {
