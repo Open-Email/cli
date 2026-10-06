@@ -53,14 +53,6 @@
             "description": "Unique account ULID",
             "type": "string"
           },
-          "lastClientAt": {
-            "description": "When a client last reached any identity in this account, in epoch seconds coalesced to five minutes: the dormancy and offboarding stamp. Read from the client history (GET /accounts/:accountId/clients), so it counts IMAP, SMTP, DAV, JMAP and webmail alike; null when no client has been seen inside the 90-day client retention. Not credentials' lastUsedAt, which frontend caching under-reports. Always null under the object directory, where client history lives per identity: read activityDay instead",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
           "mailboxCreatesPerDay": {
             "description": "Mailboxes this account may CREATE per rolling day (null = platform default, 0 = unlimited) — a churn bound, not a ceiling; maxMailboxes is the ceiling",
             "format": "int64",
@@ -249,7 +241,6 @@
           "deletedAt",
           "purgeAt",
           "purgedAt",
-          "lastClientAt",
           "activityDay"
         ],
         "type": "object"
@@ -5660,7 +5651,7 @@
           {
             "properties": {
               "activityDay": {
-                "description": "The UTC date (YYYY-MM-DD) of this identity's latest recorded client activity, kept for the identity's lifetime; null means no recorded activity. Show it as returned, not converted to a local timezone. Withheld exactly as lastClientAt is",
+                "description": "The UTC date (YYYY-MM-DD) of this identity's latest recorded client activity, kept for the identity's lifetime; null means no recorded activity. Show it as returned, not converted to a local timezone. Omitted for a grant holder reading a mailbox shared with them and for a credential scoped below `full`: the owner's client history is theirs alone, like the client list itself",
                 "format": "date",
                 "type": [
                   "string",
@@ -5669,14 +5660,6 @@
               },
               "facets": {
                 "$ref": "#/components/schemas/IdentityFacets"
-              },
-              "lastClientAt": {
-                "description": "When a client last reached this identity, in epoch seconds coalesced to five minutes — read from its client history (GET /identities/:identityId/clients), so IMAP, DAV, JMAP and webmail all count; null when none inside the 90-day client retention. Omitted for a grant holder reading a mailbox shared with them: the owner's client history is theirs alone, like the client list itself",
-                "format": "int64",
-                "type": [
-                  "integer",
-                  "null"
-                ]
               }
             },
             "required": [
@@ -5825,7 +5808,7 @@
             "type": "string"
           },
           "lastSeenAt": {
-            "description": "Last sighting, epoch seconds — coalesced, so exact for a first sighting and up to five minutes stale after it. 'Connected now' is a presentation rule over this, not a fact the row asserts",
+            "description": "Last sighting, epoch seconds — coalesced hourly, so exact for a first sighting and up to one hour stale after it. 'Connected now' is a presentation rule over this, not a fact the row asserts",
             "format": "int64",
             "type": "integer"
           },
@@ -18259,107 +18242,6 @@
         ]
       }
     },
-    "/api/v1/accounts/{accountId}/clients": {
-      "get": {
-        "description": "Every identity's clients across the account, newest first, over the last ninety days — one indexed scan, paged by keyset. The sort key moves as clients are seen, so a row touched while paging can appear twice or be skipped; that is the correct behaviour for a live list. Account-scoped by design: there is no fleet-wide listing, and an operator investigating an incident reads one account at a time.",
-        "operationId": "get_AccountClientList",
-        "parameters": [
-          {
-            "description": "Account ULID identifier",
-            "in": "path",
-            "name": "accountId",
-            "required": true,
-            "schema": {
-              "description": "Account ULID identifier",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Page size (default 100)",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "description": "Page size (default 100)",
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Opaque page cursor from a previous response",
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "description": "Opaque page cursor from a previous response",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "clients": {
-                      "items": {
-                        "$ref": "#/components/schemas/IdentityClient"
-                      },
-                      "type": "array"
-                    },
-                    "nextCursor": {
-                      "description": "Opaque cursor for the next page; absent on the last page",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "clients"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Page of clients, newest first"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed, or invalid_cursor for a cursor that is not one this list issued"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Account not found or not accessible to this principal"
-          }
-        },
-        "summary": "List an account's clients",
-        "tags": [
-          "Accounts"
-        ]
-      }
-    },
     "/api/v1/accounts/{accountId}/activity": {
       "get": {
         "description": "The account's identities ordered by their latest recorded client activity, newest day first, ties by identity id, identities with no recorded activity last; open one identity's clients for the detail (GET /identities/:identityId/clients). Paged by keyset; a live list, so an identity seen between pages can move ahead of the cursor. A domain-scoped key sees the identities its scope reaches, as the mailbox listing does; its pages are bounded in work, so one may hold fewer than limit identities while more follow. The list ends only when nextCursor is absent.",
@@ -21481,7 +21363,7 @@
     },
     "/api/v1/identities/{identityId}/clients": {
       "get": {
-        "description": "Where this identity has been reached from: one row per (protocol, network, credential), newest first, over the last ninety days. Self-service: the identity's own credential may read its own list — under the same `full`-scope rule as the credential list, because the rows name every other credential and the networks it is used from, which a leaked read-scoped token must not learn. A null `country` means nobody looked, not an unknown location; mail-protocol rows carry null until the fleet resolves locations.",
+        "description": "Where this identity has been reached from: one row per (protocol, network, credential), newest first, up to 200 tuples over the last 30 days. Self-service: the identity's own credential may read its own list — under the same `full`-scope rule as the credential list, because the rows name every other credential and the networks it is used from, which a leaked read-scoped token must not learn. A null `country` means nobody looked, not an unknown location; mail-protocol rows carry null until the fleet resolves locations.",
         "operationId": "get_IdentityClientList",
         "parameters": [
           {
