@@ -244,9 +244,20 @@ func errorHint(ae *coreapi.APIError) string {
 		}
 		return "bind the address to this mailbox first (openemail routes create … --type mailbox --mailbox <id>)"
 	case "account_required":
+		// The suspended listing is one account's, so a system key names it.
+		if ae.Method == "GET" && ae.Path == "/identities" {
+			return "the suspended listing is one account's: pass --account <id>"
+		}
 		// System keys must choose domain ownership explicitly (core refuses to
 		// mint a tenant-invisible platform domain by omission).
 		return "system keys must choose ownership: pass --account <id>, or --platform for a domain owned by no account"
+	case "suspension_not_enabled":
+		// Staged rollout: the writer is on for operators before owners.
+		return "owner suspension is not enabled on this deployment yet; nothing was changed"
+	case "not_suspendable":
+		return "this is a platform identity, which belongs to no account and cannot be suspended"
+	case "control_exclusive":
+		return "suspended must be sent alone; change other mailbox fields with a separate `mailboxes update`"
 	case "sending_not_writable":
 		// Sending is earned from DNS, not set. Point at the loop that grants it.
 		// "bounce record", not "SPF record": the spf KIND is the oe-bounce

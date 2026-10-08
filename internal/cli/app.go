@@ -27,7 +27,8 @@ const (
 )
 
 // ExitError carries a specific process exit code. 0 ok, 1 error, 2 usage,
-// 4 auth required (gh convention).
+// 3 accepted but still being applied (mailboxes suspend/resume), 4 auth
+// required (gh convention).
 type ExitError struct {
 	Code int
 	Err  error

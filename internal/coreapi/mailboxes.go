@@ -2,8 +2,14 @@ package coreapi
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // CreateMailbox creates a mailbox (POST /identities — the identity is the
@@ -160,4 +166,107 @@ func (c *Client) PurgeMailbox(ctx context.Context, mailboxID string) (*MailboxPu
 		return nil, err
 	}
 	return &out, nil
+}
+
+// ListSuspendedMailboxes returns one page of the live mailboxes the account
+// owner has suspended, pending suspensions included (GET
+// /identities?state=suspended). It is one account's listing: an account key
+// sees its own, and a system key must name accountId (400 account_required
+// otherwise).
+func (c *Client) ListSuspendedMailboxes(ctx context.Context, accountID string, limit int, cursor string) (Page[Mailbox], error) {
+	q := pageValues(limit, cursor)
+	q.Set("state", "suspended")
+	if accountID != "" {
+		q.Set("accountId", accountID)
+	}
+	var out struct {
+		Identities []Mailbox `json:"identities"`
+		NextCursor string    `json:"nextCursor"`
+	}
+	err := c.doJSON(ctx, request{
+		method:     http.MethodGet,
+		path:       "/identities",
+		query:      q,
+		idempotent: true,
+	}, &out)
+	if err != nil {
+		return Page[Mailbox]{}, err
+	}
+	return Page[Mailbox]{Items: out.Identities, NextCursor: out.NextCursor}, nil
+}
+
+// SuspensionResult is a suspend or resume PATCH that core committed. Pending
+// is the 202: the change is written and still being applied, so it is NOT yet
+// enforced everywhere; RetryAfter is when core suggests polling GET for
+// suspensionPending to clear. A 200 has Pending false.
+type SuspensionResult struct {
+	Mailbox    Mailbox
+	Pending    bool
+	RetryAfter time.Duration
+	Raw        []byte
+}
+
+// SetMailboxSuspended suspends (true) or resumes (false) a mailbox: PATCH
+// /identities/:id with `suspended` as the ONLY field, since core refuses it
+// beside anything else (400 control_exclusive).
+//
+// Not retried. Repeating the same PATCH is safe at core, but an automatic
+// repeat after a newer opposite change would reassert a stale intent, which
+// the design forbids; the caller polls GET instead. A newer opposite change
+// that superseded this one is the error 409 suspension_changed, whose current
+// state SupersededMailbox reads back.
+func (c *Client) SetMailboxSuspended(ctx context.Context, mailboxID string, suspended bool) (*SuspensionResult, error) {
+	r := request{
+		method:      http.MethodPatch,
+		path:        "/identities/" + escapeSegment(mailboxID),
+		body:        mustJSON(map[string]bool{"suspended": suspended}),
+		contentType: "application/json",
+	}
+	resp, err := c.do(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONBody))
+	if err != nil {
+		return nil, fmt.Errorf("coreapi: read %s %s: %w", r.method, r.path, err)
+	}
+	out := &SuspensionResult{Raw: raw}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &out.Mailbox); err != nil {
+			return nil, fmt.Errorf("coreapi: decode %s %s: %w", r.method, r.path, err)
+		}
+	}
+	if resp.StatusCode == http.StatusAccepted {
+		out.Pending = true
+		out.RetryAfter = parseRetryAfterSeconds(resp.Header.Get("Retry-After"))
+	}
+	return out, nil
+}
+
+// SupersededMailbox reads the current mailbox out of a 409
+// suspension_changed: the state a newer opposite suspend or resume left, which
+// is what the caller must report instead of its own request.
+func SupersededMailbox(err error) (*Mailbox, bool) {
+	ae, ok := asAPIError(err)
+	if !ok || ae.Status != http.StatusConflict || ae.Code != "suspension_changed" {
+		return nil, false
+	}
+	var body struct {
+		Mailbox *Mailbox `json:"mailbox"`
+	}
+	if json.Unmarshal(ae.Body, &body) != nil || body.Mailbox == nil {
+		return nil, true
+	}
+	return body.Mailbox, true
+}
+
+// parseRetryAfterSeconds reads a delta-seconds Retry-After; anything else
+// (absent, an HTTP date, garbage) is 0 and the caller picks its own interval.
+func parseRetryAfterSeconds(v string) time.Duration {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return time.Duration(n) * time.Second
 }
