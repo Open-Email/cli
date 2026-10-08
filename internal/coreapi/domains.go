@@ -25,6 +25,10 @@ type DNSStatus struct {
 // converts the stored 0/1), dnsStatus is an object or null.
 type Domain struct {
 	Domain string `json:"domain"`
+	// UnicodeName is the domain's Unicode presentation (core's SMTPUTF8 design
+	// D4): equal to Domain when it is pure ASCII. Display only, never an
+	// identifier; DNS instructions and routing use Domain.
+	UnicodeName string `json:"unicodeName"`
 	// The four send-state fields each have ONE author (core's
 	// docs/send-state-design.md): Enabled and SendOnly are the owner's,
 	// SendVerified is the DNS check's, SendHold is the operator's.

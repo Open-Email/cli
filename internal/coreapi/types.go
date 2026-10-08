@@ -74,6 +74,9 @@ type CreatedAPIKey struct {
 type Account struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// BillingTier is what the billing tool sold the account ("free" | "pro"),
+	// system-written. Not a limit: the numbers follow the vetted plan.
+	BillingTier string `json:"billingTier"`
 	// MaxMailboxes is how many mailboxes the account may HOLD. NIL = the
 	// platform default (MAX_MAILBOXES_DEFAULT), never unlimited: core has no
 	// unlimited value for this one (the column is positive-or-null).

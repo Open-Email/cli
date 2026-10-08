@@ -20,6 +20,14 @@
               "null"
             ]
           },
+          "billingTier": {
+            "description": "What the billing tool sold this account (system-written, PUT /accounts/:accountId/billing-tier). Not a limit: Pro's numbers are stamped only once the account is also vetted (`plan` = `trusted`); an unvetted Pro account keeps the `untrusted` numbers until an operator vets it",
+            "enum": [
+              "free",
+              "pro"
+            ],
+            "type": "string"
+          },
           "createdAt": {
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
@@ -235,6 +243,7 @@
           "maxMailTemplates",
           "noticeLanguage",
           "vanityHosts",
+          "billingTier",
           "semantic",
           "recoverySelfService",
           "createdAt",
@@ -242,6 +251,79 @@
           "purgeAt",
           "purgedAt",
           "activityDay"
+        ],
+        "type": "object"
+      },
+      "AccountBillingTierResult": {
+        "properties": {
+          "accountId": {
+            "description": "Account ULID",
+            "type": "string"
+          },
+          "applied": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Every plan column as the row now holds it, when this write stamped any; null when it stamped none",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "billingTier": {
+            "description": "The tier now recorded",
+            "enum": [
+              "free",
+              "pro"
+            ],
+            "type": "string"
+          },
+          "plan": {
+            "description": "The account's vetting label, which this write never changes",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preset": {
+            "description": "The definition stamped when this write moved the account in or out of the Pro release (`pro`, or `trusted` on the way out); null when no plan column was written",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priorBillingTier": {
+            "description": "The tier the account held before this write (equal to billingTier when nothing changed)",
+            "enum": [
+              "free",
+              "pro"
+            ],
+            "type": "string"
+          },
+          "released": {
+            "description": "True when the account now holds the Pro release (`plan` = `trusted` and tier `pro`): Pro's numbers are stamped. An unvetted Pro account is false until an operator vets it",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accountId",
+          "billingTier",
+          "priorBillingTier",
+          "plan",
+          "released",
+          "preset",
+          "applied"
         ],
         "type": "object"
       },
@@ -391,8 +473,20 @@
             "description": "The calling API key's id, now recorded on the account as the label's author",
             "type": "string"
           },
+          "billingTier": {
+            "description": "The account's billing tier the plan was composed with",
+            "enum": [
+              "free",
+              "pro"
+            ],
+            "type": "string"
+          },
           "plan": {
             "description": "The plan label now on the account",
+            "type": "string"
+          },
+          "preset": {
+            "description": "The definition the stamped numbers are: the caller's plan name for caller content; for a by-name vet, the vetting preset composed with the account's billing tier (`untrusted`, `trusted`, or `pro` when `trusted` is applied to a Pro account)",
             "type": "string"
           },
           "presetHash": {
@@ -403,6 +497,8 @@
         "required": [
           "accountId",
           "plan",
+          "preset",
+          "billingTier",
           "presetHash",
           "applied",
           "appliedBy"
@@ -3587,6 +3683,10 @@
             "description": "Whether `+` is a tag delimiter on this domain (default true): mail to `alice+anything@` reaches `alice@`, and `alice+*@` is a permitted sender family. False makes `+` an ordinary character — no stripping, no tag recorded, no `+*` family advertised",
             "type": "boolean"
           },
+          "unicodeName": {
+            "description": "The Unicode presentation of the domain (D4): `domainToUnicode` of the stored A-label, equal to `domain` when it is pure ASCII. A display form only - never an identifier; DNS instructions and all routing use `domain`",
+            "type": "string"
+          },
           "usageAt": {
             "description": "Timestamp when usage was sampled in epoch seconds",
             "format": "int64",
@@ -3610,6 +3710,7 @@
           "sendVerified",
           "sendHold",
           "aliasOf",
+          "unicodeName",
           "fbl",
           "dmarc",
           "jmap",
@@ -6764,7 +6865,7 @@
             "type": "string"
           },
           "error": {
-            "description": "Why, when failed",
+            "description": "Why, when failed. 'sending_paused' and 'sending_disabled' mean a hold on the sender (mailbox, domain or account) landed while the request was running: recipients already handled keep their status and the rest are refused. 'sending_paused' is temporary: retry with the same delivery id once the hold lifts. 'sending_disabled' is permanent. A sending_paused row is temporary even where it carries no `retryAfterSeconds`.",
             "type": "string"
           },
           "retryAfterSeconds": {
@@ -12798,7 +12899,7 @@
             "type": "string"
           },
           "error": {
-            "description": "Error reason code if status is failed (e.g. 'over_quota', 'receiving_disabled')",
+            "description": "Error reason code if status is failed (e.g. 'over_quota', 'receiving_disabled'). 'sending_paused' and 'sending_disabled' mean a hold on the sender (mailbox, domain or account) landed while the request was running: recipients already handled keep their status and the rest are refused. 'sending_paused' is temporary: retry with the same X-Delivery-Id once the hold lifts. 'sending_disabled' is permanent.",
             "type": "string"
           },
           "status": {
@@ -16468,7 +16569,7 @@
                     "type": "boolean"
                   },
                   "sendHold": {
-                    "description": "Operator enforcement over ALL outbound mail for this account. 'disabled' STOPS it — the abuse response: refusals answer 403 sending_disabled, permanent, so SMTP submission gets a 550 rather than a queue-and-retry, and the queued relay backlog is bounced. 'paused' HOLDS it — the reversible form, for non-payment or an investigation you intend to conclude: refusals answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sending MTA queues the mail; the queued relay backlog is DEFERRED rather than bounced. null lifts either. Egress only: a held account still receives",
+                    "description": "Operator enforcement over ALL outbound mail for this account. 'disabled' STOPS it — the abuse response: refusals answer 403 sending_disabled, permanent, so SMTP submission gets a 550 rather than a queue-and-retry, and the queued relay backlog is bounced. 'paused' HOLDS it — the reversible form, for non-payment or an investigation you intend to conclude: refusals answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sending MTA queues the mail; the queued relay backlog is DEFERRED rather than bounced. null lifts either. Egress only: a held account still receives. Applies to work already accepted as well: a send in progress stops before its remaining recipients, and queued group fan-out, member deliveries, destination webhooks and forwarding legs from this sender's submissions are deferred under 'paused' and dropped under 'disabled'. Already-queued fan-out legs may run for up to 10 seconds after the change. A retry with the same X-Delivery-Id is refused while the hold is set.",
                     "enum": [
                       "disabled",
                       "paused"
@@ -17012,6 +17113,113 @@
           }
         },
         "summary": "Read an account's plan record (system only)",
+        "tags": [
+          "Accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{accountId}/billing-tier": {
+      "put": {
+        "description": "Records the tier the billing tool sold the account (`free` or `pro`). Not a limit: the plan columns are stamped from the tier TOGETHER with the vetting label, so a Pro tier lifts nothing on an `untrusted` account until an operator vets it (POST /accounts/:accountId/plan `trusted`, which then stamps the `pro` preset). On a `trusted` account the write itself moves it into or out of the Pro release: `pro` stamps the `pro` preset (trusted's numbers, storage uncapped, a 5,000-mailbox ceiling, the vanity-host gate open) and `free` stamps `trusted` with the gate closed. The vetting label and its record are never changed. Writing the tier the account already holds is a no-op answered 200.",
+        "operationId": "put_AccountBillingTierSet",
+        "parameters": [
+          {
+            "description": "Account ULID identifier",
+            "in": "path",
+            "name": "accountId",
+            "required": true,
+            "schema": {
+              "description": "Account ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "tier": {
+                    "description": "The billing tier the account now holds",
+                    "enum": [
+                      "free",
+                      "pro"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tier"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountBillingTierResult"
+                }
+              }
+            },
+            "description": "Recorded (or already held)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_deleted: the account is inside its deletion window; restore it first"
+          }
+        },
+        "summary": "Record an account's billing tier (system only)",
         "tags": [
           "Accounts"
         ]
@@ -19303,7 +19511,7 @@
                 }
               }
             },
-            "description": "validation_failed, username_required, username_not_mailbox_address, username_not_in_scope (a DOMAIN-SCOPED api key may only mint a credential whose username is on one of its domains, migration 0078; `domain` names the refused one), permitted_recipients_requires_send (a recipient list on a credential whose scope is not 'send'), or password_required (the mailbox's own bearer sent no currentPassword)"
+            "description": "validation_failed, username_required, invalid_address (D2: an address username must be an ASCII local part on an A-label domain), invalid_username (D2: a bare username must be printable ASCII with no whitespace), username_not_mailbox_address, username_not_in_scope (a DOMAIN-SCOPED api key may only mint a credential whose username is on one of its domains, migration 0078; `domain` names the refused one), permitted_recipients_requires_send (a recipient list on a credential whose scope is not 'send'), or password_required (the mailbox's own bearer sent no currentPassword)"
           },
           "401": {
             "content": {
@@ -21753,7 +21961,7 @@
                 }
               }
             },
-            "description": "validation_failed — the body is strict, so an UNRECOGNIZED field (a retired spelling such as the pre-0062 `canSend`/`canReceive`) is refused rather than ignored; domain_not_verified — the response's `record` field is the exact ownership TXT to publish, so publish it and POST again; account_required or unknown_account (system caller naming the owner); send_receive_exclusive (sendOnly and receiveOnly together describe a domain the platform does nothing for); or an invalid aliasOf: alias_self, unknown_domain, alias_cross_account, alias_chain, alias_fbl_exclusive"
+            "description": "validation_failed - the body is strict, so an UNRECOGNIZED field (a retired spelling such as the pre-0062 `canSend`/`canReceive`) is refused rather than ignored; invalid_domain - the name or aliasOf fails D3 canonicalization (not a convertible, LDH-valid domain; a non-xn label with hyphens at UTS 46 positions 3-4) or D5 (a label whose Unicode form mixes Latin with Cyrillic or Greek); domain_not_verified - the response's `record` field is the exact ownership TXT to publish, so publish it and POST again; account_required or unknown_account (system caller naming the owner); send_receive_exclusive (sendOnly and receiveOnly together describe a domain the platform does nothing for); or an invalid aliasOf: alias_self, unknown_domain, alias_cross_account, alias_chain, alias_fbl_exclusive"
           },
           "401": {
             "content": {
@@ -22067,7 +22275,7 @@
                     "type": "boolean"
                   },
                   "sendHold": {
-                    "description": "Operator enforcement (system callers only). 'disabled' STOPS sending: 403 sending_disabled, a permanent 550 at smtp-in, the queued backlog bounced. 'paused' HOLDS it: 429 sending_paused + Retry-After, a 451 the sending MTA queues, the backlog deferred. null lifts either. Egress only: a held domain still receives",
+                    "description": "Operator enforcement (system callers only). 'disabled' STOPS sending: 403 sending_disabled, a permanent 550 at smtp-in, the queued backlog bounced. 'paused' HOLDS it: 429 sending_paused + Retry-After, a 451 the sending MTA queues, the backlog deferred. null lifts either. Egress only: a held domain still receives. Applies to work already accepted as well: a send in progress stops before its remaining recipients, and queued group fan-out, member deliveries, destination webhooks and forwarding legs from this sender's submissions are deferred under 'paused' and dropped under 'disabled'. Already-queued fan-out legs may run for up to 10 seconds after the change. A retry with the same X-Delivery-Id is refused while the hold is set.",
                     "enum": [
                       "disabled",
                       "paused"
@@ -22119,7 +22327,7 @@
                 }
               }
             },
-            "description": "validation_failed (the body is strict: an unrecognized field is refused, never silently dropped), empty_patch, send_receive_exclusive (the post-patch state would be both sendOnly and receiveOnly), alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
+            "description": "validation_failed (the body is strict: an unrecognized field is refused, never silently dropped), empty_patch, invalid_domain (an aliasOf that fails D3 canonicalization or D5's mixed-script refusal), send_receive_exclusive (the post-patch state would be both sendOnly and receiveOnly), alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
           },
           "401": {
             "content": {
@@ -24226,8 +24434,8 @@
                     ]
                   },
                   "primaryAddress": {
-                    "description": "On create: CLAIMS the address — the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be on a non-alias directory domain owned by the mailbox's account. On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
-                    "format": "email",
+                    "description": "On create: CLAIMS the address - the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be an ASCII local part on a non-alias directory domain owned by the mailbox's account (a U-label domain spelling is canonicalized to its stored A-label). On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
+                    "maxLength": 320,
                     "type": [
                       "string",
                       "null"
@@ -24254,7 +24462,7 @@
                     ]
                   },
                   "sendHold": {
-                    "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading",
+                    "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading. Applies to work already accepted as well: a send in progress stops before its remaining recipients, and queued group fan-out, member deliveries, destination webhooks and forwarding legs from this sender's submissions are deferred under 'paused' and dropped under 'disabled'. Already-queued fan-out legs may run for up to 10 seconds after the change. A retry with the same X-Delivery-Id is refused while the hold is set.",
                     "enum": [
                       "disabled",
                       "paused"
@@ -24684,8 +24892,8 @@
                     ]
                   },
                   "primaryAddress": {
-                    "description": "On create: CLAIMS the address — the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be on a non-alias directory domain owned by the mailbox's account. On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
-                    "format": "email",
+                    "description": "On create: CLAIMS the address - the address→mailbox route and the label are created atomically with the mailbox (409 address_taken if already routed); must be an ASCII local part on a non-alias directory domain owned by the mailbox's account (a U-label domain spelling is canonicalized to its stored A-label). On update: selects among the mailbox's already-routed addresses (bind first via POST /routes, which is idempotent); null clears the label",
+                    "maxLength": 320,
                     "type": [
                       "string",
                       "null"
@@ -24712,7 +24920,7 @@
                     ]
                   },
                   "sendHold": {
-                    "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading",
+                    "description": "System callers only. Operator enforcement over this mailbox's outbound mail. 'disabled' STOPS it: every submission is refused 403 sending_disabled, queued relay jobs are dropped at the relay, and vacation auto-replies stop — permanent by contract, so SMTP submission gets a 550 and the mail bounces. 'paused' HOLDS it, the reversible form for a suspension you intend to lift (non-payment, an investigation): submissions answer 429 sending_paused with Retry-After, so SMTP submission gets a 451 and the sender's MTA queues the mail; queued relay jobs are DEFERRED rather than bounced. null lifts either. Does not affect receiving or reading. Applies to work already accepted as well: a send in progress stops before its remaining recipients, and queued group fan-out, member deliveries, destination webhooks and forwarding legs from this sender's submissions are deferred under 'paused' and dropped under 'disabled'. Already-queued fan-out legs may run for up to 10 seconds after the change. A retry with the same X-Delivery-Id is refused while the hold is set.",
                     "enum": [
                       "disabled",
                       "paused"
@@ -26403,7 +26611,6 @@
               "schema": {
                 "properties": {
                   "address": {
-                    "format": "email",
                     "type": "string"
                   },
                   "destinationType": {
@@ -26431,7 +26638,6 @@
                     "type": "string"
                   },
                   "remoteAddress": {
-                    "format": "email",
                     "type": "string"
                   },
                   "webhookFormat": {
@@ -26478,7 +26684,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_domain, domain_is_alias, unknown_mailbox (missing, inaccessible, or outside the route domain's account, including platform domains), webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), or destination_is_self / destination_loops / destination_chain_too_long when the forward target routes back to this address"
+            "description": "validation_failed, invalid_address (malformed remoteAddress, or D2: the route's own address must be an ASCII local part on an A-label domain), unknown_domain, domain_is_alias, unknown_mailbox (missing, inaccessible, or outside the route domain's account, including platform domains), webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), or destination_is_self / destination_loops / destination_chain_too_long when the forward target routes back to this address"
           },
           "401": {
             "content": {
@@ -26760,8 +26966,7 @@
                     "type": "string"
                   },
                   "remoteAddress": {
-                    "description": "Destination forwarding address or forward tap address (null to remove tap)",
-                    "format": "email",
+                    "description": "Destination forwarding address or forward tap address (null to remove tap). An external target may carry a UTF-8 local part (D6); the domain half is canonicalized (D3)",
                     "type": [
                       "string",
                       "null"
@@ -26816,7 +27021,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch, destination_requires_type, posting_requires_group, no_webhook, webhook_format_unavailable, unknown_mailbox (missing, inaccessible, or outside the route domain's account, including platform domains), or destination_is_self / destination_loops / destination_chain_too_long"
+            "description": "validation_failed, invalid_address (malformed remoteAddress), empty_patch, destination_requires_type, posting_requires_group, no_webhook, webhook_format_unavailable, unknown_mailbox (missing, inaccessible, or outside the route domain's account, including platform domains), or destination_is_self / destination_loops / destination_chain_too_long"
           },
           "401": {
             "content": {
@@ -27437,7 +27642,6 @@
                     "type": "integer"
                   },
                   "remoteAddress": {
-                    "format": "email",
                     "type": "string"
                   },
                   "webhookFormat": {
@@ -27488,7 +27692,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_domain, domain_is_alias, invalid_pattern, pattern_limit, unknown_mailbox (missing, inaccessible, or outside the pattern domain's account, including platform domains), webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
+            "description": "validation_failed, invalid_address (malformed remoteAddress), unknown_domain, domain_is_alias, invalid_pattern, pattern_limit, unknown_mailbox (missing, inaccessible, or outside the pattern domain's account, including platform domains), webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
           },
           "401": {
             "content": {
@@ -27652,7 +27856,6 @@
                     "type": "integer"
                   },
                   "remoteAddress": {
-                    "format": "email",
                     "type": "string"
                   },
                   "webhookFormat": {
@@ -27698,7 +27901,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch, destination_requires_type, unknown_mailbox (missing, inaccessible, or outside the pattern domain's account, including platform domains), webhook_format_unavailable, invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
+            "description": "validation_failed, invalid_address (malformed remoteAddress), empty_patch, destination_requires_type, unknown_mailbox (missing, inaccessible, or outside the pattern domain's account, including platform domains), webhook_format_unavailable, invalid_alias_address, alias_target_unresolvable, destination_is_self, destination_loops, or destination_chain_too_long"
           },
           "401": {
             "content": {
@@ -38254,7 +38457,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/events": {
       "get": {
-        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.updated / label.deleted, trash.emptied, thread.merged (an arrival joined two conversations — re-list thread views, since thread ids are convergent rather than stable), and state.changed. Each frame is `{ v, type, ts, data }` with identifiers only — never message content. The vocabulary is additive: treat an unrecognized `type` as a generic 'something changed' nudge rather than an error.\n\nSignals are not a journal: there is no replay or backlog, so on every (re)connect re-sync and treat each event as 'this changed, re-fetch it'. A `state.changed` frame carries the current state token for each type (`{ Email, Mailbox, Thread, EmailDelivery }`); its `Email` value is exactly what `GET /mailboxes/{mailboxId}/messages/changes` accepts as `since`, so a client can re-sync incrementally instead of re-listing. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
+        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.updated / label.deleted, trash.emptied, thread.merged (an arrival joined two conversations — re-list thread views, since thread ids are convergent rather than stable), and state.changed. A subscriber holding a system or account key also receives identity.suspension_changed when the account owner suspends or resumes this mailbox (`{ identityId, suspended, generation, revision }`; a lower (generation, revision) never overrides a higher one). Each frame is `{ v, type, ts, data }` with identifiers only — never message content. The vocabulary is additive: treat an unrecognized `type` as a generic 'something changed' nudge rather than an error.\n\nSignals are not a journal: there is no replay or backlog, so on every (re)connect re-sync and treat each event as 'this changed, re-fetch it'. A `state.changed` frame carries the current state token for each type (`{ Email, Mailbox, Thread, EmailDelivery }`); its `Email` value is exactly what `GET /mailboxes/{mailboxId}/messages/changes` accepts as `since`, so a client can re-sync incrementally instead of re-listing. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
         "operationId": "get_MailboxEvents",
         "parameters": [
           {
@@ -39916,12 +40119,12 @@
             }
           },
           {
-            "description": "Optional idempotency key to prevent duplicate sends on network retries",
+            "description": "Optional idempotency key to prevent duplicate sends on network retries. A retry with the same id converges on the original submission instead of sending again, and is not charged against the send allowance a second time. It does not get around a sending hold: while the sender is paused or disabled the retry is refused like any submission (429 sending_paused, 403 sending_disabled), and once the hold lifts it continues at its original charge.",
             "in": "header",
             "name": "x-delivery-id",
             "required": false,
             "schema": {
-              "description": "Optional idempotency key to prevent duplicate sends on network retries",
+              "description": "Optional idempotency key to prevent duplicate sends on network retries. A retry with the same id converges on the original submission instead of sending again, and is not charged against the send allowance a second time. It does not get around a sending hold: while the sender is paused or disabled the retry is refused like any submission (429 sending_paused, 403 sending_disabled), and once the hold lifts it continues at its original charge.",
               "type": "string"
             }
           }
@@ -40175,7 +40378,7 @@
                 }
               }
             },
-            "description": "Mixed: at least one recipient failed. The array carries each address's own status and error; retry with the same X-Delivery-Id to converge only the failures"
+            "description": "Mixed: at least one recipient failed. The array carries each address's own status and error; retry with the same X-Delivery-Id to converge only the failures. A hold placed on the sender while the request runs refuses the recipients not yet handled with sending_paused (temporary) or sending_disabled (permanent); recipients already delivered or queued keep their status"
           },
           "400": {
             "content": {
@@ -40356,12 +40559,12 @@
             }
           },
           {
-            "description": "Client-provided idempotency key for this submission",
+            "description": "Client-provided idempotency key for this submission. A retry with the same id converges on the original submission instead of sending again, and is not charged against the send allowance a second time. It does not get around a sending hold: while the sender is paused or disabled the retry is refused like any submission (429 sending_paused, 403 sending_disabled), and once the hold lifts it continues at its original charge.",
             "in": "header",
             "name": "x-delivery-id",
             "required": false,
             "schema": {
-              "description": "Client-provided idempotency key for this submission",
+              "description": "Client-provided idempotency key for this submission. A retry with the same id converges on the original submission instead of sending again, and is not charged against the send allowance a second time. It does not get around a sending hold: while the sender is paused or disabled the retry is refused like any submission (429 sending_paused, 403 sending_disabled), and once the hold lifts it continues at its original charge.",
               "type": "string"
             }
           }
@@ -40514,7 +40717,7 @@
                 }
               }
             },
-            "description": "The recipient failed; the array carries the reason"
+            "description": "The recipient failed; the array carries the reason. sending_paused there is temporary (a hold landed while the request ran): retry with the same X-Delivery-Id once it lifts"
           },
           "400": {
             "content": {
@@ -50918,12 +51121,12 @@
             }
           },
           {
-            "description": "Idempotency key. Each recipient's message derives its own from this, the template and the recipient's address, so a retry converges per recipient whatever the order or subset of the list it carries, and the same key used for a different template is a different message. At most 200 characters; `#` is reserved.",
+            "description": "Idempotency key. Each recipient's message derives its own from this, the template and the recipient's address, so a retry converges per recipient whatever the order or subset of the list it carries, and the same key used for a different template is a different message. At most 200 characters; `#` is reserved. A retry does not get around a sending hold: while the sender is paused or disabled it is refused like any submission, and once the hold lifts it continues without a second charge.",
             "in": "header",
             "name": "x-delivery-id",
             "required": false,
             "schema": {
-              "description": "Idempotency key. Each recipient's message derives its own from this, the template and the recipient's address, so a retry converges per recipient whatever the order or subset of the list it carries, and the same key used for a different template is a different message. At most 200 characters; `#` is reserved.",
+              "description": "Idempotency key. Each recipient's message derives its own from this, the template and the recipient's address, so a retry converges per recipient whatever the order or subset of the list it carries, and the same key used for a different template is a different message. At most 200 characters; `#` is reserved. A retry does not get around a sending hold: while the sender is paused or disabled it is refused like any submission, and once the hold lifts it continues without a second charge.",
               "type": "string"
             }
           }
@@ -51061,7 +51264,7 @@
                 }
               }
             },
-            "description": "Mixed: at least one recipient failed. Retry with the same delivery id to converge only the failures; rows a temporary refusal stopped carry `retryAfterSeconds`, and the response carries `Retry-After`"
+            "description": "Mixed: at least one recipient failed. Retry with the same delivery id to converge only the failures; rows a temporary refusal stopped carry `retryAfterSeconds`, and the response carries `Retry-After`. A hold that lands mid-batch fails the recipient being sent with sending_paused or sending_disabled and refuses the rest"
           },
           "400": {
             "content": {
@@ -52664,1299 +52867,6 @@
           }
         },
         "summary": "List grandfathered mail-share fan-out excesses",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/directory-cutover/{kind}/scan": {
-      "post": {
-        "description": "Reads at most `limit` rows of the legacy D1 directory from where the kind's current pass stopped, records what it finds, and moves the pass on; call again until `complete`. The position is held by the server, so an interrupted pass resumes. `restart` begins a new pass; the runbook's final scan restarts every kind after the pause and before the epoch (`directory-cutover-preflight.mjs final`). A foreign_target page converts each mailbox destination whose target has a primary address in its own home to a forward to that address (decision 10), audited as a route or pattern update. Preflight closes when the directory epoch advances: from then on every page, restart and completed pass included, answers 409 transition_in_progress and leaves what the last pass recorded unchanged.",
-        "operationId": "post_SystemDirectoryCutoverScan",
-        "parameters": [
-          {
-            "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-            "in": "path",
-            "name": "kind",
-            "required": true,
-            "schema": {
-              "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-              "enum": [
-                "unowned_identity",
-                "platform_address",
-                "platform_route",
-                "foreign_target",
-                "moved_login",
-                "unsupported_identity_id",
-                "storage_fit",
-                "null_key",
-                "platform_store_on_d1"
-              ],
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "limit": {
-                    "description": "Rows to read (default 50, max 100; moved_login and platform_store_on_d1 read at most 25)",
-                    "maximum": 100,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "restart": {
-                    "description": "Begin a new pass from the start",
-                    "type": "boolean"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": false
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "complete": {
-                      "description": "The pass has walked its whole table",
-                      "type": "boolean"
-                    },
-                    "completedAt": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "converted": {
-                      "description": "Decision-10 conversions this page committed",
-                      "type": "integer"
-                    },
-                    "found": {
-                      "description": "Items this page recorded, conversions included",
-                      "type": "integer"
-                    },
-                    "kind": {
-                      "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-                      "enum": [
-                        "unowned_identity",
-                        "platform_address",
-                        "platform_route",
-                        "foreign_target",
-                        "moved_login",
-                        "unsupported_identity_id",
-                        "storage_fit",
-                        "null_key",
-                        "platform_store_on_d1"
-                      ],
-                      "type": "string"
-                    },
-                    "pass": {
-                      "description": "The kind's current pass, from 1",
-                      "type": "integer"
-                    },
-                    "startedAt": {
-                      "type": "integer"
-                    },
-                    "visited": {
-                      "description": "Rows this page read, each empty read counting one",
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "kind",
-                    "pass",
-                    "visited",
-                    "found",
-                    "converted",
-                    "complete",
-                    "startedAt",
-                    "completedAt"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The page"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "transition_in_progress: the directory epoch has advanced, so preflight is closed"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "temporary_failure (with Retry-After): a platform_store_on_d1 page asked a platform identity's store and it did not answer in time; the page committed nothing and the pass stands where it was, so retry the same request after the Retry-After window"
-          }
-        },
-        "summary": "Advance a directory cutover preflight scan by one page (system only)",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/directory-cutover/{kind}/items": {
-      "get": {
-        "description": "Keyset pages by subject over every item any pass of the kind has found, with its recorded disposition. Pass `next` back as `after` until it is null. With `undisposed=true` only the blockers the readiness report counts are listed: items the kind's current pass saw that lack a disposition.",
-        "operationId": "get_SystemDirectoryCutoverItems",
-        "parameters": [
-          {
-            "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-            "in": "path",
-            "name": "kind",
-            "required": true,
-            "schema": {
-              "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-              "enum": [
-                "unowned_identity",
-                "platform_address",
-                "platform_route",
-                "foreign_target",
-                "moved_login",
-                "unsupported_identity_id",
-                "storage_fit",
-                "null_key",
-                "platform_store_on_d1"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "The `next` of the previous page",
-            "in": "query",
-            "name": "after",
-            "required": false,
-            "schema": {
-              "description": "The `next` of the previous page",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Items per page (default 50)",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "description": "Items per page (default 50)",
-              "maximum": 100,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Only the current pass's items without a disposition",
-            "in": "query",
-            "name": "undisposed",
-            "required": false,
-            "schema": {
-              "description": "Only the current pass's items without a disposition",
-              "enum": [
-                "true",
-                "false"
-              ],
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "items": {
-                      "items": {
-                        "properties": {
-                          "accountId": {
-                            "description": "The account the item concerns; null for the platform",
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                          "current": {
-                            "description": "Seen by the kind's current pass; an item a completed pass did not see was fixed at its source",
-                            "type": "boolean"
-                          },
-                          "detail": {
-                            "additionalProperties": {},
-                            "description": "What the scan saw, per kind",
-                            "type": "object"
-                          },
-                          "disposedAt": {
-                            "type": [
-                              "integer",
-                              "null"
-                            ]
-                          },
-                          "disposedBy": {
-                            "description": "The system key that recorded the disposition; null when the scan did",
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                          "disposition": {
-                            "description": "Null until recorded; converted and a moved login's kept are recorded by the scan",
-                            "enum": [
-                              "kept",
-                              "excluded",
-                              "converted"
-                            ],
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                          "foundAt": {
-                            "type": "integer"
-                          },
-                          "kind": {
-                            "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-                            "enum": [
-                              "unowned_identity",
-                              "platform_address",
-                              "platform_route",
-                              "foreign_target",
-                              "moved_login",
-                              "unsupported_identity_id",
-                              "storage_fit",
-                              "null_key",
-                              "platform_store_on_d1"
-                            ],
-                            "type": "string"
-                          },
-                          "note": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          },
-                          "subject": {
-                            "description": "Identity id, credential id, `route:<address>` or `pattern:<id>`",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "subject",
-                          "accountId",
-                          "detail",
-                          "disposition",
-                          "note",
-                          "disposedBy",
-                          "disposedAt",
-                          "current",
-                          "foundAt"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "kind": {
-                      "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-                      "enum": [
-                        "unowned_identity",
-                        "platform_address",
-                        "platform_route",
-                        "foreign_target",
-                        "moved_login",
-                        "unsupported_identity_id",
-                        "storage_fit",
-                        "null_key",
-                        "platform_store_on_d1"
-                      ],
-                      "type": "string"
-                    },
-                    "next": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "pass": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "kind",
-                    "pass",
-                    "items",
-                    "next"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "One page of items"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          }
-        },
-        "summary": "List a kind's directory cutover preflight items (system only)",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/directory-cutover/{kind}/items/{subject}": {
-      "put": {
-        "description": "Records what the cutover does with an item as it stands: unowned_identity allows excluded (not copied), platform_address and platform_route allow kept. A foreign_target without a usable primary address is resolved at its source instead (give the target an address in its own home, or remove the route with notice to its owner) and the next pass converts or clears it; a converted route and a moved login are disposed by the scan. An unsupported_identity_id accepts no disposition either: there is no rename, so the id is resolved at its source (a live identity's mailbox deleted with purge=true; a group's persona, whose own delete answers 409 mailbox_is_group_persona, through its group's delete with DELETE /routes/{address}, which leaves it a restorable tombstone, and then that tombstone's purge; a restorable tombstone purged with POST /identities/{id}/purge; each leaving it purge-now; a live identity whose id a mailbox's teardown refuses, outside [A-Za-z0-9_-]{1,64}, so that either delete answers 500, removed by hand with every row naming it, a persona with its group's rows) or the cutover waits. Neither does a storage_fit item (the route, tap, member or forwarding identity is shortened or removed at its source, as its detail's remedy says), a null_key item (the row is given a key or deleted at its source, by its rowid) or a platform_store_on_d1 item (the platform identity is deleted with purge=true and its purge finishes, its rows a purge keeps in the three tables dropped while it is still listed for them, or it is recreated after the deploy, as its detail's remedy says). A later pass that sees the item with different facts clears the disposition. Once the directory epoch advances, preflight is closed and this answers 409 transition_in_progress, changing nothing.",
-        "operationId": "put_SystemDirectoryCutoverDisposition",
-        "parameters": [
-          {
-            "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-            "in": "path",
-            "name": "kind",
-            "required": true,
-            "schema": {
-              "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-              "enum": [
-                "unowned_identity",
-                "platform_address",
-                "platform_route",
-                "foreign_target",
-                "moved_login",
-                "unsupported_identity_id",
-                "storage_fit",
-                "null_key",
-                "platform_store_on_d1"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "The item's subject",
-            "in": "path",
-            "name": "subject",
-            "required": true,
-            "schema": {
-              "description": "The item's subject",
-              "maxLength": 512,
-              "minLength": 1,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "disposition": {
-                    "enum": [
-                      "kept",
-                      "excluded"
-                    ],
-                    "type": "string"
-                  },
-                  "note": {
-                    "description": "Why, and what the owner was told",
-                    "maxLength": 500,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "disposition",
-                  "note"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "accountId": {
-                      "description": "The account the item concerns; null for the platform",
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "current": {
-                      "description": "Seen by the kind's current pass; an item a completed pass did not see was fixed at its source",
-                      "type": "boolean"
-                    },
-                    "detail": {
-                      "additionalProperties": {},
-                      "description": "What the scan saw, per kind",
-                      "type": "object"
-                    },
-                    "disposedAt": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "disposedBy": {
-                      "description": "The system key that recorded the disposition; null when the scan did",
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "disposition": {
-                      "description": "Null until recorded; converted and a moved login's kept are recorded by the scan",
-                      "enum": [
-                        "kept",
-                        "excluded",
-                        "converted"
-                      ],
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "foundAt": {
-                      "type": "integer"
-                    },
-                    "kind": {
-                      "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-                      "enum": [
-                        "unowned_identity",
-                        "platform_address",
-                        "platform_route",
-                        "foreign_target",
-                        "moved_login",
-                        "unsupported_identity_id",
-                        "storage_fit",
-                        "null_key",
-                        "platform_store_on_d1"
-                      ],
-                      "type": "string"
-                    },
-                    "note": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "subject": {
-                      "description": "Identity id, credential id, `route:<address>` or `pattern:<id>`",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "kind",
-                    "subject",
-                    "accountId",
-                    "detail",
-                    "disposition",
-                    "note",
-                    "disposedBy",
-                    "disposedAt",
-                    "current",
-                    "foundAt"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The item with its disposition"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed, or disposition_not_allowed with the kind's `allowed` dispositions"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "not_found: no such item"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "transition_in_progress: the directory epoch has advanced, so preflight is closed"
-          }
-        },
-        "summary": "Record a directory cutover preflight item's disposition (system only)",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/directory-cutover/readiness": {
-      "get": {
-        "description": "Ready only when every kind's current pass has completed and no item that pass saw lacks a disposition; the cutover tool refuses to proceed otherwise. `undisposed` is counted up to 1,000. The report is as of each kind's last pass, and a pass is a walk, not a snapshot: the runbook's final scan restarts every kind after the pause, once in-flight work has settled, and before the epoch.",
-        "operationId": "get_SystemDirectoryCutoverReadiness",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "kinds": {
-                      "items": {
-                        "properties": {
-                          "complete": {
-                            "type": "boolean"
-                          },
-                          "completedAt": {
-                            "type": [
-                              "integer",
-                              "null"
-                            ]
-                          },
-                          "kind": {
-                            "description": "Preflight item kind: unowned_identity (a null account_id), platform_address (an account's identity whose primary address is on a platform domain), platform_route (a platform-domain route or pattern delivering into an account), foreign_target (decision 10: a mailbox destination in another home), moved_login (an address-username credential whose address now belongs to another identity or none), unsupported_identity_id (an account's identity or restorable tombstone whose id is not 26 characters of [0-9A-Z], the form an app-password envelope names; or an account's live identity in that form whose own rows hold more value bytes than the per-identity copy budget, detail reason oversized, which the copy would not read), storage_fit (a remote route, forward tap, group member or forwarding identity at an account home whose delivery edge's publication row or reverse stub would pass an account object's 2 MB row, since the object holds its address twice; subject <table>:<rowid>), null_key (a row whose one-column primary key is NULL or empty in a table the copy moves; subject <table>:<rowid>), platform_store_on_d1 (a platform identity, live or tombstoned, whose store the cutover does not migrate and the switch would strand: root D1 holds its rows in jmap_submissions, jmap_uploads or jmap_dsn_blobs, detail reason d1_rows, or its mailbox store is on a D1 backend, detail reason d1_store)",
-                            "enum": [
-                              "unowned_identity",
-                              "platform_address",
-                              "platform_route",
-                              "foreign_target",
-                              "moved_login",
-                              "unsupported_identity_id",
-                              "storage_fit",
-                              "null_key",
-                              "platform_store_on_d1"
-                            ],
-                            "type": "string"
-                          },
-                          "pass": {
-                            "type": [
-                              "integer",
-                              "null"
-                            ]
-                          },
-                          "startedAt": {
-                            "type": [
-                              "integer",
-                              "null"
-                            ]
-                          },
-                          "undisposed": {
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "pass",
-                          "complete",
-                          "startedAt",
-                          "completedAt",
-                          "undisposed"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "ready": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ready",
-                    "kinds"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Readiness per kind"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          }
-        },
-        "summary": "Get the directory cutover preflight readiness (system only)",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/directory-cutover/copy": {
-      "post": {
-        "description": "Advances the copy (§17 steps 3 to 5): each stage in order, at most `units` pages, then answers where it stands; call again until `done`. The position is the server's manifest, so a stopped or failed call resumes at the next row. Refused (`blocked`, with a `reason`) before the epoch has advanced or while the preflight is not ready, copying nothing. `until` stops after the named stage, so the copy and its verification can be run and read before the seal. A call answers `waiting` while an account's delivery-edge outbox is still sending or its identity census is still owed an identity's import report or has not yet reached the root, and `blocked` at the seal while any verification problem stands. It answers `blocked` too at a page holding an identity or restorable tombstone id the §6.1 envelope cannot name, before importing it, and at `verify:identity-ids`, the read-only census after the seals, while any problem stands; each later call stays blocked until the problem is resolved. Resolved behind an `identities` page, after the `rows:` stages were recorded, the page read again reopens every `rows:` stage, which the copy walks again before it initializes the page. A call that ran every stage answers `done` only while no problem stands, and `blocked` (with `stage` null and `problems`) otherwise; one stopped earlier by `until` answers `done` with the count.",
-        "operationId": "post_SystemDirectoryCutoverCopy",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "pageSize": {
-                    "description": "Rows per page (default 100)",
-                    "maximum": 100,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "units": {
-                    "description": "Pages to run in this call (default 50)",
-                    "maximum": 1000,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "until": {
-                    "description": "A copy stage, in order",
-                    "enum": [
-                      "accounts",
-                      "rows:domains",
-                      "rows:identities",
-                      "rows:forwarding_destinations",
-                      "rows:routes",
-                      "rows:webhook_taps",
-                      "rows:forward_taps",
-                      "rows:route_members",
-                      "rows:group_settings",
-                      "rows:route_patterns",
-                      "rows:mail_shares",
-                      "rows:pim_shares",
-                      "rows:pim_public_collections",
-                      "rows:pim_subscriptions",
-                      "rows:address_lists",
-                      "rows:address_list_entries",
-                      "rows:event_webhooks",
-                      "rows:deleted_mailboxes",
-                      "rows:teardown_intents",
-                      "rows:vec_orphans",
-                      "rows:audit_log",
-                      "rows:limit_incidents",
-                      "identities",
-                      "stores:identities",
-                      "stores:deleted",
-                      "pool:suppressions",
-                      "pool:fbl_events",
-                      "dmarc:reports",
-                      "derive:activity",
-                      "archive:audit_log",
-                      "archive:limit_incidents",
-                      "verify:accounts",
-                      "verify:stubs",
-                      "verify:identities",
-                      "verify:login",
-                      "verify:inventory",
-                      "verify:routing",
-                      "verify:suppressions",
-                      "verify:archive",
-                      "verify:dmarc",
-                      "verify:stores",
-                      "seal:identities",
-                      "seal:accounts",
-                      "seal:stores",
-                      "seal:deleted",
-                      "seal:suppressions",
-                      "seal:dmarc",
-                      "verify:identity-ids"
-                    ],
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": false
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "blocked": {
-                      "type": "boolean"
-                    },
-                    "done": {
-                      "type": "boolean"
-                    },
-                    "problems": {
-                      "type": "integer"
-                    },
-                    "reason": {
-                      "enum": [
-                        "epoch",
-                        "preflight"
-                      ],
-                      "type": "string"
-                    },
-                    "stage": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "units": {
-                      "type": "integer"
-                    },
-                    "waiting": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "done",
-                    "stage",
-                    "units"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Where the copy stands"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          }
-        },
-        "summary": "Run the directory cutover copy for a bounded number of pages (system only)",
-        "tags": [
-          "System"
-        ]
-      },
-      "get": {
-        "description": "The copy's run (its captured clock and any recorded switch), every stage in order with whether it is done, and the standing verification problems (the first 100, with their count).",
-        "operationId": "get_SystemDirectoryCutoverCopyStatus",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "problems": {
-                      "properties": {
-                        "count": {
-                          "type": "integer"
-                        },
-                        "first": {
-                          "items": {
-                            "properties": {
-                              "detail": {
-                                "type": "string"
-                              },
-                              "stage": {
-                                "type": "string"
-                              },
-                              "subject": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "stage",
-                              "subject",
-                              "detail"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        }
-                      },
-                      "required": [
-                        "count",
-                        "first"
-                      ],
-                      "type": "object"
-                    },
-                    "run": {
-                      "properties": {
-                        "capturedAt": {
-                          "type": "integer"
-                        },
-                        "deployment": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "switchedAt": {
-                          "type": [
-                            "integer",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "capturedAt",
-                        "switchedAt",
-                        "deployment"
-                      ],
-                      "type": [
-                        "object",
-                        "null"
-                      ]
-                    },
-                    "stages": {
-                      "items": {
-                        "properties": {
-                          "copied": {
-                            "type": "integer"
-                          },
-                          "done": {
-                            "type": "boolean"
-                          },
-                          "stage": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "stage",
-                          "done",
-                          "copied"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "run",
-                    "stages",
-                    "problems"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The copy's status"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          }
-        },
-        "summary": "Get the directory cutover copy's status (system only)",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/directory-cutover/switch": {
-      "post": {
-        "description": "Records the authority switch (§17 step 6) and the deployment that makes it. Refused while any derived state is incomplete: before every copy stage (the seal included) is done, while a verification problem stands, or before the epoch has advanced. Recording the same deployment again answers the same record; a different one is refused.",
-        "operationId": "post_SystemDirectoryCutoverSwitch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "deployment": {
-                    "description": "The deployment that switches DIRECTORY_AUTHORITY to objects",
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "deployment"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "deployment": {
-                      "type": "string"
-                    },
-                    "switchedAt": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "switchedAt",
-                    "deployment"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The recorded switch"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "detail": {
-                      "type": "string"
-                    },
-                    "error": {
-                      "enum": [
-                        "not_ready"
-                      ],
-                      "type": "string"
-                    },
-                    "reason": {
-                      "enum": [
-                        "no_run",
-                        "epoch",
-                        "incomplete",
-                        "problems",
-                        "switched_elsewhere"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error",
-                    "reason"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "not_ready: no_run, epoch, incomplete (the stages not done), problems (their count), or switched_elsewhere"
-          }
-        },
-        "summary": "Record the directory cutover's switch (system only)",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/directory-cutover/prune": {
-      "post": {
-        "description": "Deletes, a bounded number of pages per call, the records the copy kept only for its own verification and seal (§17 step 9): each copied identity's expected summary (directory_cutover_identity_expected) and the counts placed at each home per table (directory_cutover_expected), which grow root D1 with the fleet and which nothing reads once the switch is recorded. Each page sizes at most `pageSize` rows of one table, and at most 2 MiB of their value bytes, before it deletes them, and records its position on the server in the same write; call again until `done`. A stopped prune resumes at the recorded position, and one that is done answers done and deletes nothing. The run, the manifest's stages, the epoch, the preflight's record and the identity census stay, as do the frozen moved tables. Refused with 409 not_ready, deleting nothing: not_switched (no switch recorded), not_objects (this deployment does not answer under DIRECTORY_AUTHORITY=objects), incomplete (a copy stage is not done, named in detail) or problems (a verification problem stands, its count in detail).",
-        "operationId": "post_SystemDirectoryCutoverPrune",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "pageSize": {
-                    "description": "Rows per page (default 100)",
-                    "maximum": 100,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "units": {
-                    "description": "Pages to run in this call (default 50, max 200)",
-                    "maximum": 200,
-                    "minimum": 1,
-                    "type": "integer"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": false
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "done": {
-                      "type": "boolean"
-                    },
-                    "pruned": {
-                      "description": "Rows this call deleted",
-                      "type": "integer"
-                    },
-                    "table": {
-                      "description": "The table the next page prunes; null once done",
-                      "enum": [
-                        "directory_cutover_identity_expected",
-                        "directory_cutover_expected"
-                      ],
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "units": {
-                      "description": "Pages this call ran",
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "done",
-                    "table",
-                    "units",
-                    "pruned"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Where the prune stands"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "detail": {
-                      "type": "string"
-                    },
-                    "error": {
-                      "enum": [
-                        "not_ready"
-                      ],
-                      "type": "string"
-                    },
-                    "reason": {
-                      "enum": [
-                        "not_switched",
-                        "not_objects",
-                        "incomplete",
-                        "problems"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error",
-                    "reason"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "not_ready: not_switched, not_objects, incomplete (the stages not done) or problems (their count)"
-          }
-        },
-        "summary": "Prune the directory cutover's per-identity bookkeeping after the switch (system only)",
         "tags": [
           "System"
         ]
@@ -56113,7 +55023,7 @@
                 }
               }
             },
-            "description": "validation_failed"
+            "description": "validation_failed or invalid_domain (a domain entry that fails D3 canonicalization)"
           },
           "401": {
             "content": {
