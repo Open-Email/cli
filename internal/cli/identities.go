@@ -85,7 +85,7 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 			a.out.Emit(id, func(w io.Writer) {
 				rows := [][]string{
 					{"ID", id.ID},
-					{"Address", strOr(id.PrimaryAddress, "— (mail-less identity)")},
+					{"Address", strOr(id.PrimaryAddress, "— (none)")},
 					{"Account", strOr(id.AccountID, "—")},
 					{"Quota", fmtQuota(id.QuotaBytes)},
 					{"Created", fmtEpoch(id.CreatedAt)},

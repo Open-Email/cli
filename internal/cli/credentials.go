@@ -31,8 +31,9 @@ func newCredentialCreateCmd(a *app) *cobra.Command {
 		Short: "Create a mailbox credential: generate an app password (shown once) or set a password",
 		Long: "Create a mailbox credential. --username defaults to the mailbox's primary\n" +
 			"address; an address-shaped username must route to this mailbox, while an\n" +
-			"@-free username skips that check — how a mail-less (calendar-only) identity\n" +
-			"gets a login for DAV/JMAP clients.",
+			"@-free username skips that check — how an identity created --without-address\n" +
+			"gets a login for DAV/JMAP clients (it has no address to default to, so\n" +
+			"--username is required there).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -90,7 +91,7 @@ func newCredentialCreateCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&kind, "kind", "app-password", "app-password (generated, shown once) | password (you set it)")
-	cmd.Flags().StringVar(&username, "username", "", "login username (default: the primary address; @-free allowed for mail-less identities)")
+	cmd.Flags().StringVar(&username, "username", "", "login username (default: the primary address; required for an identity created --without-address, as a bare name with no @)")
 	cmd.Flags().StringVar(&password, "password", "", "password (kind=password; prompted if omitted on a TTY)")
 	cmd.Flags().StringVar(&name, "name", "", "human label for the credential")
 	cmd.Flags().StringVar(&expiresIn, "expires-in", "", "app-password lifetime, e.g. 12h or 30d (default: never expires)")
