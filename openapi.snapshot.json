@@ -12016,7 +12016,6 @@
                 "type": "boolean"
               },
               "to": {
-                "format": "email",
                 "maxLength": 320,
                 "type": "string"
               },
@@ -24889,6 +24888,16 @@
               "description": "Identity ULID identifier",
               "type": "string"
             }
+          },
+          {
+            "description": "A control PATCH's (suspended) idempotency key, 1 to 128 characters, unique per gesture. A retry with the same key is recognised and never written again: it answers the state as it stands (200, 202, or 409 suspension_changed if a newer opposite change won), so a lost answer or a 503 can be retried without reasserting this change over someone else's. The same key asking for the opposite value is 409 idempotency_key_reused. On a settings PATCH it is 400 idempotency_key_unsupported",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "description": "A control PATCH's (suspended) idempotency key, 1 to 128 characters, unique per gesture. A retry with the same key is recognised and never written again: it answers the state as it stands (200, 202, or 409 suspension_changed if a newer opposite change won), so a lost answer or a 503 can be retried without reasserting this change over someone else's. The same key asking for the opposite value is 409 idempotency_key_reused. On a settings PATCH it is 400 idempotency_key_unsupported",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -25011,7 +25020,7 @@
                 }
               }
             },
-            "description": "suspended was written and committed, and its enforcement is still being applied (suspensionPending true): accepted work, not a failure. Retry-After says when to poll GET; repeating the same PATCH is safe and completes the outstanding work"
+            "description": "suspended was written and committed, and its enforcement is still being applied (suspensionPending true): accepted work, not a failure. Retry-After says when to poll GET; repeating the same PATCH is safe and completes the outstanding work. Also the answer when the commit is confirmed but its current state could not be read back: the body then carries this write's own values, and GET is the authority"
           },
           "400": {
             "content": {
@@ -25021,7 +25030,7 @@
                 }
               }
             },
-            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request); control_exclusive (suspended alongside any other field); not_suspendable (a platform identity, which belongs to no account)"
+            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request); control_exclusive (suspended alongside any other field); not_suspendable (a platform identity, which belongs to no account); idempotency_key_invalid (empty or over 128 characters); idempotency_key_unsupported (an Idempotency-Key on a settings PATCH)"
           },
           "401": {
             "content": {
@@ -25061,7 +25070,7 @@
                 }
               }
             },
-            "description": "semantic_not_enabled — semanticFloor given while semantic search is off; or suspension_changed: a newer opposite suspend or resume superseded this one before it completed: the body's `mailbox` carries the current fields"
+            "description": "semantic_not_enabled — semanticFloor given while semantic search is off; or suspension_changed: a newer opposite suspend or resume superseded this one before it completed: the body's `mailbox` carries the current fields; or idempotency_key_reused: this Idempotency-Key was already used asking for the opposite value, nothing changed, use a fresh key for a new gesture"
           },
           "503": {
             "content": {
@@ -25071,7 +25080,7 @@
                 }
               }
             },
-            "description": "semantic_capacity, when every vector shard is closed to new assignment: nothing changed; Retry-After carries an hour. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing changed; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window (a send hold or its release; fields applied before it stand, and the retry converges). Or temporary_failure for suspension when the authority cannot confirm the current revision; a prior write may stand, so read current state before retrying"
+            "description": "semantic_capacity, when every vector shard is closed to new assignment: nothing changed; Retry-After carries an hour. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing changed; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window (a send hold or its release; fields applied before it stand, and the retry converges). Or temporary_failure for suspension when the authority refused the write before committing it: nothing changed; retry, with the same Idempotency-Key"
           }
         },
         "summary": "Update mailbox settings",
