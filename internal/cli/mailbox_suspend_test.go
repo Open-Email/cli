@@ -233,6 +233,63 @@ func TestMailboxSuspendSupersededJSON(t *testing.T) {
 	}
 }
 
+// A 503 may come after core committed the change, so the mailbox is read
+// back: when it holds what was asked, that is this request's outcome, done or
+// applying, and the PATCH is never sent again.
+func TestMailboxSuspendUnconfirmedReadsBackDone(t *testing.T) {
+	core := newSuspendCore(t)
+	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
+	core.gets = []map[string]any{mbJSON(1760000000, false)}
+	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0: %s", code, errOut)
+	}
+	if !strings.Contains(errOut, "Suspended mailbox 01KXRS3SHN1N35G4YETVADSN0R") || core.count("PATCH ") != 1 {
+		t.Fatalf("stderr = %q (patches %d), want the done line after one PATCH", errOut, core.count("PATCH "))
+	}
+}
+
+func TestMailboxSuspendUnconfirmedReadsBackApplying(t *testing.T) {
+	core := newSuspendCore(t)
+	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
+	core.gets = []map[string]any{mbJSON(1760000000, true)}
+	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
+	if code != exitSuspensionPending {
+		t.Fatalf("exit %d, want %d: %s", code, exitSuspensionPending, errOut)
+	}
+	if !strings.Contains(errOut, "still applying") {
+		t.Fatalf("stderr = %q, want the applying wording", errOut)
+	}
+}
+
+// Read back and NOT as asked: it may never have been written, so it is not a
+// success, and the state shown is what holds now.
+func TestMailboxSuspendUnconfirmedReadsBackOther(t *testing.T) {
+	core := newSuspendCore(t)
+	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
+	core.gets = []map[string]any{mbJSON(nil, false)}
+	out, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1: %s", code, errOut)
+	}
+	if !strings.Contains(errOut, "not confirmed") || !strings.Contains(errOut, "not suspended now") || !strings.Contains(out, "alice@acme.test") {
+		t.Fatalf("stderr = %q stdout = %q, want unconfirmed with the current mailbox", errOut, out)
+	}
+	if core.count("PATCH ") != 1 {
+		t.Fatalf("sent %d PATCHes, want exactly 1", core.count("PATCH "))
+	}
+}
+
+// Unreadable too: core's own error, as before.
+func TestMailboxSuspendUnconfirmedUnreadable(t *testing.T) {
+	core := newSuspendCore(t)
+	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
+	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
+	if code != 1 || !strings.Contains(errOut, "temporary_failure") {
+		t.Fatalf("exit %d stderr %q, want 1 with core's temporary_failure", code, errOut)
+	}
+}
+
 func TestMailboxSuspendNotEnabled(t *testing.T) {
 	core := newSuspendCore(t)
 	core.patchStatus, core.patchBody = 403, map[string]any{"error": "suspension_not_enabled"}

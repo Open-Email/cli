@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -729,7 +730,10 @@ func newMailboxSuspensionCmd(a *app, suspend bool) *cobra.Command {
 		"  applying    committed, enforcement still being applied (exit 3); --wait\n" +
 		"              polls until it is done, without sending the change again\n" +
 		"  superseded  a newer opposite suspend or resume overtook this one before it\n" +
-		"              completed; the current state is shown (exit 1)"
+		"              completed; the current state is shown (exit 1)\n\n" +
+		"If core cannot confirm the change (a 503, or no answer), the mailbox is read\n" +
+		"back and reported as it stands: done or applying when it matches, otherwise\n" +
+		"unconfirmed with the current state (exit 1). Read it before running again."
 	cmd := &cobra.Command{
 		Use:   verb + " <mailboxId>",
 		Short: short,
@@ -747,7 +751,21 @@ func newMailboxSuspensionCmd(a *app, suspend bool) *cobra.Command {
 				if mb, ok := coreapi.SupersededMailbox(err); ok {
 					return a.reportSuspensionSuperseded(id, suspend, mb)
 				}
-				return err
+				if !suspensionUncertain(ctx, err) {
+					return err
+				}
+				// Core may have committed the change before this answer (its
+				// 503 temporary_failure says a prior write may stand), so read
+				// where the mailbox stands rather than leave the caller to
+				// re-run blind. Only an unreadable state surfaces the error.
+				mb, readErr := client.GetMailbox(ctx, id)
+				if readErr != nil {
+					return err
+				}
+				if suspensionState(mb) != suspend {
+					return a.reportSuspensionUnconfirmed(id, suspend, mb, err)
+				}
+				res = &coreapi.SuspensionResult{Mailbox: *mb, Pending: mb.SuspensionPending}
 			}
 			mb := &res.Mailbox
 			if res.Pending && wait {
@@ -841,6 +859,38 @@ func (a *app) reportSuspensionSuperseded(id string, suspend bool, mb *coreapi.Ma
 		}
 	}
 	return silentExit(1)
+}
+
+// reportSuspensionUnconfirmed renders a suspend or resume that core could not
+// confirm (a 502/503/504, or no answer at all) and that the mailbox, read
+// back, does not reflect: it may not have been written, so it is not this
+// request's success, and the state shown is what holds now.
+func (a *app) reportSuspensionUnconfirmed(id string, suspend bool, mb *coreapi.Mailbox, cause error) error {
+	if a.out.JSON() {
+		a.out.Emit(map[string]any{"error": "suspension_unconfirmed", "mailbox": mb}, nil)
+	} else {
+		a.out.Msgf("%s %s of mailbox %s was not confirmed (%v); it is not %s now",
+			a.out.Red("error:"), suspensionVerb(suspend), id, cause, suspensionWord(suspend))
+		printMailbox(a.out.out, a.out, mb)
+	}
+	return silentExit(1)
+}
+
+// suspensionUncertain is whether a failed suspension PATCH may still have
+// been committed: a gateway status, or no answer at all. A refusal core
+// described (4xx) and the caller's own cancellation are certain.
+func suspensionUncertain(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	if _, ok := coreapi.AsAPIError(err); !ok {
+		return true
+	}
+	switch coreapi.Status(err) {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 func suspensionState(m *coreapi.Mailbox) bool { return m.SuspendedAt != nil }
