@@ -7073,6 +7073,18 @@
               "integer",
               "null"
             ]
+          },
+          "suspendedAt": {
+            "description": "When the account owner suspended this mailbox (epoch seconds), null when it is not suspended. While suspended its logins are refused as a wrong password is, its sending is held (429 sending_paused) and its open sessions end; it still receives mail, and its owner keys can still read and administer it. Set with PATCH {\"suspended\": true|false}",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "suspensionPending": {
+            "description": "Whether the current suspendedAt has not yet reached every core gate it must: true right after a change whose enforcement is still being applied (PATCH answered 202), false once it holds everywhere. Poll until false",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7082,6 +7094,8 @@
           "accountId",
           "createdAt",
           "sendHold",
+          "suspendedAt",
+          "suspensionPending",
           "sendMsgsPerDay",
           "sendRcptsPerDay",
           "sendMsgsPerHour",
@@ -24615,14 +24629,15 @@
             }
           },
           {
-            "description": "deleted: list restorable tombstones instead of live mailboxes",
+            "description": "deleted: list restorable tombstones instead of live mailboxes. suspended: only live mailboxes the account owner has suspended, pending ones included (one account's listing: an account key, or a system key with accountId)",
             "in": "query",
             "name": "state",
             "required": false,
             "schema": {
-              "description": "deleted: list restorable tombstones instead of live mailboxes",
+              "description": "deleted: list restorable tombstones instead of live mailboxes. suspended: only live mailboxes the account owner has suspended, pending ones included (one account's listing: an account key, or a system key with accountId)",
               "enum": [
-                "deleted"
+                "deleted",
+                "suspended"
               ],
               "type": "string"
             }
@@ -24769,7 +24784,7 @@
                 }
               }
             },
-            "description": "validation_failed"
+            "description": "validation_failed; or account_required (state=suspended from a system key without accountId)"
           },
           "401": {
             "content": {
@@ -24862,7 +24877,7 @@
         ]
       },
       "patch": {
-        "description": "Updates mailbox storage quota, primary address label, and outbound sending limits.",
+        "description": "Updates mailbox storage quota, primary address label, and outbound sending limits; or, alone in its request, suspends or resumes the mailbox (`suspended`). A suspension answers 200 once enforced everywhere core must enforce it, or 202 (with Retry-After) while that is still being applied: poll GET until suspensionPending is false.",
         "operationId": "patch_MailboxUpdate",
         "parameters": [
           {
@@ -24965,6 +24980,10 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "suspended": {
+                    "description": "Suspend (true) or resume (false) the mailbox: the account owner's control over a person's mailbox. A suspended mailbox's logins are refused as a wrong password is, its sending is held and its open sessions end; it keeps receiving mail, its credentials and settings are kept, and its owner keys still read and administer it. Must be the ONLY field of its request (400 control_exclusive otherwise). Re-sending the current value keeps suspendedAt and completes any enforcement still pending",
+                    "type": "boolean"
                   }
                 },
                 "type": "object"
@@ -24984,6 +25003,16 @@
             },
             "description": "Updated mailbox details"
           },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mailbox"
+                }
+              }
+            },
+            "description": "suspended was written and committed, and its enforcement is still being applied (suspensionPending true): accepted work, not a failure. Retry-After says when to poll GET; repeating the same PATCH is safe and completes the outstanding work"
+          },
           "400": {
             "content": {
               "application/json": {
@@ -24992,7 +25021,7 @@
                 }
               }
             },
-            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request)"
+            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request); control_exclusive (suspended alongside any other field); not_suspendable (a platform identity, which belongs to no account)"
           },
           "401": {
             "content": {
@@ -25012,7 +25041,7 @@
                 }
               }
             },
-            "description": "system_credentials_required (a send-policy field from a non-system caller); or semantic_not_enabled — semantic: true, or semanticFloor, without the account's plan gate. Every semantic refusal is decided BEFORE any other field is written"
+            "description": "system_credentials_required (a send-policy field from a non-system caller); or semantic_not_enabled — semantic: true, or semanticFloor, without the account's plan gate. Every semantic refusal is decided BEFORE any other field is written; or suspension_not_enabled (suspended from an account key while this deployment has not enabled owner suspension)"
           },
           "404": {
             "content": {
@@ -25032,7 +25061,7 @@
                 }
               }
             },
-            "description": "semantic_not_enabled — semanticFloor given while semantic search is off"
+            "description": "semantic_not_enabled — semanticFloor given while semantic search is off; or suspension_changed: a newer opposite suspend or resume superseded this one before it completed: the body's `mailbox` carries the current fields"
           },
           "503": {
             "content": {
@@ -25042,7 +25071,7 @@
                 }
               }
             },
-            "description": "semantic_capacity, when every vector shard is closed to new assignment: nothing changed; Retry-After carries an hour. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing changed; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window (a send hold or its release; fields applied before it stand, and the retry converges)"
+            "description": "semantic_capacity, when every vector shard is closed to new assignment: nothing changed; Retry-After carries an hour. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing changed; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window (a send hold or its release; fields applied before it stand, and the retry converges). Or temporary_failure for suspension when the authority cannot confirm the current revision; a prior write may stand, so read current state before retrying"
           }
         },
         "summary": "Update mailbox settings",
