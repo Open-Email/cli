@@ -2,6 +2,8 @@ package coreapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -210,17 +212,21 @@ type SuspensionResult struct {
 // /identities/:id with `suspended` as the ONLY field, since core refuses it
 // beside anything else (400 control_exclusive).
 //
-// Not retried. Repeating the same PATCH is safe at core, but an automatic
-// repeat after a newer opposite change would reassert a stale intent, which
-// the design forbids; the caller polls GET instead. A newer opposite change
-// that superseded this one is the error 409 suspension_changed, whose current
-// state SupersededMailbox reads back.
+// One Idempotency-Key per call (core's suspension design D9), minted here so
+// every attempt of the client's retry ladder presents the same gesture: core
+// recognises a repeat and never writes it twice, which is what makes a
+// 502/503/504 or a dropped connection safe to retry. A retry that lands after
+// someone else's opposite change is answered as the state that stands (409
+// suspension_changed, read back by SupersededMailbox), never reasserted. A
+// second call is a new gesture with a new key.
 func (c *Client) SetMailboxSuspended(ctx context.Context, mailboxID string, suspended bool) (*SuspensionResult, error) {
 	r := request{
 		method:      http.MethodPatch,
 		path:        "/identities/" + escapeSegment(mailboxID),
 		body:        mustJSON(map[string]bool{"suspended": suspended}),
 		contentType: "application/json",
+		headers:     map[string]string{"Idempotency-Key": newIdempotencyKey()},
+		idempotent:  true,
 	}
 	resp, err := c.do(ctx, r)
 	if err != nil {
@@ -259,6 +265,16 @@ func SupersededMailbox(err error) (*Mailbox, bool) {
 		return nil, true
 	}
 	return body.Mailbox, true
+}
+
+// newIdempotencyKey mints one gesture's key: 128 random bits as hex, well
+// inside core's 128-character cap and never guessable.
+func newIdempotencyKey() string {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		panic(fmt.Sprintf("coreapi: idempotency key: %v", err))
+	}
+	return hex.EncodeToString(buf[:])
 }
 
 // parseRetryAfterSeconds reads a delta-seconds Retry-After; anything else

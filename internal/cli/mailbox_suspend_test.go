@@ -22,9 +22,13 @@ type suspendCore struct {
 	query []string
 
 	patchStatus int
-	patchBody   any
-	gets        []map[string]any // served in order; the last repeats
-	list        map[string]any
+	// patchStatuses, when set, answers the PATCHes in order (the last repeats)
+	// instead of patchStatus: how a retry ladder sees a 503 clear.
+	patchStatuses []int
+	keys          []string // the Idempotency-Key of each PATCH, in order
+	patchBody     any
+	gets          []map[string]any // served in order; the last repeats
+	list          map[string]any
 }
 
 func newSuspendCore(t *testing.T) *suspendCore {
@@ -41,10 +45,18 @@ func newSuspendCore(t *testing.T) *suspendCore {
 			var body map[string]any
 			_ = json.Unmarshal(raw, &body)
 			f.patch = append(f.patch, body)
-			if f.patchStatus == http.StatusAccepted {
+			f.keys = append(f.keys, r.Header.Get("Idempotency-Key"))
+			status := f.patchStatus
+			if len(f.patchStatuses) > 0 {
+				status = f.patchStatuses[0]
+				if len(f.patchStatuses) > 1 {
+					f.patchStatuses = f.patchStatuses[1:]
+				}
+			}
+			if status == http.StatusAccepted {
 				w.Header().Set("Retry-After", "5")
 			}
-			w.WriteHeader(f.patchStatus)
+			w.WriteHeader(status)
 			_ = json.NewEncoder(w).Encode(f.patchBody)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/mailboxes/01KXRS3SHN1N35G4YETVADSN0R":
 			if len(f.gets) == 0 {
@@ -233,60 +245,54 @@ func TestMailboxSuspendSupersededJSON(t *testing.T) {
 	}
 }
 
-// A 503 may come after core committed the change, so the mailbox is read
-// back: when it holds what was asked, that is this request's outcome, done or
-// applying, and the PATCH is never sent again.
-func TestMailboxSuspendUnconfirmedReadsBackDone(t *testing.T) {
+// One gesture, one Idempotency-Key (core's suspension design D9): a 503 is
+// retried with the SAME key, so core recognises the repeat and never writes
+// it twice, and the run reports the answer the retry got.
+func TestMailboxSuspendRetriesWithTheSameKey(t *testing.T) {
 	core := newSuspendCore(t)
-	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
-	core.gets = []map[string]any{mbJSON(1760000000, false)}
+	core.patchStatuses, core.patchBody = []int{503, 200}, mbJSON(1760000000, false)
 	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "Suspended mailbox 01KXRS3SHN1N35G4YETVADSN0R") || core.count("PATCH ") != 1 {
-		t.Fatalf("stderr = %q (patches %d), want the done line after one PATCH", errOut, core.count("PATCH "))
+	if len(core.keys) != 2 || core.keys[0] == "" || core.keys[0] != core.keys[1] {
+		t.Fatalf("keys = %q, want two PATCHes carrying one non-empty key", core.keys)
+	}
+	if !strings.Contains(errOut, "Suspended mailbox 01KXRS3SHN1N35G4YETVADSN0R") {
+		t.Fatalf("stderr = %q, want the done line from the retry", errOut)
 	}
 }
 
-func TestMailboxSuspendUnconfirmedReadsBackApplying(t *testing.T) {
+// Two runs are two gestures: each mints its own key, so the second cannot be
+// mistaken for a replay of the first.
+func TestMailboxSuspendEachRunMintsItsOwnKey(t *testing.T) {
 	core := newSuspendCore(t)
-	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
-	core.gets = []map[string]any{mbJSON(1760000000, true)}
-	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
-	if code != exitSuspensionPending {
-		t.Fatalf("exit %d, want %d: %s", code, exitSuspensionPending, errOut)
-	}
-	if !strings.Contains(errOut, "still applying") {
-		t.Fatalf("stderr = %q, want the applying wording", errOut)
+	core.patchStatus, core.patchBody = 200, mbJSON(1760000000, false)
+	runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
+	runCLI(t, core.srv.URL, "mailboxes", "resume", "01KXRS3SHN1N35G4YETVADSN0R")
+	if len(core.keys) != 2 || core.keys[0] == "" || core.keys[1] == "" || core.keys[0] == core.keys[1] {
+		t.Fatalf("keys = %q, want two distinct non-empty keys", core.keys)
 	}
 }
 
-// Read back and NOT as asked: it may never have been written, so it is not a
-// success, and the state shown is what holds now.
-func TestMailboxSuspendUnconfirmedReadsBackOther(t *testing.T) {
+// Retries exhausted: core's own refusal, after every attempt carried the key.
+func TestMailboxSuspendExhaustedRetriesSurfaceCoreError(t *testing.T) {
 	core := newSuspendCore(t)
-	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
-	core.gets = []map[string]any{mbJSON(nil, false)}
-	out, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
-	if code != 1 {
-		t.Fatalf("exit %d, want 1: %s", code, errOut)
-	}
-	if !strings.Contains(errOut, "not confirmed") || !strings.Contains(errOut, "not suspended now") || !strings.Contains(out, "alice@acme.test") {
-		t.Fatalf("stderr = %q stdout = %q, want unconfirmed with the current mailbox", errOut, out)
-	}
-	if core.count("PATCH ") != 1 {
-		t.Fatalf("sent %d PATCHes, want exactly 1", core.count("PATCH "))
-	}
-}
-
-// Unreadable too: core's own error, as before.
-func TestMailboxSuspendUnconfirmedUnreadable(t *testing.T) {
-	core := newSuspendCore(t)
-	core.patchStatus, core.patchBody = 503, map[string]any{"error": "temporary_failure"}
+	core.patchStatuses, core.patchBody = []int{503}, map[string]any{"error": "temporary_failure"}
 	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "suspend", "01KXRS3SHN1N35G4YETVADSN0R")
 	if code != 1 || !strings.Contains(errOut, "temporary_failure") {
 		t.Fatalf("exit %d stderr %q, want 1 with core's temporary_failure", code, errOut)
+	}
+	if len(core.keys) < 2 {
+		t.Fatalf("sent %d PATCHes, want the retry ladder to have run", len(core.keys))
+	}
+	for _, k := range core.keys[1:] {
+		if k != core.keys[0] {
+			t.Fatalf("keys = %q, want one key on every attempt", core.keys)
+		}
+	}
+	if n := core.count("GET /api/v1/mailboxes/"); n != 0 {
+		t.Fatalf("read the mailbox back %d times; the keyed retry replaces the read-back", n)
 	}
 }
 
