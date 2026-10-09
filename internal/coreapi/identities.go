@@ -35,6 +35,10 @@ type Identity struct {
 	// this identity's mail store. The Identity component composes Mailbox, so
 	// this field is always present.
 	Semantic bool `json:"semantic"`
+	// SuspendedAt and SuspensionPending: see Mailbox's copies, the owner's
+	// suspension and whether its enforcement is still being applied.
+	SuspendedAt       *int64 `json:"suspendedAt"`
+	SuspensionPending bool   `json:"suspensionPending"`
 	// ActivityDay is the object directory's lifetime dormancy day for this
 	// identity: UTC YYYY-MM-DD, or null for no recorded activity (the bearer's
 	// own identity included). OMITTED, not null, for a grant holder reading a

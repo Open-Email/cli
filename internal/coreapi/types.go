@@ -277,6 +277,15 @@ type Mailbox struct {
 	// "not applicable" are different answers and collapsing them would report
 	// full coverage for a mailbox that has none. GET-only alongside the stats.
 	SemanticFloor *int64 `json:"semanticFloor,omitempty"`
+	// SuspendedAt is when the account OWNER suspended this mailbox (epoch
+	// seconds), nil while it is not suspended. A suspended mailbox's logins are
+	// refused, its sending is held and its sessions end; it still receives mail.
+	// Owner state, distinct from the operator's SendHold.
+	SuspendedAt *int64 `json:"suspendedAt"`
+	// SuspensionPending is true while the current suspendedAt (set or cleared)
+	// has not yet reached every gate core enforces it at: the PATCH answered
+	// 202, and GET reports false once it holds everywhere.
+	SuspensionPending bool `json:"suspensionPending"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`

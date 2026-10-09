@@ -28,6 +28,8 @@ func newMailboxesCmd(a *app) *cobra.Command {
 		newMailboxDeleteCmd(a),
 		newMailboxRestoreCmd(a),
 		newMailboxPurgeCmd(a),
+		newMailboxSuspendCmd(a),
+		newMailboxResumeCmd(a),
 		newMailboxUseCmd(a),
 		newMailboxSendUsageCmd(a),
 		newMailboxSharesCmd(a),
@@ -124,17 +126,28 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 
 func newMailboxListCmd(a *app) *cobra.Command {
 	var (
-		deleted bool
-		all     bool
-		limit   int
-		cursor  string
+		deleted   bool
+		suspended bool
+		account   string
+		all       bool
+		limit     int
+		cursor    string
 	)
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List mailboxes (or restorable tombstones with --deleted)",
+		Short:   "List mailboxes (or restorable tombstones with --deleted, suspended ones with --suspended)",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if deleted && suspended {
+				return usageError(errors.New("--deleted and --suspended are different listings; pass one"))
+			}
+			// Core reads accountId on the suspended listing, which is one
+			// account's by construction; elsewhere it would be a filter this
+			// command has never sent, so it is refused rather than half-applied.
+			if cmd.Flags().Changed("account") && !suspended {
+				return usageError(errors.New("--account goes with --suspended (the account whose suspended mailboxes to list)"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -145,15 +158,21 @@ func newMailboxListCmd(a *app) *cobra.Command {
 				return a.listDeletedMailboxes(ctx, client, all, limit, cursor)
 			}
 
+			list := client.ListMailboxes
+			if suspended {
+				list = func(ctx context.Context, limit int, cur string) (coreapi.Page[coreapi.Mailbox], error) {
+					return client.ListSuspendedMailboxes(ctx, account, limit, cur)
+				}
+			}
 			var items []coreapi.Mailbox
 			next := ""
 			if all {
 				items, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.Mailbox], error) {
-					return client.ListMailboxes(ctx, limit, cur)
+					return list(ctx, limit, cur)
 				})
 			} else {
 				var page coreapi.Page[coreapi.Mailbox]
-				page, err = client.ListMailboxes(ctx, limit, cursor)
+				page, err = list(ctx, limit, cursor)
 				items, next = page.Items, page.NextCursor
 			}
 			if err != nil {
@@ -179,12 +198,17 @@ func newMailboxListCmd(a *app) *cobra.Command {
 					case "paused":
 						address += "  [PAUSED]"
 					}
+					// The owner's suspension is a column, unlike the operator's
+					// hold above: it is the owner's own lever, so "which of mine
+					// are off, and since when" is a routine question here rather
+					// than an incident's exception (the design's §VII).
 					rows = append(rows, []string{
 						m.ID, address, fmtQuota(m.QuotaBytes),
 						strOr(m.AccountID, "—"), fmtEpoch(m.CreatedAt),
+						fmtSuspension(&m),
 					})
 				}
-				printTable(w, a.out, []string{"ID", "ADDRESS", "QUOTA", "ACCOUNT", "CREATED"}, rows)
+				printTable(w, a.out, []string{"ID", "ADDRESS", "QUOTA", "ACCOUNT", "CREATED", "SUSPENDED"}, rows)
 				if next != "" {
 					a.out.Msgf("more results — pass --cursor %s (or --all)", next)
 				}
@@ -193,6 +217,8 @@ func newMailboxListCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&deleted, "deleted", false, "list restorable deleted mailboxes instead")
+	cmd.Flags().BoolVar(&suspended, "suspended", false, "list only mailboxes the account owner has suspended (still-applying ones included)")
+	cmd.Flags().StringVar(&account, "account", "", "with --suspended: the account to list (system keys must name one)")
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
 	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–200)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous page")
@@ -608,6 +634,11 @@ func printMailbox(w io.Writer, p *Printer, m *coreapi.Mailbox) {
 		{"Created", fmtEpoch(m.CreatedAt)},
 		{"Sending", fmtSendState(m.SendHold)},
 	}
+	// Shown only when there is something to say, like the caps below: a
+	// suspension, or a resume whose enforcement is still being applied.
+	if m.SuspendedAt != nil || m.SuspensionPending {
+		rows = append(rows, []string{"Suspended", fmtSuspension(m)})
+	}
 	// The caps are shown only when this mailbox overrides them. On the common
 	// mailbox both read "platform default", which is two rows of noise saying
 	// nothing — and would bury the Sending row that does say something.
@@ -654,5 +685,195 @@ func fmtSemanticFloor(floor *int64) string {
 		return "on, all mail indexed"
 	default:
 		return "on, indexed from " + fmtEpoch(*floor)
+	}
+}
+
+// exitSuspensionPending is the exit code of a suspend or resume that core
+// committed but has not yet enforced everywhere (its 202). Not 0, because a
+// script reading 0 as "this mailbox can no longer log in" would be wrong for
+// a few seconds; not 1, because nothing failed and re-running is not the fix.
+const exitSuspensionPending = 3
+
+// suspensionPollDelay maps the interval core asked for to the one actually
+// slept between `--wait` polls. A seam for tests, which cannot spend core's
+// five seconds per poll.
+var suspensionPollDelay = func(d time.Duration) time.Duration { return d }
+
+// newMailboxSuspendCmd and newMailboxResumeCmd are the account owner's
+// suspension control. Each sends ONLY `suspended`: core refuses it beside any
+// other field (400 control_exclusive), so the pending and superseded outcomes
+// always describe this one change.
+func newMailboxSuspendCmd(a *app) *cobra.Command {
+	return newMailboxSuspensionCmd(a, true)
+}
+
+func newMailboxResumeCmd(a *app) *cobra.Command {
+	return newMailboxSuspensionCmd(a, false)
+}
+
+func newMailboxSuspensionCmd(a *app, suspend bool) *cobra.Command {
+	var wait bool
+	var waitTimeout time.Duration
+	verb, short, long := "resume", "Resume a suspended mailbox", "Lift the account owner's suspension of a mailbox: its logins and sending work\n"+
+		"again. Credentials and settings were kept while it was suspended, so nothing\n"+
+		"needs re-issuing."
+	if suspend {
+		verb, short, long = "suspend", "Suspend a mailbox (logins refused, sending held, sessions ended)", "Suspend a mailbox as its account owner. Its logins are refused as a wrong\n"+
+			"password is, its sending is held and its open sessions end. It keeps\n"+
+			"receiving mail, its credentials and settings are kept, and account keys\n"+
+			"still read and administer it. Undo with `openemail mailboxes resume <id>`."
+	}
+	long += "\n\n" +
+		"Core answers in one of three ways, each reported as itself:\n" +
+		"  done        enforced everywhere (exit 0)\n" +
+		"  applying    committed, enforcement still being applied (exit 3); --wait\n" +
+		"              polls until it is done, without sending the change again\n" +
+		"  superseded  a newer opposite suspend or resume overtook this one before it\n" +
+		"              completed; the current state is shown (exit 1)\n\n" +
+		"Each run is one gesture with its own Idempotency-Key, so a 503 or a dropped\n" +
+		"connection is retried with the same key and core never applies it twice; a\n" +
+		"retry overtaken by a newer opposite change is reported as superseded."
+	cmd := &cobra.Command{
+		Use:   verb + " <mailboxId>",
+		Short: short,
+		Long:  long,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			id := args[0]
+			res, err := client.SetMailboxSuspended(ctx, id, suspend)
+			if err != nil {
+				if mb, ok := coreapi.SupersededMailbox(err); ok {
+					return a.reportSuspensionSuperseded(id, suspend, mb)
+				}
+				return err
+			}
+			mb := &res.Mailbox
+			if res.Pending && wait {
+				mb, err = a.waitSuspensionApplied(ctx, client, id, suspend, res.RetryAfter, waitTimeout)
+				if err != nil {
+					return err
+				}
+				// The wait can watch a newer opposite change land: that is the
+				// 409's outcome reached by reading, and is reported as one.
+				if suspensionState(mb) != suspend {
+					return a.reportSuspensionSuperseded(id, suspend, mb)
+				}
+			}
+			a.out.Emit(mb, func(w io.Writer) {
+				switch {
+				case mb.SuspensionPending:
+					a.out.Warnf("%s accepted, still applying: mailbox %s is %s but not yet enforced everywhere", verb, id, suspensionWord(suspend))
+				case suspend:
+					a.out.Successf("Suspended mailbox %s", id)
+				default:
+					a.out.Successf("Resumed mailbox %s", id)
+				}
+				printMailbox(w, a.out, mb)
+				if mb.SuspensionPending {
+					if wait {
+						a.out.Msgf("still applying after %s; check again with `openemail mailboxes get %s`", waitTimeout, id)
+					} else {
+						a.out.Msgf("check with `openemail mailboxes get %s`, or pass --wait to poll until it is done", id)
+					}
+				}
+			})
+			if mb.SuspensionPending {
+				return silentExit(exitSuspensionPending)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&wait, "wait", false, "if core answers \"still applying\", poll the mailbox until it is enforced (never re-sends the change)")
+	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 2*time.Minute, "how long --wait polls before giving up (exit 3, still applying)")
+	return cmd
+}
+
+// waitSuspensionApplied polls GET until suspensionPending clears, the
+// deadline passes, or the state turns opposite to what was asked (a newer
+// change). It only ever READS: the design forbids automatic polling from
+// reasserting an old intent, which a re-sent PATCH after someone else's
+// opposite change would do. Returns the last mailbox read.
+func (a *app) waitSuspensionApplied(ctx context.Context, client *coreapi.Client, id string, suspend bool, retryAfter, timeout time.Duration) (*coreapi.Mailbox, error) {
+	interval := retryAfter
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	if !a.out.JSON() {
+		a.out.Msgf("accepted, still applying; waiting for mailbox %s to be %s everywhere...", id, suspensionWord(suspend))
+	}
+	for {
+		delay := suspensionPollDelay(interval)
+		if remaining := time.Until(deadline); delay > remaining {
+			delay = remaining
+		}
+		if delay > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		mb, err := client.GetMailbox(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if !mb.SuspensionPending || suspensionState(mb) != suspend || !time.Now().Before(deadline) {
+			return mb, nil
+		}
+	}
+}
+
+// reportSuspensionSuperseded renders the 409 suspension_changed: this change
+// did NOT take effect as asked, because a newer opposite one overtook it. The
+// current state is what the user needs next, so it is shown rather than
+// core's bare code.
+func (a *app) reportSuspensionSuperseded(id string, suspend bool, mb *coreapi.Mailbox) error {
+	if a.out.JSON() {
+		a.out.Emit(map[string]any{"error": "suspension_changed", "mailbox": mb}, nil)
+	} else {
+		a.out.Msgf("%s %s of mailbox %s was superseded: a newer %s changed it before this one completed",
+			a.out.Red("error:"), suspensionVerb(suspend), id, suspensionVerb(!suspend))
+		if mb != nil {
+			printMailbox(a.out.out, a.out, mb)
+		}
+	}
+	return silentExit(1)
+}
+
+func suspensionState(m *coreapi.Mailbox) bool { return m.SuspendedAt != nil }
+
+func suspensionWord(suspend bool) string {
+	if suspend {
+		return "suspended"
+	}
+	return "resumed"
+}
+
+func suspensionVerb(suspend bool) string {
+	if suspend {
+		return "suspend"
+	}
+	return "resume"
+}
+
+// fmtSuspension is the SUSPENDED cell and the Suspended row: since when, and
+// whether that is enforced yet. A resume still applying has no timestamp left
+// to show, so it says what is happening instead of reading as never suspended.
+func fmtSuspension(m *coreapi.Mailbox) string {
+	switch {
+	case m.SuspendedAt != nil && m.SuspensionPending:
+		return fmtEpoch(*m.SuspendedAt) + " (applying)"
+	case m.SuspendedAt != nil:
+		return fmtEpoch(*m.SuspendedAt)
+	case m.SuspensionPending:
+		return "resuming (applying)"
+	default:
+		return "no"
 	}
 }
