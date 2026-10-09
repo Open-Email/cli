@@ -57,28 +57,33 @@ func TestMailboxCreateSendsTheAddress(t *testing.T) {
 	if len(core.bodies) != 1 {
 		t.Fatalf("want one create, got %v", core.paths)
 	}
-	if got := core.bodies[0]; got["primaryAddress"] != "alice@acme.test" || got["pimOnly"] != nil {
-		t.Fatalf("body = %v, want primaryAddress and no pimOnly", got)
+	if got := core.bodies[0]; got["primaryAddress"] != "alice@acme.test" || got["withoutAddress"] != nil || got["pimOnly"] != nil {
+		t.Fatalf("body = %v, want primaryAddress and no withoutAddress", got)
 	}
 }
 
-func TestMailboxCreatePimOnlySendsNoAddress(t *testing.T) {
+func TestMailboxCreateWithoutAddressSendsNoAddress(t *testing.T) {
 	core := newCreateCore(t)
-	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "create", "--pim-only")
+	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "create", "--without-address")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
 	if len(core.bodies) != 1 {
 		t.Fatalf("want one create, got %v", core.paths)
 	}
-	if got := core.bodies[0]; got["pimOnly"] != true || got["primaryAddress"] != nil {
-		t.Fatalf("body = %v, want pimOnly true and no primaryAddress", got)
+	if got := core.bodies[0]; got["withoutAddress"] != true || got["primaryAddress"] != nil || got["pimOnly"] != nil {
+		t.Fatalf("body = %v, want withoutAddress true, no primaryAddress, and not the pre-#140 pimOnly", got)
+	}
+	// The create is not the whole job for this shape: nothing can sign in until
+	// a credential names a username, so the CLI says how.
+	if !strings.Contains(errOut, "openemail credentials create MB1 --username") {
+		t.Fatalf("stderr %q does not point at the credential mint", errOut)
 	}
 }
 
 // Core refuses both shapes with 400; the CLI names the flags instead, and
 // never sends the request.
-func TestMailboxCreateTakesExactlyOneOfAddressAndPimOnly(t *testing.T) {
+func TestMailboxCreateTakesExactlyOneOfAddressAndWithoutAddress(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -86,7 +91,7 @@ func TestMailboxCreateTakesExactlyOneOfAddressAndPimOnly(t *testing.T) {
 	}{
 		{"neither", []string{"mailboxes", "create"}, "--address is required"},
 		{"empty address", []string{"mailboxes", "create", "--address", " "}, "--address is required"},
-		{"both", []string{"mailboxes", "create", "--pim-only", "--address", "alice@acme.test"}, "--pim-only takes no --address"},
+		{"both", []string{"mailboxes", "create", "--without-address", "--address", "alice@acme.test"}, "--without-address takes no --address"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			core := newCreateCore(t)
