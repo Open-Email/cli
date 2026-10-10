@@ -69,19 +69,19 @@ func newMailboxUseCmd(a *app) *cobra.Command {
 
 func newMailboxCreateCmd(a *app) *cobra.Command {
 	var address, quota, account string
-	var pimOnly bool
+	var withoutAddress bool
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a mailbox",
+		Short: "Create an identity: with an address (a mailbox), or --without-address (calendars and contacts)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Core takes exactly one of the two, so say which before asking it.
 			hasAddress := strings.TrimSpace(address) != ""
 			switch {
-			case pimOnly && hasAddress:
-				return usageError(errors.New("--pim-only takes no --address: a PIM-only identity has calendars and contacts and no email address"))
-			case !pimOnly && !hasAddress:
-				return usageError(errors.New("--address is required (or --pim-only for an identity with calendars and contacts and no email address)"))
+			case withoutAddress && hasAddress:
+				return usageError(errors.New("--without-address takes no --address: drop one of the two"))
+			case !withoutAddress && !hasAddress:
+				return usageError(errors.New("--address is required (or --without-address for an identity with calendars and contacts and no email address)"))
 			}
 			client, err := a.authedClient()
 			if err != nil {
@@ -91,8 +91,8 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 			if hasAddress {
 				in.PrimaryAddress = &address
 			}
-			if pimOnly {
-				in.PimOnly = &pimOnly
+			if withoutAddress {
+				in.WithoutAddress = &withoutAddress
 			}
 			if cmd.Flags().Changed("quota") {
 				v, isNull, perr := parseQuotaFlag(quota)
@@ -111,14 +111,23 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 				return err
 			}
 			a.out.Emit(mb, func(w io.Writer) {
-				a.out.Successf("Created mailbox %s", mb.ID)
+				if withoutAddress {
+					a.out.Successf("Created identity %s (no address)", mb.ID)
+				} else {
+					a.out.Successf("Created mailbox %s", mb.ID)
+				}
 				printMailbox(w, a.out, mb)
+				// The create is not the whole job for this shape: there is no
+				// address for a login to default to, so nothing can sign in yet.
+				if withoutAddress {
+					a.out.Msgf("No login yet. Give it one with:\n  openemail credentials create %s --username <name>", mb.ID)
+				}
 			})
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&address, "address", "", "claim this address: the route is created atomically with the mailbox, which receives mail immediately (address_taken if already routed); required unless --pim-only")
-	cmd.Flags().BoolVar(&pimOnly, "pim-only", false, "create an identity with calendars and contacts and no email address (takes no --address)")
+	cmd.Flags().StringVar(&address, "address", "", "claim this address: the route is created atomically with the mailbox, which receives mail immediately (address_taken if already routed); required unless --without-address")
+	cmd.Flags().BoolVar(&withoutAddress, "without-address", false, "create an identity with calendars and contacts and no email address (takes no --address); it has no login until `credentials create --username` names one, and routing an address to it later makes it receive mail")
 	cmd.Flags().StringVar(&quota, "quota", "", "quota in bytes, or 'unlimited'")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system callers only)")
 	return cmd

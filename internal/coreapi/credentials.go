@@ -56,7 +56,7 @@ type CreatedCredential struct {
 // CredentialCreateInput is the POST body. Kind is "password" (requires Password)
 // or "app_password" (generated). Username defaults to the mailbox primary
 // address; an @-free username is allowed and skips the address-ownership check —
-// how a mail-less (calendar-only) identity gets a login. An address-shaped
+// how an identity created without an address gets a login. An address-shaped
 // username must route to this mailbox.
 type CredentialCreateInput struct {
 	Kind     string  `json:"kind"`

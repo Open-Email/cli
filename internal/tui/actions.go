@@ -175,10 +175,10 @@ func mailboxLabel(m *coreapi.Mailbox) string {
 
 func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox) pane {
 	var address, quota string
-	var pimOnly bool
+	var withoutAddress bool
 	origAddress, origQuota := "", ""
 	title := "New mailbox"
-	addrDesc := "required unless PIM only — claims the address: route + primary label are created atomically (409 address_taken if routed elsewhere)"
+	addrDesc := "required unless Without address — claims the address: route + primary label are created atomically (409 address_taken if routed elsewhere)"
 	if existing != nil {
 		address = strOr(existing.PrimaryAddress, "")
 		if existing.QuotaBytes != nil {
@@ -197,9 +197,9 @@ func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox
 				Value(&quota).Validate(validBytesOrEmpty),
 		}
 		if existing == nil {
-			fields = append(fields, huh.NewConfirm().Title("PIM only").
-				Description("calendars and contacts, no email address (leave the address empty)").
-				Value(&pimOnly))
+			fields = append(fields, huh.NewConfirm().Title("Without address").
+				Description("calendars and contacts, no email address (leave the address empty); give it a login with credentials create --username").
+				Value(&withoutAddress))
 		}
 		return huh.NewForm(huh.NewGroup(fields...))
 	}
@@ -209,17 +209,17 @@ func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox
 		if existing == nil {
 			// Core takes exactly one of the two.
 			switch {
-			case pimOnly && addr != "":
-				return "", nil, errors.New("a PIM-only identity has no email address: clear the address or turn PIM only off")
-			case !pimOnly && addr == "":
-				return "", nil, errors.New("a mailbox needs a primary address (or turn PIM only on for calendars and contacts)")
+			case withoutAddress && addr != "":
+				return "", nil, errors.New("an identity without an address takes no address: clear the address or turn Without address off")
+			case !withoutAddress && addr == "":
+				return "", nil, errors.New("a mailbox needs a primary address (or turn Without address on for calendars and contacts)")
 			}
 			in := coreapi.MailboxCreateInput{}
 			if addr != "" {
 				in.PrimaryAddress = &addr
 			}
-			if pimOnly {
-				in.PimOnly = &pimOnly
+			if withoutAddress {
+				in.WithoutAddress = &withoutAddress
 			}
 			if q != "" {
 				n, err := parseBytes(q)

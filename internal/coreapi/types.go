@@ -344,12 +344,13 @@ type DeletedMailbox struct {
 // is honored only for system callers).
 type MailboxCreateInput struct {
 	PrimaryAddress *string `json:"primaryAddress,omitempty"`
-	// PimOnly creates an identity with calendars and contacts and no email
-	// address. Core takes exactly one of the two: neither is 400
-	// primary_address_required, both is 400 pim_only_has_no_address.
-	PimOnly    *bool   `json:"pimOnly,omitempty"`
-	QuotaBytes *int64  `json:"quotaBytes,omitempty"`
-	AccountID  *string `json:"accountId,omitempty"`
+	// WithoutAddress creates an identity with no email address (calendars
+	// and contacts; no login until a credential names a username). Core takes
+	// exactly one of the two: neither is 400 primary_address_required, both
+	// is 400 without_address_has_address. Spelled pimOnly before core #140.
+	WithoutAddress *bool   `json:"withoutAddress,omitempty"`
+	QuotaBytes     *int64  `json:"quotaBytes,omitempty"`
+	AccountID      *string `json:"accountId,omitempty"`
 }
 
 // MailboxDeleteResult is the DELETE /identities/:id body.

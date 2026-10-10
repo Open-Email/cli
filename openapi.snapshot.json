@@ -19524,7 +19524,7 @@
                 }
               }
             },
-            "description": "validation_failed, username_required, invalid_address (D2: an address username must be an ASCII local part on an A-label domain), invalid_username (D2: a bare username must be printable ASCII with no whitespace), username_not_mailbox_address, username_not_in_scope (a DOMAIN-SCOPED api key may only mint a credential whose username is on one of its domains, migration 0078; `domain` names the refused one), permitted_recipients_requires_send (a recipient list on a credential whose scope is not 'send'), or password_required (the mailbox's own bearer sent no currentPassword)"
+            "description": "validation_failed, username_required (the identity has no address for the username to default to, as one created withoutAddress has none: name it), invalid_address (D2: an address username must be an ASCII local part on an A-label domain), invalid_username (D2: a bare username must be printable ASCII with no whitespace), username_not_mailbox_address, username_not_in_scope (a DOMAIN-SCOPED api key may only mint a credential whose username is on one of its domains, migration 0078; `domain` names the refused one), permitted_recipients_requires_send (a recipient list on a credential whose scope is not 'send'), or password_required (the mailbox's own bearer sent no currentPassword)"
           },
           "401": {
             "content": {
@@ -24417,8 +24417,8 @@
     },
     "/api/v1/identities": {
       "post": {
-        "description": "Creates a new mailbox. When primaryAddress is provided, creates the mailbox, sets up its primary routing rule, and provisions initial labels atomically. Without one, pimOnly: true creates a PIM-only identity (calendars and contacts, no email address); a create with neither is refused 400 primary_address_required.",
-        "operationId": "post_MailboxCreate",
+        "description": "An identity is a principal in an account: it owns stores (a mail store, calendars, contacts), holds credentials, and can be shared with. It takes one of two shapes at creation.\n\n**With primaryAddress** (the common case): the address is claimed and routed to the identity atomically, the mail store is bound, and the initial labels are provisioned. The identity receives mail at once and logs in with the address as its username.\n\n**With withoutAddress: true**: no email address, so it receives no mail; its calendars and contacts work as for any identity. There is no login until a credential is minted with an explicit username (POST /api/v1/identities/{identityId}/credentials), since there is no address to default to; the username is a bare name without @. Routing an address to it later (POST /api/v1/routes, destinationType mailbox) makes it receive mail like any other identity. Until then it holds events, tasks and contacts and takes part in sharing, but not in scheduling: iCalendar names participants by mailto: address, so it can neither invite nor be invited.\n\nA create with neither is refused 400 primary_address_required; both together is 400 without_address_has_address. Stores are created on first use, not here.",
+        "operationId": "post_IdentityCreate",
         "requestBody": {
           "content": {
             "application/json": {
@@ -24435,14 +24435,6 @@
                     },
                     "type": [
                       "array",
-                      "null"
-                    ]
-                  },
-                  "pimOnly": {
-                    "default": false,
-                    "description": "Create a PIM-only identity (calendars and contacts, no email address). An identity is created WITH a primaryAddress unless this is true: a create with neither is refused 400 primary_address_required, and true with a primaryAddress is refused 400 pim_only_has_no_address, both before anything is written. Omitted or null is false. A domain-scoped api key never creates one: without an address it is refused 400 primary_address_required, pimOnly or not",
-                    "type": [
-                      "boolean",
                       "null"
                     ]
                   },
@@ -24520,6 +24512,14 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "withoutAddress": {
+                    "default": false,
+                    "description": "Create the identity with no email address, so it receives no mail; its calendars and contacts work as for any identity. An identity is created WITH a primaryAddress unless this is true: a create with neither is refused 400 primary_address_required, and true with a primaryAddress is refused 400 without_address_has_address, both before anything is written. Omitted or null is false. A domain-scoped api key never creates one: without an address it is refused 400 primary_address_required, withoutAddress or not. There is no login until a credential is minted with an explicit username, and routing an address to it later makes it receive mail like any other identity",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   }
                 },
                 "type": "object"
@@ -24537,7 +24537,7 @@
                 }
               }
             },
-            "description": "Created mailbox"
+            "description": "Created identity"
           },
           "400": {
             "content": {
@@ -24547,7 +24547,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and pimOnly not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, pimOnly or not: a bare identity would be one it could never reach again, migration 0078), or pim_only_has_no_address (pimOnly: true with a primaryAddress)"
+            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), or without_address_has_address (withoutAddress: true with a primaryAddress)"
           },
           "401": {
             "content": {
@@ -24608,14 +24608,14 @@
             "description": "semantic_capacity, when semantic: true was asked for but every vector shard is closed to new assignment: nothing was created, retry without the flag or once a shard is open. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing was created; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window"
           }
         },
-        "summary": "Create a mailbox",
+        "summary": "Create an identity",
         "tags": [
           "Mailboxes"
         ]
       },
       "get": {
         "description": "Lists mailboxes for the authenticated account. Set state=deleted to list restorable tombstones (deleted mailboxes still within the undo window). A SYSTEM caller lists every mailbox on the deployment, and may narrow to one tenant with `accountId`. Under the partitioned directory a system caller's deployment-wide listing walks the accounts in turn: its rows come account by account, its pages are bounded in work, so one may hold fewer than limit rows while more follow, and the list ends only when nextCursor is absent.",
-        "operationId": "get_MailboxList",
+        "operationId": "get_IdentityList",
         "parameters": [
           {
             "description": "System callers only: list just this account's mailboxes (ignored for account principals, which always see their own)",
@@ -24877,7 +24877,7 @@
       },
       "patch": {
         "description": "Updates mailbox storage quota, primary address label, and outbound sending limits; or, alone in its request, suspends or resumes the mailbox (`suspended`). A suspension answers 200 once enforced everywhere core must enforce it, or 202 (with Retry-After) while that is still being applied: poll GET until suspensionPending is false.",
-        "operationId": "patch_MailboxUpdate",
+        "operationId": "patch_IdentityUpdate",
         "parameters": [
           {
             "description": "Identity ULID identifier",
@@ -25090,7 +25090,7 @@
       },
       "delete": {
         "description": "Soft-deletes a mailbox with a 7-day retention window for recovery. Pass purge=true to immediately queue the mailbox for permanent deletion.",
-        "operationId": "delete_MailboxDelete",
+        "operationId": "delete_IdentityDelete",
         "parameters": [
           {
             "description": "Identity ULID identifier",
@@ -26484,7 +26484,7 @@
     "/api/v1/identities/{identityId}/restore": {
       "post": {
         "description": "Restores a soft-deleted mailbox from trash within its 7-day retention window. Re-binds the primary address if still available.",
-        "operationId": "post_MailboxRestore",
+        "operationId": "post_IdentityRestore",
         "parameters": [
           {
             "description": "Identity ULID identifier",
@@ -26568,7 +26568,7 @@
     "/api/v1/identities/{identityId}/purge": {
       "post": {
         "description": "Permanently purges a soft-deleted mailbox and queues its storage data for permanent cleanup, canceling any remaining undo window.",
-        "operationId": "post_MailboxPurge",
+        "operationId": "post_IdentityPurge",
         "parameters": [
           {
             "description": "Identity ULID identifier",
