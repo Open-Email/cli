@@ -17,6 +17,7 @@ func TestSubscriptionPIMStreamAndCancellation(t *testing.T) {
 	var mailDials, pimDials atomic.Int32
 	var optedOut atomic.Bool
 	closed := make(chan struct{}, 2)
+	mailReady := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Error("socket missing bearer")
@@ -36,8 +37,16 @@ func TestSubscriptionPIMStreamAndCancellation(t *testing.T) {
 			return
 		}
 		defer func() { conn.CloseNow(); closed <- struct{}{} }()
+		if !pim {
+			close(mailReady)
+		}
 		conn.Write(ctx, websocket.MessageText, []byte(`{"type":"ready"}`))
 		if pim {
+			select {
+			case <-mailReady:
+			case <-ctx.Done():
+				return
+			}
 			conn.Write(ctx, websocket.MessageText, []byte(`{"type":"pim.changed","data":{"ContactCard":"2"}}`))
 		}
 		conn.Read(ctx)

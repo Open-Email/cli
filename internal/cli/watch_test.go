@@ -6,9 +6,9 @@ func TestEventsURL(t *testing.T) {
 	cases := []struct {
 		api, mbx, want string
 	}{
-		{"http://localhost:8787", "01ABC", "ws://localhost:8787/api/v1/mailboxes/01ABC/events"},
-		{"https://api.open.email", "01ABC", "wss://api.open.email/api/v1/mailboxes/01ABC/events"},
-		{"http://localhost:8787/", "01ABC", "ws://localhost:8787/api/v1/mailboxes/01ABC/events"},
+		{"http://localhost:8787", "01ABC", "ws://localhost:8787/api/v1/mailboxes/01ABC/events?pim=off"},
+		{"https://api.open.email", "01ABC", "wss://api.open.email/api/v1/mailboxes/01ABC/events?pim=off"},
+		{"http://localhost:8787/", "01ABC", "ws://localhost:8787/api/v1/mailboxes/01ABC/events?pim=off"},
 	}
 	for _, c := range cases {
 		a := &app{apiURL: c.api}

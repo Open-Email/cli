@@ -78,3 +78,53 @@ func TestWatchPIMRecoversWithoutRedialingMail(t *testing.T) {
 		}
 	}
 }
+
+func TestWatchTerminalMailStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		status    int
+		code      websocket.StatusCode
+		wantError bool
+	}{
+		{"HTTP410", http.StatusGone, 0, true},
+		{"session_expired", 0, 4401, false},
+		{"identity_gone", 0, 4410, false},
+	} {
+		for _, until := range []bool{false, true} {
+			name := tc.name
+			if until {
+				name += "/until"
+			}
+			t.Run(name, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.HasSuffix(r.URL.Path, "/pim/events") {
+						w.WriteHeader(http.StatusForbidden)
+						return
+					}
+					if tc.status != 0 {
+						w.WriteHeader(tc.status)
+						return
+					}
+					conn, err := websocket.Accept(w, r, nil)
+					if err != nil {
+						return
+					}
+					defer conn.CloseNow()
+					conn.Close(tc.code, "stopping")
+				}))
+				defer srv.Close()
+				a, _, _ := newWatchTestApp(srv.URL)
+				args := []string{"--reconnect=false"}
+				if until {
+					args = append(args, "--until", "message.*")
+				}
+				err := runWatch(ctx, a, args...)
+				if (err != nil) != (tc.wantError || until) {
+					t.Fatalf("unexpected watch result: %v", err)
+				}
+			})
+		}
+	}
+}

@@ -50,6 +50,12 @@ func runWatch(ctx context.Context, a *app, args ...string) error {
 func wsServer(t *testing.T, handler func(ctx context.Context, conn *websocket.Conn)) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// These tests exercise the mail stream; the PIM-specific fixture lives
+		// in watch_pim_test.go. Do not serve mail frames on a fake PIM stream.
+		if strings.Contains(r.URL.Path, "/pim/events") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return

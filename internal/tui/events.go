@@ -3,18 +3,12 @@ package tui
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"net/http"
-	"net/url"
-	"strconv"
-	"strings"
-	"time"
 
+	"github.com/Open-Email/cli/internal/eventstream"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/coder/websocket"
 )
 
-// liveEvent is one change signal from the mailbox's events channel.
+// liveEvent is one mail or PIM change signal for the selected identity.
 type liveEvent struct {
 	paneID int64
 	typ    string
@@ -30,11 +24,8 @@ type liveState struct {
 	terminal  bool
 }
 
-// subscription tails GET /mailboxes/:id/events over WebSocket and pumps
-// liveEvent/liveState messages. The dial/reconnect discipline mirrors
-// `openemail watch` (src: internal/cli/watch.go): ping keepalive, reconnect
-// with backoff on transient drops and 4401 session expiry, stop for good on
-// deterministic 4xx. Canceling ctx ends the goroutine and closes ch.
+// subscription combines mail and PIM change signals. Each upstream reconnects
+// independently; canceling ctx closes both readers before closing ch.
 type subscription struct {
 	ch chan tea.Msg
 }
@@ -77,141 +68,39 @@ func (s *subscription) push(m tea.Msg) {
 
 func (s *subscription) run(ctx context.Context, apiURL, token, mailboxID string, paneID int64) {
 	defer close(s.ch)
-	const backoffFloor = 500 * time.Millisecond
-	backoff := backoffFloor
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		start := time.Now()
-		retryable, err := s.session(ctx, apiURL, token, mailboxID, paneID)
-		if ctx.Err() != nil {
-			return
-		}
-		if !retryable {
-			detail := "off"
-			if err != nil {
-				detail = err.Error()
+	connected := map[eventstream.Kind]bool{}
+	state := map[eventstream.Kind]string{eventstream.Mail: "connecting", eventstream.PIM: "connecting"}
+	err := eventstream.Run(ctx, eventstream.Config{APIURL: apiURL, Token: token, IdentityID: mailboxID, Reconnect: true}, func(update eventstream.Update) bool {
+		if update.Frame != nil {
+			var frame struct {
+				Type string `json:"type"`
 			}
-			s.push(liveState{paneID: paneID, detail: detail, terminal: true})
-			return
+			if json.Unmarshal(update.Frame, &frame) == nil && frame.Type != "" && frame.Type != "ready" {
+				s.push(liveEvent{paneID: paneID, typ: frame.Type})
+			}
+			return false
 		}
-		if time.Since(start) >= 30*time.Second {
-			backoff = backoffFloor // a session that stayed up is not a failure
+		connected[update.Kind] = update.Connected
+		switch {
+		case update.Connected:
+			state[update.Kind] = "live"
+		case update.Terminal:
+			state[update.Kind] = "unavailable"
+		default:
+			state[update.Kind] = "reconnecting"
 		}
-		s.push(liveState{paneID: paneID, detail: "reconnecting"})
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
+		detail := state[eventstream.Mail]
+		if !connected[eventstream.PIM] {
+			detail += "; PIM " + state[eventstream.PIM]
 		}
-		if backoff < 15*time.Second {
-			backoff *= 2
-		}
-	}
-}
-
-// session runs one WebSocket connection to completion. Returns whether a
-// reconnect is warranted.
-func (s *subscription) session(ctx context.Context, apiURL, token, mailboxID string, paneID int64) (bool, error) {
-	wsURL, err := eventsURL(apiURL, mailboxID)
-	if err != nil {
-		return false, err
-	}
-	dialCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	conn, resp, derr := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + token}},
+		s.push(liveState{paneID: paneID, connected: connected[eventstream.Mail], detail: detail})
+		return false
 	})
-	if derr != nil {
-		// Pre-accept refusals are plain HTTP statuses; deterministic 4xx must
-		// not reconnect (only 429 and transport/5xx are transient).
-		if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429 {
-			return false, errors.New(httpRefusal(resp.StatusCode))
+	if ctx.Err() == nil {
+		detail := "off"
+		if err != nil {
+			detail = err.Error()
 		}
-		return true, derr
+		s.push(liveState{paneID: paneID, detail: detail, terminal: true})
 	}
-	defer conn.CloseNow()
-
-	s.push(liveState{paneID: paneID, connected: true, detail: "live"})
-
-	// Keepalive: the channel is one-way; the client pings, the runtime answers
-	// pong without waking the DO.
-	pingCtx, pingStop := context.WithCancel(ctx)
-	defer pingStop()
-	go func() {
-		t := time.NewTicker(30 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-pingCtx.Done():
-				return
-			case <-t.C:
-				if werr := conn.Write(pingCtx, websocket.MessageText, []byte("ping")); werr != nil {
-					return
-				}
-			}
-		}
-	}()
-
-	conn.SetReadLimit(1 << 20)
-	for {
-		typ, data, rerr := conn.Read(ctx)
-		if rerr != nil {
-			switch websocket.CloseStatus(rerr) {
-			case 4401:
-				return true, nil // session expiry: re-dial promptly
-			case 4403:
-				return false, errors.New("credential revoked") // do not reconnect
-			case 4410:
-				return false, errors.New("mailbox gone")
-			}
-			return true, rerr
-		}
-		if typ != websocket.MessageText {
-			continue
-		}
-		line := strings.TrimSpace(string(data))
-		if line == "" || line == "pong" {
-			continue
-		}
-		var f struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal([]byte(line), &f) != nil || f.Type == "" || f.Type == "ready" {
-			continue // handshake or unparseable — never a change signal
-		}
-		s.push(liveEvent{paneID: paneID, typ: f.Type})
-	}
-}
-
-func httpRefusal(status int) string {
-	switch status {
-	case 401:
-		return "not authorized"
-	case 404:
-		return "mailbox not found"
-	case 410:
-		return "mailbox being deleted"
-	case 426:
-		return "upgrade refused"
-	}
-	return "refused (HTTP " + strconv.Itoa(status) + ")"
-}
-
-// eventsURL builds the ws(s):// upgrade URL for a mailbox's events channel,
-// mirroring internal/cli/watch.go's eventsURL.
-func eventsURL(apiURL, mailboxID string) (string, error) {
-	u, err := url.Parse(strings.TrimRight(apiURL, "/"))
-	if err != nil {
-		return "", err
-	}
-	switch u.Scheme {
-	case "http":
-		u.Scheme = "ws"
-	case "https":
-		u.Scheme = "wss"
-	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/mailboxes/" + mailboxID + "/events"
-	return u.String(), nil
 }
