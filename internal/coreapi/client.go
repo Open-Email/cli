@@ -234,9 +234,33 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 		return false, ae
 	})
 	if err != nil {
+		c.explainMissingMailStore(ctx, r.path, err)
 		return nil, err
 	}
 	return resp, nil
+}
+
+// A mail-route 404 alone cannot distinguish an absent store from a missing
+// resource or denied access. Confirm only through the same bearer's identity
+// read. Successes and non-mail routes pay no extra request; a failed/unknown
+// lookup preserves the original error. This never retries a rejected write.
+func (c *Client) explainMissingMailStore(ctx context.Context, path string, err error) {
+	ae, ok := asAPIError(err)
+	if !ok || ae.Status != http.StatusNotFound || ae.Code != "not_found" || !strings.HasPrefix(path, "/mailboxes/") {
+		return
+	}
+	segment, _, _ := strings.Cut(strings.TrimPrefix(path, "/mailboxes/"), "/")
+	id, decodeErr := url.PathUnescape(segment)
+	if decodeErr != nil || id == "" {
+		return
+	}
+	// This optional explanation must not extend a failed call indefinitely.
+	diagnosticCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	identity, readErr := c.GetIdentity(diagnosticCtx, id)
+	if readErr == nil && identity.Facets.Present && identity.Facets.Mail == nil {
+		ae.NoMailStore = true
+	}
 }
 
 // doJSON runs a request expecting a JSON body and decodes into out (may be nil).

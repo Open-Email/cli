@@ -2,6 +2,7 @@ package coreapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 )
 
@@ -55,8 +56,29 @@ type Identity struct {
 // binding row exists ("teardown must reach this store"); Provisioned reports
 // whether the store was actually claimed. Both keys may be absent.
 type IdentityFacets struct {
-	Mail *IdentityMailFacet `json:"mail,omitempty"`
-	Pim  *IdentityPimFacet  `json:"pim,omitempty"`
+	// Present distinguishes an authoritative facets object from an older or
+	// malformed response. Missing data is never proof of an absent mail store.
+	Present bool               `json:"-"`
+	Mail    *IdentityMailFacet `json:"mail,omitempty"`
+	Pim     *IdentityPimFacet  `json:"pim,omitempty"`
+}
+
+func (f *IdentityFacets) UnmarshalJSON(data []byte) error {
+	type plain IdentityFacets
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	decoded.Present = fields != nil
+	if mail, exists := fields["mail"]; exists && string(mail) == "null" {
+		decoded.Present = false
+	}
+	*f = IdentityFacets(decoded)
+	return nil
 }
 
 // IdentityMailFacet is the mail store's usage (live + trash tiers).

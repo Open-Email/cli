@@ -109,9 +109,13 @@ func TestDepaginateStallGuard(t *testing.T) {
 }
 
 func TestNoRetryOn4xx(t *testing.T) {
-	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&calls, 1)
+	var calls, diagnostics int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/identities/x" {
+			atomic.AddInt32(&diagnostics, 1)
+		} else {
+			atomic.AddInt32(&calls, 1)
+		}
 		w.WriteHeader(404)
 		w.Write([]byte(`{"error":"not_found"}`))
 	}))
@@ -123,6 +127,9 @@ func TestNoRetryOn4xx(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("4xx must not retry: %d attempts", got)
+	}
+	if got := atomic.LoadInt32(&diagnostics); got != 1 {
+		t.Fatalf("want one separate identity diagnostic read, got %d", got)
 	}
 }
 

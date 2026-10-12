@@ -37,6 +37,31 @@ func TestCalendarOnlyMailboxGet(t *testing.T) {
 	}
 }
 
+func TestCalendarOnlyMailboxGetRetainsBoundAndUnknownUsage(t *testing.T) {
+	for _, facets := range []string{`"facets":{"mail":{"provisioned":false}}`, `"facets":null`, `"legacy":true`} {
+		t.Run(facets, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/identities/bound" {
+					fmt.Fprintf(w, `{"id":"bound",%s}`, facets)
+					return
+				}
+				fmt.Fprint(w, `{"id":"bound","messageCount":4,"usedBytes":123}`)
+			}))
+			defer srv.Close()
+			var out bytes.Buffer
+			a := &app{apiURL: srv.URL, token: "oek_test", out: &Printer{out: &out, err: &out}}
+			cmd := newMailboxGetCmd(a)
+			cmd.SetArgs([]string{"bound"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), "Messages") || !strings.Contains(out.String(), "123 B") || strings.Contains(out.String(), "No mail store") {
+				t.Fatalf("lost existing mail usage: %s", out.String())
+			}
+		})
+	}
+}
+
 func TestCalendarOnlyDefaultMailboxRules(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/identities/pim" {
