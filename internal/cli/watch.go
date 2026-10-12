@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
-	"github.com/coder/websocket"
+	"github.com/Open-Email/cli/internal/eventstream"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +33,9 @@ func newWatchCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Tail a mailbox's live change events over WebSocket (JSON lines to stdout)",
-		Long: "Subscribe to a mailbox's live event stream and print each frame as a JSON line.\n" +
+		Long: "Subscribe to mail and PIM change streams and print each frame as a JSON line.\n" +
+			"The streams reconnect independently. A PIM store not yet provisioned is retried;\n" +
+			"a refused PIM subscription is reported while mail events continue.\n" +
 			"Events are signals only (identifiers, never content) — re-sync via the REST\n" +
 			"commands when you see one. Ctrl-C to stop.\n\n" +
 			"Conveniences:\n" +
@@ -77,51 +77,52 @@ func newWatchCmd(a *app) *cobra.Command {
 
 			a.out.Msgf("watching mailbox %s — events are signals only; re-sync via REST. Ctrl-C to stop.", mbx)
 
-			const backoffFloor = 500 * time.Millisecond
-			backoff := backoffFloor
-			for {
-				start := time.Now()
-				retryable, matched, cerr := a.watchOnce(ctx, client, mbx, opts)
-				if matched {
-					return nil // --until satisfied
+			matched := false
+			err = eventstream.Run(ctx, eventstream.Config{APIURL: a.apiURL, Token: a.token, IdentityID: mbx, Reconnect: opts.reconnect}, func(update eventstream.Update) bool {
+				if update.Frame != nil {
+					matched = a.processFrame(ctx, client, mbx, opts, update.Frame)
+					return matched
 				}
-				if ctx.Err() != nil {
-					// The watch ended because the context ended.
-					if len(opts.until) == 0 {
-						return nil // plain tail / bounded tail: Ctrl-C or deadline is a clean stop
+				if update.Err != nil {
+					if update.RetryIn > 0 {
+						a.out.Warnf("%v — reconnecting in %s", update.Err, update.RetryIn)
+					} else if update.Kind == eventstream.PIM {
+						a.out.Warnf("%v — PIM events unavailable", update.Err)
 					}
-					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-						return fmt.Errorf("timed out after %s waiting for %s", opts.timeout, strings.Join(opts.until, ", "))
-					}
-					return errors.New("watch ended without a matching event")
 				}
-				if !opts.reconnect || !retryable {
-					if cerr != nil {
-						return cerr
-					}
+				return false
+			})
+			if matched {
+				return nil
+			}
+			if ctx.Err() != nil {
+				if len(opts.until) == 0 {
+					return nil
+				}
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return fmt.Errorf("timed out after %s waiting for %s", opts.timeout, strings.Join(opts.until, ", "))
+				}
+				return errors.New("watch ended without a matching event")
+			}
+			var failure *eventstream.Failure
+			if errors.As(err, &failure) {
+				if failure.Unauthorized() {
+					return authRequired("not authorized to watch — check the credential or run `openemail login`")
+				}
+				if failure.Gone() && failure.HTTPStatus != 0 {
+					return err // a refused upgrade remains an error, including HTTP 410
+				}
+				if failure.Gone() || failure.CloseCode == 4401 {
 					if len(opts.until) > 0 {
 						return errors.New("watch ended without a matching event")
 					}
+					if failure.Gone() {
+						a.out.Msgf("identity gone — stopping")
+					}
 					return nil
 				}
-				// A session that stayed up (e.g. an expected 12h 4401 expiry) is not
-				// a failure — reset the backoff so the re-dial is prompt and only
-				// genuinely rapid, repeated failures escalate it.
-				if time.Since(start) >= 30*time.Second {
-					backoff = backoffFloor
-				}
-				if cerr != nil {
-					a.out.Warnf("connection lost (%v) — reconnecting in %s", cerr, backoff)
-				}
-				select {
-				case <-ctx.Done():
-					continue // let the ctx.Err() branch above classify the stop
-				case <-time.After(backoff):
-				}
-				if backoff < 15*time.Second {
-					backoff *= 2
-				}
 			}
+			return err
 		},
 	}
 	addMailboxFlag(cmd, a)
@@ -131,95 +132,6 @@ func newWatchCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&opts.execCmd, "exec", "", "run `sh -c <command>` per event with the frame JSON on stdin")
 	cmd.Flags().BoolVar(&opts.fetch, "fetch", false, "hydrate message.new/imported/updated/restored frames with message metadata (one REST call each)")
 	return cmd
-}
-
-// watchOnce opens one WebSocket session and streams frames until it closes or a
-// frame matches --until. Returns whether a reconnect is warranted, whether an
-// --until match ended it, and any terminal error.
-func (a *app) watchOnce(ctx context.Context, client *coreapi.Client, mbx string, opts watchOpts) (retryable, matched bool, err error) {
-	wsURL, uerr := a.eventsURL(mbx)
-	if uerr != nil {
-		return false, false, uerr
-	}
-	dialCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	conn, resp, derr := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + a.token}},
-	})
-	if derr != nil {
-		// Pre-accept refusals are plain HTTP statuses. Deterministic 4xx must NOT
-		// be retried (a bad bearer would otherwise reconnect forever); only 429 and
-		// transport/5xx are retryable.
-		if resp != nil {
-			switch resp.StatusCode {
-			case 401:
-				return false, false, authRequired("not authorized to watch this mailbox — check the credential or run `openemail login`")
-			case 404:
-				return false, false, errors.New("mailbox not found or not accessible with this key")
-			case 410:
-				return false, false, errors.New("mailbox is being deleted — stopping")
-			case 426:
-				return false, false, errors.New("server refused the upgrade (426)")
-			case 429:
-				return true, false, errors.New("too many subscribers (429)")
-			}
-			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-				return false, false, fmt.Errorf("watch refused (HTTP %d)", resp.StatusCode)
-			}
-		}
-		return true, false, derr
-	}
-	defer conn.CloseNow()
-
-	// Keepalive: v1 is one-way; the client sends only "ping" (the runtime
-	// auto-answers "pong" without waking the DO) to keep the socket healthy.
-	pingCtx, pingStop := context.WithCancel(ctx)
-	defer pingStop()
-	go func() {
-		t := time.NewTicker(30 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-pingCtx.Done():
-				return
-			case <-t.C:
-				if werr := conn.Write(pingCtx, websocket.MessageText, []byte("ping")); werr != nil {
-					return
-				}
-			}
-		}
-	}()
-
-	conn.SetReadLimit(1 << 20)
-	for {
-		typ, data, rerr := conn.Read(ctx)
-		if rerr != nil {
-			switch websocket.CloseStatus(rerr) {
-			case 4401:
-				a.out.Warnf("session expired — reconnecting with a fresh session")
-				return true, false, nil
-			case 4403:
-				// credential_revoked: core says do NOT reconnect with this bearer.
-				return false, false, authRequired("credential revoked — re-authenticate with `openemail login`")
-			case 4410:
-				a.out.Msgf("mailbox gone — stopping")
-				return false, false, nil
-			}
-			return true, false, rerr // transient / network drop
-		}
-		if typ != websocket.MessageText {
-			continue
-		}
-		line := strings.TrimSpace(string(data))
-		if line == "" || line == "pong" {
-			continue // keepalive echo, not an event
-		}
-		if a.processFrame(ctx, client, mbx, opts, []byte(line)) {
-			// Close the socket cleanly before returning — a normal closure, not a drop.
-			conn.Close(websocket.StatusNormalClosure, "")
-			return false, true, nil
-		}
-	}
 }
 
 // processFrame handles one event line: (optional) hydrate, print, (optional)
@@ -335,20 +247,7 @@ func (a *app) runExec(ctx context.Context, command string, frame []byte, eventTy
 	}
 }
 
-// eventsURL builds the ws(s):// upgrade URL for a mailbox's events channel.
+// eventsURL builds the mail socket URL with the transitional PIM relay disabled.
 func (a *app) eventsURL(mbx string) (string, error) {
-	u, err := url.Parse(strings.TrimRight(a.apiURL, "/"))
-	if err != nil {
-		return "", err
-	}
-	switch u.Scheme {
-	case "http":
-		u.Scheme = "ws"
-	case "https":
-		u.Scheme = "wss"
-	}
-	// mbx is a resolved ULID (URL-safe); set Path and let url.String() escape once
-	// (PathEscape here would double-encode any special char via String()).
-	u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/mailboxes/" + mbx + "/events"
-	return u.String(), nil
+	return eventstream.URL(a.apiURL, mbx, eventstream.Mail)
 }

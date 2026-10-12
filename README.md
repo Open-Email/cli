@@ -131,6 +131,9 @@ id=$(openemail watch -m alice@example.com --until 'message.new' --timeout 30s | 
 # Run a handler per event (frame JSON on stdin) and hydrate message frames.
 openemail watch -m alice@example.com --fetch --exec 'jq -r .message.subject'
 
+# Wait for a calendar, task or contact change on the dedicated PIM stream.
+openemail watch -m alice@example.com --until 'pim.*' --timeout 5m
+
 # "Can I move this domain to p=reject yet?" — readiness, blockers, top sources.
 openemail domains dmarc example.com --range 30d
 openemail domains dmarc-sources example.com   # every sender, unaligned ones first
@@ -255,6 +258,19 @@ openemail admin dkim activate                      # flip early, once DNS resolv
 openemail api GET /domains/example.com/traffic --query range=7d
 openemail api POST /routes -d '{"address":"a@x.com","destinationType":"group"}'
 ```
+
+`watch` and the TUI's live subscription open both the selected mailbox's mail
+stream (`/mailboxes/{id}/events?pim=off`) and its identity's PIM stream
+(`/identities/{id}/pim/events`). They do not depend on core relaying PIM changes
+through the mail socket. Each stream reconnects independently. An older core's
+`pim_unprovisioned` response is retried with backoff; a PIM permission refusal is
+reported while mail events continue. `watch --reconnect=false` disables retries.
+
+`watch` prints each stream's `ready` handshake, but handshakes do not trigger
+`--exec` or satisfy `--until`. Frames retain their original JSON, with no ordering
+guarantee between the two streams. A match, timeout or cancellation stops both
+readers; the matching frame remains the last stdout line. Events are signals,
+not a replayable journal: re-sync after connecting or reconnecting.
 
 ## Configuration
 
