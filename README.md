@@ -214,10 +214,10 @@ openemail calendars tokens create work --label "team feed" --expires-in 90d
 openemail addressbooks import default --file contacts.vcf
 openemail addressbooks objects get default --uid alice-uid -o alice.vcf
 
-# A calendar-only identity: a store with no address, plus an @-free login.
-openemail mailboxes create                        # no --address
+# A calendar-only identity, plus an @-free login.
+openemail mailboxes create --without-address
 openemail credentials create <id> --kind password --username roomcal --password …
-openemail identities get <id>                     # facets: pim bound, no mail store
+openemail identities get <id>                     # facets show which stores are bound
 
 # Rotate a webhook route's URL while KEEPING its signing secret (omit the secret).
 openemail routes update hook@example.com --type webhook --webhook-url https://new/hook
@@ -258,6 +258,14 @@ openemail admin dkim activate                      # flip early, once DNS resolv
 openemail api GET /domains/example.com/traffic --query range=7d
 openemail api POST /routes -d '{"address":"a@x.com","destinationType":"group"}'
 ```
+
+`mailboxes get <id>` also checks the identity facets: a calendar-only identity
+shows **No mail store**, without zero message counts or a mail-store read.
+Mail commands and TUI panes explain a mail-route 404 only when a successful
+identity read with the same key confirms that no mail store is bound. Failed or
+missing facet reads preserve the original error; ordinary missing rules still
+use the empty-rules view. Calendars, contacts, credentials, and identity commands
+remain usable with the same default identity.
 
 `watch` and the TUI's live subscription open both the selected mailbox's mail
 stream (`/mailboxes/{id}/events?pim=off`) and its identity's PIM stream

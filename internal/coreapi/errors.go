@@ -31,6 +31,9 @@ type APIError struct {
 	Issues  []ValidationIssue
 	Extra   map[string]any
 	Body    []byte
+	// NoMailStore is a local diagnosis confirmed by a successful identity read
+	// with the same bearer. Status, Code and Body remain the original response.
+	NoMailStore bool
 }
 
 // ValidationIssue is one entry of the house {error:"validation_failed", issues}
@@ -52,6 +55,9 @@ func (e *APIError) Error() string {
 	if e.Message != "" {
 		b.WriteString(": ")
 		b.WriteString(e.Message)
+	}
+	if e.NoMailStore {
+		b.WriteString(": identity has no mail store; calendars and contacts remain available")
 	}
 	return b.String()
 }
@@ -113,8 +119,12 @@ func Code(err error) string {
 
 // IsNotFound reports a 404. Core answers 404 for both genuinely missing and
 // cross-tenant resources (no existence leaks), so this means "not found or not
-// accessible with this key".
-func IsNotFound(err error) bool { return Status(err) == 404 }
+// accessible with this key". A confirmed missing mail store is distinct: an
+// empty-resource fallback (e.g. "no rules yet") would hide that mail is absent.
+func IsNotFound(err error) bool {
+	ae, ok := asAPIError(err)
+	return ok && ae.Status == 404 && !ae.NoMailStore
+}
 
 // IsUnauthorized reports a 401 (missing/bad/revoked bearer).
 func IsUnauthorized(err error) bool { return Status(err) == 401 }

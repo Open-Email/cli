@@ -231,6 +231,12 @@ func errorHint(ae *coreapi.APIError) string {
 	// `address` — a different key because it is not always the one asked for.
 	tgt, _ := ae.Extra["target"].(string)
 	switch ae.Code {
+	case "no_mail_store":
+		return "this identity has no mail store — bind a mailbox delivery route to it before using mail features"
+	case "grantee_has_no_mail_store":
+		return "the recipient of this share needs a mail store — choose a mail-enabled identity, or bind a mailbox delivery route to the recipient first"
+	case "notice_mailbox_no_mail_store":
+		return "account notices need a mail store — choose a mail-enabled identity as the notice mailbox"
 	case "address_taken":
 		// Create-and-bind: the address is already routed to some mailbox.
 		if addr != "" {
@@ -383,7 +389,7 @@ func (a *app) printError(err error) {
 		// A 404 carries no message from core, so the subject line is the CLI's:
 		// what it asked for, read off the path it asked on.
 		subject, hints := "", []string(nil)
-		if ae.Status == 404 {
+		if ae.Status == 404 && !ae.NoMailStore {
 			subject, hints = describeNotFound(ae)
 			if subject == "" && len(hints) == 0 {
 				hints = []string{"(the resource does not exist, or is not accessible with this key)"}

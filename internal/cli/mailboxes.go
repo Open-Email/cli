@@ -333,6 +333,22 @@ func newMailboxGetCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			identity, err := client.GetIdentity(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if identity.Facets.Present && identity.Facets.Mail == nil {
+				a.out.Emit(identity, func(w io.Writer) {
+					printTable(w, a.out, []string{"FIELD", "VALUE"}, [][]string{
+						{"ID", identity.ID},
+						{"Address", strOr(identity.PrimaryAddress, "—")},
+						{"Account", strOr(identity.AccountID, "—")},
+						{"Created", fmtEpoch(identity.CreatedAt)},
+						{"Mail store", "No mail store (calendar and contacts identity)"},
+					})
+				})
+				return nil
+			}
 			mb, err := client.GetMailbox(cmd.Context(), args[0])
 			if err != nil {
 				return err
