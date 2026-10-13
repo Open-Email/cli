@@ -35,6 +35,13 @@ type AddressList struct {
 	// EntryCount is present on a single-list read only — a listing deliberately
 	// does not count per row.
 	EntryCount *int64 `json:"entryCount,omitempty"`
+	// CatchAll is whether this list holds a live `*@*` entry, its "block all"
+	// switch. Present on list reads.
+	CatchAll bool `json:"catchAll,omitempty"`
+	// ContactsExempt (inbound block lists): when this list's catch-all decides,
+	// a vouched sender in the receiving mailbox's own address book is let
+	// through. Never lifts a named block.
+	ContactsExempt bool `json:"contactsExempt"`
 }
 
 // AddressListEntry is one pattern. Patterns are NORMALIZED by core at write
@@ -75,6 +82,22 @@ type AddressListVerdict struct {
 	ListID    string `json:"listId,omitempty"`
 	ScopeKind string `json:"scopeKind,omitempty"`
 	Pattern   string `json:"pattern,omitempty"`
+	// DecidedBy is absent when a named entry decided; "catch_all" when only a
+	// list's `*@*` matched, "contact" when that list exempts contacts and the
+	// sender is in the mailbox's address book.
+	DecidedBy string `json:"decidedBy,omitempty"`
+	// AllowUnvouched (message simulation only): an allow entry matched an
+	// identity nothing vouched for (no SPF or DMARC pass, no local
+	// submission), so it could not fire. The usual answer to "I allowed them
+	// and they are still blocked".
+	AllowUnvouched *AddressListUnvouched `json:"allowUnvouched,omitempty"`
+}
+
+// AddressListUnvouched names the allow that matched but could not fire.
+type AddressListUnvouched struct {
+	List     string `json:"list"`
+	Pattern  string `json:"pattern"`
+	Identity string `json:"identity"`
 }
 
 // AddressListCreate is the create body. ScopeKind/ScopeID are required on the

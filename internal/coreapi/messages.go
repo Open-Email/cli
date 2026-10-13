@@ -64,6 +64,10 @@ type MessageMeta struct {
 	// (POST /messages/recover). Nil on an ordinary live message, so its
 	// presence is the "this can be undone" signal rather than a separate probe.
 	RestoresTo []string `json:"restoresTo"`
+	// Auth is the SMTP authentication and junk verdicts recorded when the
+	// message arrived. Nil when none were recorded, which includes APPEND and
+	// local Sent copies; a verdict that was not recorded is nil inside it.
+	Auth *MessageAuth `json:"auth"`
 	// HasAttachment follows the RFC 8621 §4.1.4 rule (the same computation
 	// GET /content's attachment list uses). Nil = not yet known: the flag is
 	// stamped at delivery and backfilled lazily on first read of an older
@@ -80,6 +84,16 @@ type MessageMeta struct {
 
 // ExpungedMessageMeta is a trash-listing row: MessageMeta (labels always empty)
 // plus the trash-window fields.
+// MessageAuth is a message's stored SPF/DKIM/DMARC/ARC verdicts and its
+// original inbound junk verdict. Junk does not follow later label changes.
+type MessageAuth struct {
+	SPF   *string `json:"spf"`
+	DKIM  *string `json:"dkim"`
+	DMARC *string `json:"dmarc"`
+	ARC   *string `json:"arc"`
+	Junk  *bool   `json:"junk"`
+}
+
 type ExpungedMessageMeta struct {
 	MessageMeta
 	ExpungedAt     int64    `json:"expungedAt"`

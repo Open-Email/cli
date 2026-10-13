@@ -40,6 +40,12 @@ type Identity struct {
 	// suspension and whether its enforcement is still being applied.
 	SuspendedAt       *int64 `json:"suspendedAt"`
 	SuspensionPending bool   `json:"suspensionPending"`
+	// ReceiveHold, ReceiveHoldAt, ReceiveHoldPending and HasMailStore: see
+	// Mailbox's copies, the owner's inbound hold and the mail capability.
+	ReceiveHold        *string `json:"receiveHold"`
+	ReceiveHoldAt      *int64  `json:"receiveHoldAt"`
+	ReceiveHoldPending bool    `json:"receiveHoldPending"`
+	HasMailStore       bool    `json:"hasMailStore"`
 	// ActivityDay is the object directory's lifetime dormancy day for this
 	// identity: UTC YYYY-MM-DD, or null for no recorded activity (the bearer's
 	// own identity included). OMITTED, not null, for a grant holder reading a
