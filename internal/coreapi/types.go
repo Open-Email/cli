@@ -286,6 +286,19 @@ type Mailbox struct {
 	// has not yet reached every gate core enforces it at: the PATCH answered
 	// 202, and GET reports false once it holds everywhere.
 	SuspensionPending bool `json:"suspensionPending"`
+	// ReceiveHold is the account OWNER's hold on this mailbox's receiving,
+	// independent of suspension and of SendHold: nil = receiving, "paused" =
+	// senders are told to retry later (SMTP 451; they give up after four to
+	// five days), "disabled" = mail to it is rejected at once (SMTP 550).
+	// ReceiveHoldAt is when the current hold was set (epoch seconds), nil while
+	// receiving; ReceiveHoldPending is true until the hold has reached the
+	// mailbox's store (the PATCH answered 202).
+	ReceiveHold        *string `json:"receiveHold"`
+	ReceiveHoldAt      *int64  `json:"receiveHoldAt"`
+	ReceiveHoldPending bool    `json:"receiveHoldPending"`
+	// HasMailStore is false for a calendar/contacts-only identity, which has
+	// no mail capability. It says nothing about whether a store holds mail.
+	HasMailStore bool `json:"hasMailStore"`
 
 	MessageCount  *int64 `json:"messageCount,omitempty"`
 	UsedBytes     *int64 `json:"usedBytes,omitempty"`

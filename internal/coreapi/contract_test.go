@@ -113,6 +113,7 @@ func contractPairings() []pairing {
 		{val: MessageLabel{}, comp: "MessageLabel"},
 		{val: MessageMeta{}, comp: "MessageMeta"},
 		{val: ExpungedMessageMeta{}, comp: "ExpungedMessageMeta"},
+		{val: MessageAuth{}, comp: "MessageAuth"},
 		{val: LabelInfo{}, comp: "LabelInfo"},
 		{val: CreatedLabel{}, comp: "CreatedLabel"},
 		{val: ExpungedUID{}, comp: "ExpungedUID"},

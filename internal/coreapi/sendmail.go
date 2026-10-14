@@ -88,6 +88,14 @@ type SendRecipientResult struct {
 	// query time, so every recipient after the first would vanish from a rollup
 	// — which is why core stamps a per-recipient id and reports it here.
 	DeliveryID string `json:"deliveryId,omitempty"`
+	// Source says which of the SENDER's own policies refused a
+	// recipient_not_permitted: "permitted_recipients" (the identity or
+	// credential allowlist) or "address_list" (its outbound lists, in which
+	// case List and Pattern name the list and entry that decided; Pattern is
+	// `*@*` for a block-all).
+	Source  string `json:"source,omitempty"`
+	List    string `json:"list,omitempty"`
+	Pattern string `json:"pattern,omitempty"`
 }
 
 // SendResult is the structured send response: one result per recipient. The

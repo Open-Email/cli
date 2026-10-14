@@ -1031,6 +1031,14 @@
       },
       "AddressList": {
         "properties": {
+          "catchAll": {
+            "description": "Whether this list holds a live catch-all (`*@*`) entry: the \"block all\" switch, for this list only. Read-only, present on list reads.",
+            "type": "boolean"
+          },
+          "contactsExempt": {
+            "description": "Inbound block lists only: when this list's catch-all (`*@*`) decides, a vouched sender found in the receiving mailbox's own address book is let through. Applies only where a concrete receiving mailbox is known: a group, webhook or remote route behind the same block-all still needs a named allow. Every catch-all list at the most specific scope holding one must opt in. Never lifts a named block.",
+            "type": "boolean"
+          },
           "createdAt": {
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
@@ -1091,6 +1099,7 @@
           "name",
           "direction",
           "verdict",
+          "contactsExempt",
           "createdAt",
           "updatedAt"
         ],
@@ -1210,6 +1219,37 @@
       },
       "AddressListVerdict": {
         "properties": {
+          "allowUnvouched": {
+            "description": "Message simulation only: an allow MATCHED an identity that no SPF pass, DMARC pass or local submission vouched for, so it could not fire. The usual answer to \"I allowed them and they are still blocked\".",
+            "properties": {
+              "identity": {
+                "description": "The sender identity it matched, which nothing vouched for",
+                "type": "string"
+              },
+              "list": {
+                "description": "The allow list whose entry matched",
+                "type": "string"
+              },
+              "pattern": {
+                "description": "The entry that matched",
+                "type": "string"
+              }
+            },
+            "required": [
+              "list",
+              "pattern",
+              "identity"
+            ],
+            "type": "object"
+          },
+          "decidedBy": {
+            "description": "Absent when a named entry decided. `catch_all`: no named entry at any scope matched and the list's `*@*` decided. `contact`: that catch-all's list allows contacts and the sender is in the mailbox's address book.",
+            "enum": [
+              "catch_all",
+              "contact"
+            ],
+            "type": "string"
+          },
           "listId": {
             "description": "ID of the address list that matched (if any)",
             "type": "string"
@@ -2674,6 +2714,10 @@
           "nextCursor": {
             "description": "Pagination cursor for next page",
             "type": "string"
+          },
+          "partialRun": {
+            "description": "True when a dead letter's sidecar run outgrew the scan window: the row's sibling count covers only the sidecars scanned before the bound, not the whole run",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7001,6 +7045,10 @@
               "null"
             ]
           },
+          "hasMailStore": {
+            "description": "Whether this identity has the mail capability. False for a calendar/contacts-only identity; true may also have a null primaryAddress. Derived from the directory row without reading or provisioning a store, not an indication that the store has been initialized or contains messages",
+            "type": "boolean"
+          },
           "id": {
             "description": "Unique mailbox ULID",
             "type": "string"
@@ -7019,6 +7067,29 @@
               "integer",
               "null"
             ]
+          },
+          "receiveHold": {
+            "description": "The account owner's hold on this mailbox's RECEIVING, independent of suspension and of sendHold: 'paused' = senders are told to retry later (429 receiving_paused, SMTP 451; they give up after about four to five days, so a pause is for short interruptions), 'disabled' = mail to it is rejected at once (403 receiving_disabled, SMTP 550), null = receiving. Set with PATCH {\"receiveHold\": \"paused\"|\"disabled\"|null}, or on create",
+            "enum": [
+              "paused",
+              "disabled"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "receiveHoldAt": {
+            "description": "When the current receiveHold was set (epoch seconds), restamped when the mode changes; null while receiving. The age of a pause is what decides whether it is still a pause: warn from the third day",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "receiveHoldPending": {
+            "description": "Whether the current receiveHold has not yet reached the mailbox's store: true right after a change still being applied (PATCH answered 202), false once it holds. Poll until false",
+            "type": "boolean"
           },
           "retentionDays": {
             "description": "The mailbox's OWN time-based retention window in days (null = none; the account default applies if one is set). The window in force, with a preview, is GET /mailboxes/:id/retention",
@@ -7090,12 +7161,16 @@
         "required": [
           "id",
           "primaryAddress",
+          "hasMailStore",
           "quotaBytes",
           "accountId",
           "createdAt",
           "sendHold",
           "suspendedAt",
           "suspensionPending",
+          "receiveHold",
+          "receiveHoldAt",
+          "receiveHoldPending",
           "sendMsgsPerDay",
           "sendRcptsPerDay",
           "sendMsgsPerHour",
@@ -7319,6 +7394,57 @@
           }
         ]
       },
+      "MessageAuth": {
+        "description": "Stored SMTP authentication and original inbound junk verdicts. Missing verdicts are null; the object is null when none were recorded (including APPEND and local Sent copies). Junk does not follow later label changes.",
+        "properties": {
+          "arc": {
+            "description": "ARC verdict, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dkim": {
+            "description": "DKIM verdict, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dmarc": {
+            "description": "DMARC verdict, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "junk": {
+            "description": "The inbound spam verdict (X-OpenEmail-Junk), or null when none was stamped",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "spf": {
+            "description": "SPF verdict (pass/fail/softfail/none/...), or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "spf",
+          "dkim",
+          "dmarc",
+          "arc",
+          "junk"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
+      },
       "MessageBatch": {
         "properties": {
           "messages": {
@@ -7415,7 +7541,7 @@
             "type": "boolean"
           },
           "status": {
-            "description": "`copied`: stored in the destination. `duplicate`: an earlier attempt under the same gestureId already stored it — treat as copied, `newId` names that copy. `not_found`: no such message in the source, or it is outside your grant. `over_quota` / `account_over_quota` / `store_metadata_full` / `unknown_label` / `mailbox_gone` are refusals by the DESTINATION that the next message would meet too: the rest of the page carries the same status and `nextAfter` is null. `failed` is retryable under the same gestureId.",
+            "description": "`copied`: stored in the destination. `duplicate`: an earlier attempt under the same gestureId already stored it — treat as copied, `newId` names that copy. `not_found`: no such message in the source, or it is outside your grant. `over_quota` / `account_over_quota` / `store_metadata_full` / `unknown_label` / `mailbox_gone` are refusals by the DESTINATION that the next message would meet too: the rest of the page carries the same status and `nextAfter` is null. `receiving_paused` / `receiving_disabled` are the same kind: the destination's receive hold, which refuses a copy into a mailbox you reach through a share grant (paused may clear; disabled will not until its owner clears it). Its own user and its account copy into it as ever. `failed` is retryable under the same gestureId.",
             "enum": [
               "copied",
               "duplicate",
@@ -7427,6 +7553,8 @@
               "store_metadata_full",
               "unknown_label",
               "mailbox_gone",
+              "receiving_paused",
+              "receiving_disabled",
               "failed"
             ],
             "type": "string"
@@ -7780,6 +7908,9 @@
       },
       "MessageMeta": {
         "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/MessageAuth"
+          },
           "bcc": {
             "description": "Parsed Bcc header addresses for composed drafts, or null",
             "items": {
@@ -7995,6 +8126,7 @@
           "blobHash",
           "blobGen",
           "deliveryMeta",
+          "auth",
           "deliveryState"
         ],
         "type": "object"
@@ -8082,6 +8214,9 @@
       },
       "MessageUpdated": {
         "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/MessageAuth"
+          },
           "bcc": {
             "description": "Parsed Bcc header addresses for composed drafts, or null",
             "items": {
@@ -8311,6 +8446,7 @@
           "blobHash",
           "blobGen",
           "deliveryMeta",
+          "auth",
           "deliveryState"
         ],
         "type": "object"
@@ -8718,7 +8854,7 @@
             "type": "integer"
           },
           "detail": {
-            "description": "The refusal status, the transport error, or the name of the blank var — whichever the outcome implies",
+            "description": "The refusal status, the transport error, the name of the blank var, or the receive hold's code — whichever the outcome implies",
             "type": [
               "string",
               "null"
@@ -8741,14 +8877,15 @@
             ]
           },
           "outcome": {
-            "description": "dispatched = accepted; busy = a run was already in progress (also fine); rejected = the fetcher answered and said no; unreachable = no answer at all; decrypt_failed = the stored password would not decrypt (PICKUP_KEK); unconfigured = a required var is blank. Null when nothing has been dispatched yet",
+            "description": "dispatched = accepted; busy = a run was already in progress (also fine); rejected = the fetcher answered and said no; unreachable = no answer at all; decrypt_failed = the stored password would not decrypt (PICKUP_KEK); unconfigured = a required var is blank; receive_hold = the destination mailbox's receive hold is set (detail: receiving_paused or receiving_disabled), so nothing was collected, the source keeps its schedule and resumes once the hold is cleared. Null when nothing has been dispatched yet",
             "enum": [
               "dispatched",
               "busy",
               "rejected",
               "unreachable",
               "decrypt_failed",
-              "unconfigured"
+              "unconfigured",
+              "receive_hold"
             ],
             "type": [
               "string",
@@ -12915,6 +13052,22 @@
             "description": "Error reason code if status is failed (e.g. 'over_quota', 'receiving_disabled'). 'sending_paused' and 'sending_disabled' mean a hold on the sender (mailbox, domain or account) landed while the request was running: recipients already handled keep their status and the rest are refused. 'sending_paused' is temporary: retry with the same X-Delivery-Id once the hold lifts. 'sending_disabled' is permanent.",
             "type": "string"
           },
+          "list": {
+            "description": "On an address-list refusal: the sender's list that decided",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "On an address-list refusal: the entry that decided (`*@*` for a block-all)",
+            "type": "string"
+          },
+          "source": {
+            "description": "On 'recipient_not_permitted': which of the sender's own policies refused it, the identity or credential allowlist, or the sender's outbound address lists",
+            "enum": [
+              "permitted_recipients",
+              "address_list"
+            ],
+            "type": "string"
+          },
           "status": {
             "description": "Outcome status for this recipient",
             "enum": [
@@ -13754,6 +13907,19 @@
           "inviteOnly",
           "counts",
           "entries"
+        ],
+        "type": "object"
+      },
+      "SystemLimits": {
+        "properties": {
+          "maxMessageBytes": {
+            "description": "Maximum assembled message size in bytes for the deployment (MAX_MESSAGE_BYTES / APPENDLIMIT)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxMessageBytes"
         ],
         "type": "object"
       },
@@ -15124,6 +15290,30 @@
               "null"
             ]
           },
+          "pimRelayedImap": {
+            "description": "Retired: the mail store no longer relays pim.changed, so this is null for every day filed since. Earlier days keep the cumulative frames it relayed to imap-class sockets",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pimRelayedJmap": {
+            "description": "Retired: the mail store no longer relays pim.changed, so this is null for every day filed since. Earlier days keep the cumulative frames it relayed to jmap-class sockets",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pimRelayedWeb": {
+            "description": "Retired: the mail store no longer relays pim.changed, so this is null for every day filed since. Earlier days keep the cumulative frames it relayed to web-class sockets",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "reportedAt": {
             "description": "Timestamp when usage was reported to billing system in epoch seconds, or null",
             "format": "int64",
@@ -15228,6 +15418,9 @@
           "socketsAcceptedImap",
           "socketsAcceptedWeb",
           "socketsAcceptedJmap",
+          "pimRelayedImap",
+          "pimRelayedWeb",
+          "pimRelayedJmap",
           "requests",
           "requestBytesOut",
           "rolledAt",
@@ -16552,7 +16745,7 @@
                     ]
                   },
                   "noticeMailboxId": {
-                    "description": "Where limit notices are delivered: a mailbox this account owns, which receives a postmaster message (local mail, one per limit episode, at most one per limit per day) when a send or receive allowance fires. null = no mail; incidents stay readable at GET /accounts/:accountId/limit-incidents",
+                    "description": "Where limit notices are delivered: a mailbox this account owns, with a mail store, which receives a postmaster message (local mail, one per limit episode, at most one per limit per day) when a send or receive allowance fires. null = no mail; incidents stay readable at GET /accounts/:accountId/limit-incidents",
                     "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
                     "type": [
                       "string",
@@ -16667,7 +16860,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch (no recognized field supplied), notice_mailbox_not_owned (the incident-notice mailbox must belong to this account)"
+            "description": "validation_failed, empty_patch (no recognized field supplied), notice_mailbox_not_owned (the incident-notice mailbox must belong to this account), notice_mailbox_no_mail_store (the incident-notice mailbox must have a mail store to deliver into)"
           },
           "401": {
             "content": {
@@ -20940,7 +21133,7 @@
     },
     "/api/v1/identities/{identityId}/webauthn/registrations": {
       "post": {
-        "description": "Generates a WebAuthn challenge and registration options to enroll a new hardware security key or passkey for 2-factor authentication.",
+        "description": "Generates a WebAuthn challenge and registration options to enroll a new hardware security key or passkey for 2-factor authentication. A mailbox bearer or system key acting under its credential must re-prove the current password when an active password credential exists. Account and unacted system administrators, and password-less provisioning, are exempt.",
         "operationId": "post_WebauthnRegisterBegin",
         "parameters": [
           {
@@ -20959,6 +21152,12 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "currentPassword": {
+                    "description": "The mailbox's current password. Required for a mailbox session (including a relayed session) when an active password exists; omitted for administrators or password-less provisioning",
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "rpId": {
                     "description": "Relying Party ID (domain hostname)",
                     "maxLength": 253,
@@ -20986,6 +21185,16 @@
             },
             "description": "WebAuthn creation options to pass to navigator.credentials.create()"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "password_required: a mailbox session must re-prove its active password"
+          },
           "401": {
             "content": {
               "application/json": {
@@ -20996,6 +21205,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "invalid_password"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -21005,6 +21224,16 @@
               }
             },
             "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "no_password_credential: the password was removed during re-proof; restart registration"
           },
           "429": {
             "content": {
@@ -24417,7 +24646,7 @@
     },
     "/api/v1/identities": {
       "post": {
-        "description": "An identity is a principal in an account: it owns stores (a mail store, calendars, contacts), holds credentials, and can be shared with. It takes one of two shapes at creation.\n\n**With primaryAddress** (the common case): the address is claimed and routed to the identity atomically, the mail store is bound, and the initial labels are provisioned. The identity receives mail at once and logs in with the address as its username.\n\n**With withoutAddress: true**: no email address, so it receives no mail; its calendars and contacts work as for any identity. There is no login until a credential is minted with an explicit username (POST /api/v1/identities/{identityId}/credentials), since there is no address to default to; the username is a bare name without @. Routing an address to it later (POST /api/v1/routes, destinationType mailbox) makes it receive mail like any other identity. Until then it holds events, tasks and contacts and takes part in sharing, but not in scheduling: iCalendar names participants by mailto: address, so it can neither invite nor be invited.\n\nA create with neither is refused 400 primary_address_required; both together is 400 without_address_has_address. Stores are created on first use, not here.",
+        "description": "An identity is a principal in an account: it owns stores (a mail store, calendars, contacts), holds credentials, and can be shared with. It takes one of two shapes at creation.\n\n**With primaryAddress** (the common case): the address is claimed and routed to the identity atomically, the mail store is bound, and the initial labels are provisioned. The identity receives mail at once and logs in with the address as its username.\n\n**With withoutAddress: true**: no email address and no mail store, so it receives no mail and every mail route (messages, labels, uploads, search, filters, sharing) answers 404 for it, while the identity routes (credentials, settings, delete and restore) and its calendars and contacts work as for any identity. There is no login until a credential is minted with an explicit username (POST /api/v1/identities/{identityId}/credentials), since there is no address to default to; the username is a bare name without @. Routing an address to it later (POST /api/v1/routes or /api/v1/patterns, destinationType mailbox, or a retarget of either) gives it a mail store in that write, and it then receives mail like any other identity; nothing undoes that, a later route delete included. semantic: true is refused on it (400 no_mail_store), since there is no mail to index. Until then it holds events, tasks and contacts and takes part in sharing, but not in scheduling: iCalendar names participants by mailto: address, so it can neither invite nor be invited.\n\nA create with neither is refused 400 primary_address_required; both together is 400 without_address_has_address.\n\n**receiveHold** creates the mailbox already holding its receiving (paused or disabled), committed with the identity and its address so it applies from the first arrival; the answer carries receiveHold, receiveHoldAt and receiveHoldPending as GET does. On a withoutAddress create the hold is the identity's until an address is routed to it, and the mail store that write gives it holds from its first arrival.",
         "operationId": "post_IdentityCreate",
         "requestBody": {
           "content": {
@@ -24451,6 +24680,17 @@
                     "maximum": 9007199254740991,
                     "type": [
                       "integer",
+                      "null"
+                    ]
+                  },
+                  "receiveHold": {
+                    "description": "Create the mailbox already holding its receiving: 'paused' (senders retry for about four to five days, then their mail bounces and is lost) or 'disabled' (mail to it is rejected at once). The hold commits with the identity and its address, so it applies from the first arrival. Omitted or null creates a receiving mailbox. The account owner's control, like PATCH receiveHold: refused 400 not_holdable on a platform identity, and 403 receive_hold_not_enabled from an account key while this deployment has not enabled it",
+                    "enum": [
+                      "paused",
+                      "disabled"
+                    ],
+                    "type": [
+                      "string",
                       "null"
                     ]
                   },
@@ -24515,7 +24755,7 @@
                   },
                   "withoutAddress": {
                     "default": false,
-                    "description": "Create the identity with no email address, so it receives no mail; its calendars and contacts work as for any identity. An identity is created WITH a primaryAddress unless this is true: a create with neither is refused 400 primary_address_required, and true with a primaryAddress is refused 400 without_address_has_address, both before anything is written. Omitted or null is false. A domain-scoped api key never creates one: without an address it is refused 400 primary_address_required, withoutAddress or not. There is no login until a credential is minted with an explicit username, and routing an address to it later makes it receive mail like any other identity",
+                    "description": "Create the identity with no email address and no mail store: it receives no mail, and every mail route answers 404 for it; its calendars and contacts work as for any identity. An identity is created WITH a primaryAddress unless this is true: a create with neither is refused 400 primary_address_required, and true with a primaryAddress is refused 400 without_address_has_address, both before anything is written. Omitted or null is false. A domain-scoped api key never creates one: without an address it is refused 400 primary_address_required, withoutAddress or not. There is no login until a credential is minted with an explicit username, and routing an address to it later makes it receive mail like any other identity",
                     "type": [
                       "boolean",
                       "null"
@@ -24547,7 +24787,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), or without_address_has_address (withoutAddress: true with a primaryAddress)"
+            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), without_address_has_address (withoutAddress: true with a primaryAddress), no_mail_store (semantic: true with withoutAddress: true: no mail to index), or not_holdable (receiveHold on a platform identity, which belongs to no account)"
           },
           "401": {
             "content": {
@@ -24567,7 +24807,7 @@
                 }
               }
             },
-            "description": "mailbox_limit_reached — the account's maximum mailbox limit has been reached; address_blocked — the primary address, its tag-stripped form, or its domain is on the platform blocklist (migration 0070); or semantic_not_enabled — semantic: true was asked for without the account's plan gate"
+            "description": "mailbox_limit_reached — the account's maximum mailbox limit has been reached; address_blocked — the primary address, its tag-stripped form, or its domain is on the platform blocklist (migration 0070); semantic_not_enabled — semantic: true was asked for without the account's plan gate; or receive_hold_not_enabled (receiveHold from an account key while this deployment has not enabled the owner's receive hold)"
           },
           "409": {
             "content": {
@@ -24637,6 +24877,21 @@
               "enum": [
                 "deleted",
                 "suspended"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only live mailboxes whose receiveHold is this value (none selects the receiving ones), pending ones included; combines with state=suspended. One account's listing: an account key, or a system key with accountId (400 account_required otherwise). With state=deleted it is refused (400 validation_failed) rather than ignored",
+            "in": "query",
+            "name": "receiveHold",
+            "required": false,
+            "schema": {
+              "description": "Only live mailboxes whose receiveHold is this value (none selects the receiving ones), pending ones included; combines with state=suspended. One account's listing: an account key, or a system key with accountId (400 account_required otherwise). With state=deleted it is refused (400 validation_failed) rather than ignored",
+              "enum": [
+                "none",
+                "paused",
+                "disabled"
               ],
               "type": "string"
             }
@@ -24783,7 +25038,7 @@
                 }
               }
             },
-            "description": "validation_failed; or account_required (state=suspended from a system key without accountId)"
+            "description": "validation_failed (also receiveHold with state=deleted); or account_required (state=suspended or receiveHold from a system key without accountId)"
           },
           "401": {
             "content": {
@@ -24876,7 +25131,7 @@
         ]
       },
       "patch": {
-        "description": "Updates mailbox storage quota, primary address label, and outbound sending limits; or, alone in its request, suspends or resumes the mailbox (`suspended`). A suspension answers 200 once enforced everywhere core must enforce it, or 202 (with Retry-After) while that is still being applied: poll GET until suspensionPending is false.",
+        "description": "Updates mailbox storage quota, primary address label, and outbound sending limits; or, alone in its request, suspends or resumes the mailbox (`suspended`), or pauses, stops or restores its receiving (`receiveHold`). A control answers 200 once enforced everywhere core must enforce it, or 202 (with Retry-After) while that is still being applied: poll GET until suspensionPending, or receiveHoldPending, is false.",
         "operationId": "patch_IdentityUpdate",
         "parameters": [
           {
@@ -24890,12 +25145,12 @@
             }
           },
           {
-            "description": "A control PATCH's (suspended) idempotency key, 1 to 128 characters, unique per gesture. A retry with the same key is recognised and never written again: it answers the state as it stands (200, 202, or 409 suspension_changed if a newer opposite change won), so a lost answer or a 503 can be retried without reasserting this change over someone else's. The same key asking for the opposite value is 409 idempotency_key_reused. On a settings PATCH it is 400 idempotency_key_unsupported",
+            "description": "A control PATCH's (suspended, receiveHold) idempotency key, 1 to 128 characters, unique per gesture. A retry with the same key is recognised and never written again: it answers the state as it stands (200, 202, or 409 suspension_changed / receive_hold_changed if a newer different change won), so a lost answer or a 503 can be retried without reasserting this change over someone else's. The same key asking for another value is 409 idempotency_key_reused. On a settings PATCH it is 400 idempotency_key_unsupported",
             "in": "header",
             "name": "idempotency-key",
             "required": false,
             "schema": {
-              "description": "A control PATCH's (suspended) idempotency key, 1 to 128 characters, unique per gesture. A retry with the same key is recognised and never written again: it answers the state as it stands (200, 202, or 409 suspension_changed if a newer opposite change won), so a lost answer or a 503 can be retried without reasserting this change over someone else's. The same key asking for the opposite value is 409 idempotency_key_reused. On a settings PATCH it is 400 idempotency_key_unsupported",
+              "description": "A control PATCH's (suspended, receiveHold) idempotency key, 1 to 128 characters, unique per gesture. A retry with the same key is recognised and never written again: it answers the state as it stands (200, 202, or 409 suspension_changed / receive_hold_changed if a newer different change won), so a lost answer or a 503 can be retried without reasserting this change over someone else's. The same key asking for another value is 409 idempotency_key_reused. On a settings PATCH it is 400 idempotency_key_unsupported",
               "type": "string"
             }
           }
@@ -24928,6 +25183,17 @@
                     "maximum": 9007199254740991,
                     "type": [
                       "integer",
+                      "null"
+                    ]
+                  },
+                  "receiveHold": {
+                    "description": "Hold the mailbox's RECEIVING, the account owner's control, independent of suspension: 'paused' tells every sender to retry later (429 receiving_paused, SMTP 451; senders give up after about four to five days, after which their mail bounces and is lost, so a pause is for interruptions measured in days), 'disabled' rejects mail to it at once (403 receiving_disabled, SMTP 550; a rejection already issued cannot be undone), null receives normally again. Existing mail, settings and logins are untouched. Must be the ONLY field of its request (400 control_exclusive otherwise). A change of mode restamps receiveHoldAt; re-sending the current value keeps it and completes any propagation still pending",
+                    "enum": [
+                      "paused",
+                      "disabled"
+                    ],
+                    "type": [
+                      "string",
                       "null"
                     ]
                   },
@@ -25020,7 +25286,7 @@
                 }
               }
             },
-            "description": "suspended was written and committed, and its enforcement is still being applied (suspensionPending true): accepted work, not a failure. Retry-After says when to poll GET; repeating the same PATCH is safe and completes the outstanding work. Also the answer when the commit is confirmed but its current state could not be read back: the body then carries this write's own values, and GET is the authority"
+            "description": "The control (suspended, receiveHold) was written and committed, and its enforcement is still being applied (suspensionPending, or receiveHoldPending, true): accepted work, not a failure. Retry-After says when to poll GET; repeating the same PATCH is safe and completes the outstanding work. Also the answer when the commit is confirmed but its current state could not be read back: the body then carries this write's own values, and GET is the authority"
           },
           "400": {
             "content": {
@@ -25030,7 +25296,7 @@
                 }
               }
             },
-            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request); control_exclusive (suspended alongside any other field); not_suspendable (a platform identity, which belongs to no account); idempotency_key_invalid (empty or over 128 characters); idempotency_key_unsupported (an Idempotency-Key on a settings PATCH)"
+            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request); control_exclusive (suspended or receiveHold alongside any other field, or both together); not_suspendable (suspended on a platform identity, which belongs to no account); not_holdable (receiveHold on one); idempotency_key_invalid (empty or over 128 characters); idempotency_key_unsupported (an Idempotency-Key on a settings PATCH)"
           },
           "401": {
             "content": {
@@ -25050,7 +25316,7 @@
                 }
               }
             },
-            "description": "system_credentials_required (a send-policy field from a non-system caller); or semantic_not_enabled — semantic: true, or semanticFloor, without the account's plan gate. Every semantic refusal is decided BEFORE any other field is written; or suspension_not_enabled (suspended from an account key while this deployment has not enabled owner suspension)"
+            "description": "system_credentials_required (a send-policy field from a non-system caller); or semantic_not_enabled — semantic: true, or semanticFloor, without the account's plan gate. Every semantic refusal is decided BEFORE any other field is written; or suspension_not_enabled (suspended from an account key while this deployment has not enabled owner suspension); or receive_hold_not_enabled (receiveHold from an account key while this deployment has not enabled the owner's receive hold)"
           },
           "404": {
             "content": {
@@ -25070,7 +25336,7 @@
                 }
               }
             },
-            "description": "semantic_not_enabled — semanticFloor given while semantic search is off; or suspension_changed: a newer opposite suspend or resume superseded this one before it completed: the body's `mailbox` carries the current fields; or idempotency_key_reused: this Idempotency-Key was already used asking for the opposite value, nothing changed, use a fresh key for a new gesture"
+            "description": "semantic_not_enabled — semanticFloor given while semantic search is off; or no_mail_store: semantic: true or semanticFloor on an identity without a mail store, which has no mail to index (semantic: false is what it already is, and is accepted); or suspension_changed: a newer opposite suspend or resume superseded this one before it completed: the body's `mailbox` carries the current fields; or receive_hold_changed: a newer different receiveHold superseded this one before it completed, the body's `mailbox` carrying the current fields; or idempotency_key_reused: this Idempotency-Key was already used asking for another value, nothing changed, use a fresh key for a new gesture"
           },
           "503": {
             "content": {
@@ -25080,7 +25346,7 @@
                 }
               }
             },
-            "description": "semantic_capacity, when every vector shard is closed to new assignment: nothing changed; Retry-After carries an hour. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing changed; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window (a send hold or its release; fields applied before it stand, and the retry converges). Or temporary_failure for suspension when the authority refused the write before committing it: nothing changed; retry, with the same Idempotency-Key"
+            "description": "semantic_capacity, when every vector shard is closed to new assignment: nothing changed; Retry-After carries an hour. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing changed; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window (a send hold or its release; fields applied before it stand, and the retry converges). Or temporary_failure for a control (suspended, receiveHold) when the authority refused the write before committing it: nothing changed; retry, with the same Idempotency-Key"
           }
         },
         "summary": "Update mailbox settings",
@@ -26042,7 +26308,7 @@
                 }
               }
             },
-            "description": "`validation_failed` — malformed body. `invalid_rights` — the rights value is not a known preset and not a valid letter set; the response carries an `invalidLetters` array naming the offending letters. `self_share_prohibited` — a mailbox cannot be shared with itself. `rights_not_allowed_on_folder_share` — a folder-scoped grant may only carry `lrswit` (read, private read/unread marks, write flags/keywords within the scope, file into a named in-scope folder, and trash out of the folder — never expunge or folder administration); the response names the offending letters and the allowed set. `empty_label_scope` — `labelScope` was an empty list, which would be a grant that can see nothing; use DELETE to revoke instead. `unknown_label` — one or more named folders do not exist in this mailbox; the response names them. `label_scope_too_large` — more folders were named than one grant may carry; the response carries the `max`. `invalid_label_scope` — a scope entry was not a folder identifier. `cross_account_share_refused` — the grantee belongs to a different account (system principals only; tenants receive 404 instead, so the API cannot be used to discover identities in other accounts)"
+            "description": "`validation_failed` — malformed body. `invalid_rights` — the rights value is not a known preset and not a valid letter set; the response carries an `invalidLetters` array naming the offending letters. `self_share_prohibited` — a mailbox cannot be shared with itself. `rights_not_allowed_on_folder_share` — a folder-scoped grant may only carry `lrswit` (read, private read/unread marks, write flags/keywords within the scope, file into a named in-scope folder, and trash out of the folder — never expunge or folder administration); the response names the offending letters and the allowed set. `empty_label_scope` — `labelScope` was an empty list, which would be a grant that can see nothing; use DELETE to revoke instead. `unknown_label` — one or more named folders do not exist in this mailbox; the response names them. `label_scope_too_large` — more folders were named than one grant may carry; the response carries the `max`. `invalid_label_scope` — a scope entry was not a folder identifier. `grantee_has_no_mail_store` — the grantee is an identity of this account without a mail store, which has no mail session to read a share in. `cross_account_share_refused` — the grantee belongs to a different account (system principals only; tenants receive 404 instead, so the API cannot be used to discover identities in other accounts)"
           },
           "401": {
             "content": {
@@ -28159,6 +28425,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "contactsExempt": {
+                    "description": "Inbound block lists only (else 400): when this list's catch-all decides, let a vouched sender from the receiving mailbox's own address book through. Groups, webhooks and remote routes still need a named allow.",
+                    "type": "boolean"
+                  },
                   "direction": {
                     "description": "Traffic direction ('inbound' or 'outbound')",
                     "enum": [
@@ -28331,6 +28601,20 @@
             }
           },
           {
+            "description": "`true`: only the lists holding a live catch-all (`*@*`), the \"block all\" lists",
+            "in": "query",
+            "name": "catchAll",
+            "required": false,
+            "schema": {
+              "description": "`true`: only the lists holding a live catch-all (`*@*`), the \"block all\" lists",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Page size (default 100)",
             "in": "query",
             "name": "limit",
@@ -28475,7 +28759,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the display name of an existing address list.",
+        "description": "Renames an address list and/or sets `contactsExempt` (inbound block lists only). Scope, direction and verdict are immutable.",
         "operationId": "patch_AccountAddressListPatch",
         "parameters": [
           {
@@ -28505,6 +28789,10 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "contactsExempt": {
+                    "description": "Inbound block lists only: let the receiving mailbox's contacts through this list's catch-all",
+                    "type": "boolean"
+                  },
                   "name": {
                     "description": "New list name",
                     "maxLength": 120,
@@ -28512,9 +28800,6 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name"
-                ],
                 "type": "object"
               }
             }
@@ -28571,9 +28856,19 @@
               }
             },
             "description": "list_name_taken"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure (with Retry-After): the directory version does not yet support this write; retry"
           }
         },
-        "summary": "Rename an address list",
+        "summary": "Update an address list",
         "tags": [
           "Routing"
         ]
@@ -29283,7 +29578,7 @@
               "schema": {
                 "properties": {
                   "address": {
-                    "description": "Target email address to evaluate",
+                    "description": "Target email address to evaluate, taken as vouched. Required unless `envelopeFrom` simulates a message.",
                     "maxLength": 320,
                     "minLength": 3,
                     "type": "string"
@@ -29296,18 +29591,46 @@
                     ],
                     "type": "string"
                   },
-                  "domain": {
-                    "description": "Narrow the chain with a domain scope you own",
+                  "dmarc": {
+                    "description": "Message simulation: the DMARC verdict for the From (`pass` vouches for a single-domain From)",
+                    "maxLength": 64,
                     "type": "string"
+                  },
+                  "domain": {
+                    "description": "Narrow the chain with a domain scope you own. With a mailbox and no domain, the mailbox's own domain, as every delivery door judges it.",
+                    "type": "string"
+                  },
+                  "envelopeFrom": {
+                    "description": "Message simulation: the envelope sender (empty for a null sender, which skips the catch-all floor as delivery does). Judged with `from`, `spf`, `dmarc` and `submitted` the way an arriving message would be.",
+                    "maxLength": 320,
+                    "type": "string"
+                  },
+                  "from": {
+                    "description": "Message simulation: the RFC 5322 From addresses (judged up to the evaluator's own candidate bound, as delivery is)",
+                    "items": {
+                      "maxLength": 320,
+                      "minLength": 3,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
                   },
                   "mailboxId": {
                     "description": "…and/or a mailbox scope you own",
                     "type": "string"
+                  },
+                  "spf": {
+                    "description": "Message simulation: the SPF verdict for the envelope sender (`pass` vouches for it)",
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "submitted": {
+                    "description": "Message simulation: an authenticated local submission, which vouches for the envelope and the From",
+                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "direction",
-                  "address"
+                  "direction"
                 ],
                 "type": "object"
               }
@@ -29355,6 +29678,16 @@
               }
             },
             "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure — a contact lookup a flagged catch-all required could not answer; retry"
           }
         },
         "summary": "Test address list policy against an address",
@@ -29384,6 +29717,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "contactsExempt": {
+                    "description": "Inbound block lists only (else 400): when this list's catch-all decides, let a vouched sender from the receiving mailbox's own address book through. Groups, webhooks and remote routes still need a named allow.",
+                    "type": "boolean"
+                  },
                   "direction": {
                     "description": "Traffic direction ('inbound' or 'outbound')",
                     "enum": [
@@ -29556,6 +29893,20 @@
             }
           },
           {
+            "description": "`true`: only the lists holding a live catch-all (`*@*`), the \"block all\" lists",
+            "in": "query",
+            "name": "catchAll",
+            "required": false,
+            "schema": {
+              "description": "`true`: only the lists holding a live catch-all (`*@*`), the \"block all\" lists",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Page size (default 100)",
             "in": "query",
             "name": "limit",
@@ -29700,7 +30051,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the display name of an existing address list.",
+        "description": "Renames an address list and/or sets `contactsExempt` (inbound block lists only). Scope, direction and verdict are immutable.",
         "operationId": "patch_MailboxAddressListPatch",
         "parameters": [
           {
@@ -29730,6 +30081,10 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "contactsExempt": {
+                    "description": "Inbound block lists only: let the receiving mailbox's contacts through this list's catch-all",
+                    "type": "boolean"
+                  },
                   "name": {
                     "description": "New list name",
                     "maxLength": 120,
@@ -29737,9 +30092,6 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name"
-                ],
                 "type": "object"
               }
             }
@@ -29796,9 +30148,19 @@
               }
             },
             "description": "list_name_taken"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure (with Retry-After): the directory version does not yet support this write; retry"
           }
         },
-        "summary": "Rename an address list",
+        "summary": "Update an address list",
         "tags": [
           "Routing"
         ]
@@ -30508,7 +30870,7 @@
               "schema": {
                 "properties": {
                   "address": {
-                    "description": "Target email address to evaluate",
+                    "description": "Target email address to evaluate, taken as vouched. Required unless `envelopeFrom` simulates a message.",
                     "maxLength": 320,
                     "minLength": 3,
                     "type": "string"
@@ -30521,18 +30883,46 @@
                     ],
                     "type": "string"
                   },
-                  "domain": {
-                    "description": "Narrow the chain with a domain scope you own",
+                  "dmarc": {
+                    "description": "Message simulation: the DMARC verdict for the From (`pass` vouches for a single-domain From)",
+                    "maxLength": 64,
                     "type": "string"
+                  },
+                  "domain": {
+                    "description": "Narrow the chain with a domain scope you own. With a mailbox and no domain, the mailbox's own domain, as every delivery door judges it.",
+                    "type": "string"
+                  },
+                  "envelopeFrom": {
+                    "description": "Message simulation: the envelope sender (empty for a null sender, which skips the catch-all floor as delivery does). Judged with `from`, `spf`, `dmarc` and `submitted` the way an arriving message would be.",
+                    "maxLength": 320,
+                    "type": "string"
+                  },
+                  "from": {
+                    "description": "Message simulation: the RFC 5322 From addresses (judged up to the evaluator's own candidate bound, as delivery is)",
+                    "items": {
+                      "maxLength": 320,
+                      "minLength": 3,
+                      "type": "string"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
                   },
                   "mailboxId": {
                     "description": "…and/or a mailbox scope you own",
                     "type": "string"
+                  },
+                  "spf": {
+                    "description": "Message simulation: the SPF verdict for the envelope sender (`pass` vouches for it)",
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "submitted": {
+                    "description": "Message simulation: an authenticated local submission, which vouches for the envelope and the From",
+                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "direction",
-                  "address"
+                  "direction"
                 ],
                 "type": "object"
               }
@@ -30580,6 +30970,16 @@
               }
             },
             "description": "not_found — the account, mailbox, scope or list is not accessible"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure — a contact lookup a flagged catch-all required could not answer; retry"
           }
         },
         "summary": "Test address list policy against an address",
@@ -31084,7 +31484,7 @@
               "description": "Sieve script name",
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^[^/\\\\]+$",
+              "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
               "type": "string"
             }
           },
@@ -31219,7 +31619,7 @@
               "description": "Sieve script name",
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^[^/\\\\]+$",
+              "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
               "type": "string"
             }
           }
@@ -31294,7 +31694,7 @@
               "description": "Sieve script name",
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^[^/\\\\]+$",
+              "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
               "type": "string"
             }
           }
@@ -31456,7 +31856,7 @@
               "description": "Sieve script name",
               "maxLength": 128,
               "minLength": 1,
-              "pattern": "^[^/\\\\]+$",
+              "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
               "type": "string"
             }
           }
@@ -31470,7 +31870,7 @@
                     "description": "New name for the script",
                     "maxLength": 128,
                     "minLength": 1,
-                    "pattern": "^[^/\\\\]+$",
+                    "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
                     "type": "string"
                   }
                 },
@@ -31576,7 +31976,7 @@
                     "description": "Name of the script to activate",
                     "maxLength": 128,
                     "minLength": 1,
-                    "pattern": "^[^/\\\\]+$",
+                    "pattern": "^(?!\\.{1,2}$)[^/\\\\]+$",
                     "type": "string"
                   }
                 },
@@ -34334,7 +34734,7 @@
                 }
               }
             },
-            "description": "duplicate_source — same host and username already configured for this mailbox; or pickup_limit_reached — the mailbox already holds the maximum number of sources (`limit` says how many), a ceiling rather than a rate, so it is not retried"
+            "description": "duplicate_source — same host and username already configured for this mailbox; pickup_limit_reached — the mailbox already holds the maximum number of sources (`limit` says how many), a ceiling rather than a rate, so it is not retried; or conflict — destination preparation expired or is unavailable, so retry"
           },
           "503": {
             "content": {
@@ -34853,7 +35253,7 @@
     },
     "/api/v1/deliver/pickup/{pickupId}": {
       "post": {
-        "description": "Ingests a message fetched from a remote POP3 source into the mailbox (system callers only).",
+        "description": "Ingests a message fetched from a remote POP3 source into the mailbox (system callers only). Lone CR and LF are normalized to CRLF before filtering or storage; the size limit applies to the normalized message.",
         "operationId": "post_PickupDeliver",
         "parameters": [
           {
@@ -34930,7 +35330,7 @@
                 }
               }
             },
-            "description": "conflict: pickup configuration handoff is not ready; retry without deleting upstream mail"
+            "description": "conflict: pickup configuration handoff is not ready; retry without deleting upstream mail. receiving_disabled: the destination mailbox's receive hold is `disabled`; keep the message upstream (a per-message refusal, never a DELE), and the scheduler dispatches nothing more until the hold is cleared"
           },
           "411": {
             "content": {
@@ -34960,7 +35360,7 @@
                 }
               }
             },
-            "description": "receiving_paused — mailbox account is pending deletion",
+            "description": "receiving_paused — the mailbox's account is pending deletion, or the destination mailbox's receive hold is `paused`; keep the message upstream and retry later (Retry-After). temporary_failure — the destination receive policy could not be established; keep upstream and retry later. A message stored before the hold still answers 200 duplicate",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -35385,6 +35785,7 @@
                 "example": {
                   "messages": [
                     {
+                      "auth": null,
                       "bcc": null,
                       "blobGen": "g1",
                       "blobHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
@@ -35762,7 +36163,7 @@
         ]
       },
       "post": {
-        "description": "Stores raw RFC 5322 email bytes directly into a mailbox under a label without sending (similar to IMAP APPEND). Supports custom flags, Sieve filtering, and historical internaldate.",
+        "description": "Stores raw RFC 5322 email bytes directly into a mailbox under a label without sending (similar to IMAP APPEND). Supports custom flags, Sieve filtering, and historical internaldate. Lone CR and LF are normalized to CRLF before storage; the size limit applies to the normalized message.",
         "operationId": "post_MessageAppend",
         "parameters": [
           {
@@ -35918,6 +36319,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "receiving_disabled (policyScope \"mailbox\"): this mailbox's receive hold is `disabled`, and the caller reaches it through a share grant. A grantee's write is refused as arriving mail is; the mailbox's own user and its account write as ever."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -35937,6 +36348,34 @@
               }
             },
             "description": "Length Required — Content-Length header is required"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "receiving_paused (policyScope \"mailbox\", with Retry-After): this mailbox's receive hold is `paused`, and the caller reaches it through a share grant. Retry once the owner clears it.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "superseded/reaped (lost pending intent; retry with the same X-Delivery-Id), or temporary_failure (this mailbox's receive policy could not be established for a grantee's write; retry)"
           },
           "507": {
             "content": {
@@ -36137,6 +36576,7 @@
             "content": {
               "application/json": {
                 "example": {
+                  "auth": null,
                   "bcc": null,
                   "blobGen": "g1",
                   "blobHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
@@ -36368,6 +36808,7 @@
             "content": {
               "application/json": {
                 "example": {
+                  "auth": null,
                   "bcc": null,
                   "blobGen": "g1",
                   "blobHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
@@ -37429,6 +37870,7 @@
                 "example": {
                   "results": [
                     {
+                      "auth": null,
                       "bcc": null,
                       "blobGen": "g1",
                       "blobHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
@@ -37648,6 +38090,7 @@
                   "position": 0,
                   "results": [
                     {
+                      "auth": null,
                       "bcc": null,
                       "blobGen": "g1",
                       "blobHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
@@ -38520,6 +38963,19 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "Accepted and ignored. This socket no longer carries `pim.changed`: calendar, task and contact signals come from the PIM store's own channel (`GET /identities/{identityId}/pim/events`). `off` once opted out of a relay of them here, and stays valid so existing clients keep connecting.",
+            "in": "query",
+            "name": "pim",
+            "required": false,
+            "schema": {
+              "description": "Accepted and ignored. This socket no longer carries `pim.changed`: calendar, task and contact signals come from the PIM store's own channel (`GET /identities/{identityId}/pim/events`). `off` once opted out of a relay of them here, and stays valid so existing clients keep connecting.",
+              "enum": [
+                "off"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -38865,6 +39321,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "receiving_disabled (policyScope \"mailbox\"): this mailbox's receive hold is `disabled`, and the caller reaches it through a share grant. A grantee's write is refused as arriving mail is; the mailbox's own user and its account write as ever."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -38895,6 +39361,24 @@
             },
             "description": "JSON body exceeds MAX_JSON_BODY_BYTES, or the assembled message exceeds MAX_MESSAGE_BYTES"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "receiving_paused (policyScope \"mailbox\", with Retry-After): this mailbox's receive hold is `paused`, and the caller reaches it through a share grant. Retry once the owner clears it.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "503": {
             "content": {
               "application/json": {
@@ -38903,7 +39387,7 @@
                 }
               }
             },
-            "description": "superseded/reaped — lost pending intent; retry with the same X-Delivery-Id"
+            "description": "superseded/reaped (lost pending intent; retry with the same X-Delivery-Id), or temporary_failure (this mailbox's receive policy could not be established for a grantee's write; retry)"
           },
           "507": {
             "content": {
@@ -39732,6 +40216,7 @@
                   "threads": [
                     {
                       "exemplar": {
+                        "auth": null,
                         "bcc": null,
                         "blobGen": "g1",
                         "blobHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
@@ -41756,7 +42241,7 @@
                 }
               }
             },
-            "description": "THREE meanings, split by the error CODE — the MTA must never map this status alone. receiving_disabled: the address resolves but its domain is not accepting — a recipient verdict, reject permanently (550). sender_blocked: an address list refuses this MAIL FROM for this recipient — also 550, but note the verdict depends on `from`, so it must NOT be cached under the recipient key alone. insufficient_scope: this caller may not check at all (mailbox principals never can) — a fault in the CALLER's configuration, not a fact about the recipient, so it must DEFER (451). A 550 here rejects every message the server sees, on a mistake an operator can fix in a minute."
+            "description": "THREE meanings, split by the error CODE — the MTA must never map this status alone. receiving_disabled: the address resolves but its domain is not accepting, or the destination mailbox's receive hold is `disabled` (then `policyScope: \"mailbox\"`) — a recipient verdict, reject permanently (550); the mailbox-scope one is never cached, since its owner can clear it. sender_blocked: an address list refuses this MAIL FROM for this recipient — also 550, but note the verdict depends on `from`, so it must NOT be cached under the recipient key alone. insufficient_scope: this caller may not check at all (mailbox principals never can) — a fault in the CALLER's configuration, not a fact about the recipient, so it must DEFER (451). A 550 here rejects every message the server sees, on a mistake an operator can fix in a minute."
           },
           "404": {
             "content": {
@@ -41776,7 +42261,7 @@
                 }
               }
             },
-            "description": "TEMPORARY, every code here. receiving_paused: the recipient's account is inside its deletion window. DEFER (451), never reject: a sending MTA queues a 4xx for days, longer than the window, so a restore still receives what arrived meanwhile. Carries Retry-After, and this verdict is deliberately NOT cached: a restored account must stop deferring immediately. rate_limited: the recipient's tenant is over its delivery admission share; DEFER (451) the same way, also uncached, with a Retry-After. recently_unknown: this address did not resolve moments ago and is not asked again until that answer is a minute old (the object directory's negative memo); DEFER (451), never reject, because it may have been created since: Retry-After is at most the seconds left before it is asked again, and the verdict is not cached. Only the first miss answers 404.",
+            "description": "TEMPORARY, every code here. receiving_paused: the recipient's account is inside its deletion window, or the destination mailbox's receive hold is `paused` (then `policyScope: \"mailbox\"`). DEFER (451), never reject: a sending MTA queues a 4xx for days, longer than the window, so a restore (or a cleared hold) still receives what arrived meanwhile. Carries Retry-After, and this verdict is deliberately NOT cached: a restored account must stop deferring immediately. rate_limited: the recipient's tenant or a hosted destination tenant reached through an alias or forward is over its delivery admission share, or that admission check is temporarily unavailable; DEFER (451) the same way, also uncached, with a Retry-After. recently_unknown: a hosted address did not resolve moments ago, as remembered by the colo-wide RCPT cache or the directory's negative memo; DEFER (451), never reject, because it may have been created since. Retry-After is at most the seconds left before the original miss expires (within a minute), and repeat hits never extend that expiry. Only the first authoritative miss answers 404.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -41795,7 +42280,7 @@
     },
     "/api/v1/deliver/outbound": {
       "post": {
-        "description": "Submits a raw MIME message for outbound relay, local delivery, forwarding, or webhook execution with per-recipient fan-out. Who calls it: the platform's SMTP submission gateway (system key, submitting on the authenticated user's behalf); an account key may also call it directly to submit pre-built MIME as any sender address the account owns. For structured sending prefer POST /mailboxes/{mailboxId}/send, which builds the MIME for you; this door is for callers that already have the bytes.",
+        "description": "Submits a raw MIME message for outbound relay, local delivery, forwarding, or webhook execution with per-recipient fan-out. Who calls it: the platform's SMTP submission gateway (system key, submitting on the authenticated user's behalf); an account key may also call it directly to submit pre-built MIME as any sender address the account owns. For structured sending prefer POST /mailboxes/{mailboxId}/send, which builds the MIME for you; this door is for callers that already have the bytes. Lone CR and LF are normalized to CRLF before parsing or delivery; the size limit applies to the normalized message.",
         "operationId": "post_DeliverOutbound",
         "parameters": [
           {
@@ -41854,6 +42339,16 @@
             "required": true,
             "schema": {
               "description": "Recipient email address (RCPT TO)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`1` from the system key: smtp-in's submission re-post of a recipient it set aside because the recipient mailbox's receive hold refused it (`policyScope: \"mailbox\"`) after another recipient of the same transaction committed. The leg is accepted and staged (202) instead of refused: a paused one is delivered once the hold clears, or reported to the sender as expired at the paced queue's deadline; a disabled one is reported at once by a delivery-status notice in the sending mailbox. Ignored from any other caller and for any other refusal.",
+            "in": "header",
+            "name": "x-accept-held",
+            "required": false,
+            "schema": {
+              "description": "`1` from the system key: smtp-in's submission re-post of a recipient it set aside because the recipient mailbox's receive hold refused it (`policyScope: \"mailbox\"`) after another recipient of the same transaction committed. The leg is accepted and staged (202) instead of refused: a paused one is delivered once the hold clears, or reported to the sender as expired at the paced queue's deadline; a disabled one is reported at once by a delivery-status notice in the sending mailbox. Ignored from any other caller and for any other refusal.",
               "type": "string"
             }
           },
@@ -41918,7 +42413,7 @@
                 }
               }
             },
-            "description": "Message staged and queued for outbound relay or forwarding"
+            "description": "Message staged and queued for outbound relay or forwarding, or (with X-Accept-Held from the system key) for a local mailbox whose receive hold refused it"
           },
           "400": {
             "content": {
@@ -41948,7 +42443,7 @@
                 }
               }
             },
-            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (the sender's outbound recipient allowlist — the identity's, or the credential's own — excludes this recipient), credential_scope (the credential in play — the bearer's, or the one X-Acting-Credential names — is scoped below `send`; permanent for that credential, carrying `scope` and `required`), receiving_disabled (a local recipient is not accepting mail), posting_denied (a members-only group refused this poster), too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear and must bounce). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses (see isPermanentHold in src/db/sendhold.ts, which excludes it deliberately), so the backlog must be held rather than bounced."
+            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (one of the sender's own policies excludes this recipient: the outbound recipient allowlist — the identity's, or the credential's own — or the sender's outbound address lists, which a `block *@*` makes \"send to nobody but\"; the body's `source` says which, and for a list names the deciding `list` and `pattern`), sender_blocked (a LOCAL recipient's inbound address lists refuse this sender; permanent, and the recipient's list is not named), credential_scope (the credential in play — the bearer's, or the one X-Acting-Credential names — is scoped below `send`; permanent for that credential, carrying `scope` and `required`), receiving_disabled (a local recipient is not accepting mail: its domain, or the recipient mailbox's receive hold is `disabled`, then with `policyScope: \"mailbox\"`, never to be cached or gossiped), posting_denied (a members-only group refused this poster), too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear and must bounce). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses (see isPermanentHold in src/db/sendhold.ts, which excludes it deliberately), so the backlog must be held rather than bounced."
           },
           "404": {
             "content": {
@@ -41998,7 +42493,7 @@
                 }
               }
             },
-            "description": "TEMPORARY — retry, never bounce; every code carries `Retry-After`. rate_limited (the sender is over a send allowance), sending_paused (a reversible hold on the sender — non-payment, an investigation — at any of the three scopes), from_sending_paused (the same hold, found via the RFC5322 From address's domain), receiving_paused (a LOCAL recipient's account is inside its deletion window; the message must be retried so a restore receives what arrived meanwhile).",
+            "description": "TEMPORARY — retry, never bounce; every code carries `Retry-After`. rate_limited (the sender is over a send allowance), sending_paused (a reversible hold on the sender — non-payment, an investigation — at any of the three scopes), from_sending_paused (the same hold, found via the RFC5322 From address's domain), receiving_paused (a LOCAL recipient's account is inside its deletion window, or the recipient mailbox's receive hold is `paused`, then with `policyScope: \"mailbox\"`; the message must be retried so a restore, or a cleared hold, receives what arrived meanwhile).",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -42026,7 +42521,7 @@
                 }
               }
             },
-            "description": "Temporary — retry with the same delivery ID: temporary_failure (staging or infrastructure fault), superseded / reaped (this attempt lost its pending intent; a keyed retry converges), staging_missing (the staged upload vanished before the recipient leg ran; a retry re-stages), submission_record_unavailable (the delivery ID's durable admission could not be read, reserved, or validated)."
+            "description": "Temporary — retry with the same delivery ID: temporary_failure (staging or infrastructure fault, or a local recipient's receive policy could not be established), superseded / reaped (this attempt lost its pending intent; a keyed retry converges), staging_missing (the staged upload vanished before the recipient leg ran; a retry re-stages), submission_record_unavailable (the delivery ID's durable admission could not be read, reserved, or validated)."
           },
           "507": {
             "content": {
@@ -42102,6 +42597,16 @@
             }
           },
           {
+            "description": "`1` from the system key: smtp-in's re-post of a recipient it set aside because the recipient mailbox's receive hold refused it (`policyScope: \"mailbox\"`) after another recipient of the same transaction committed. The leg is accepted and staged (202) instead of refused: a paused one is delivered once the hold clears, or reported to the sender as expired at the paced queue's deadline; a disabled one is reported to the sender at once (a delivery-status notice; none to a null reverse-path, whose leg is kept for the operator). Ignored from any other caller and for any other refusal.",
+            "in": "header",
+            "name": "x-accept-held",
+            "required": false,
+            "schema": {
+              "description": "`1` from the system key: smtp-in's re-post of a recipient it set aside because the recipient mailbox's receive hold refused it (`policyScope: \"mailbox\"`) after another recipient of the same transaction committed. The leg is accepted and staged (202) instead of refused: a paused one is delivered once the hold clears, or reported to the sender as expired at the paced queue's deadline; a disabled one is reported to the sender at once (a delivery-status notice; none to a null reverse-path, whose leg is kept for the operator). Ignored from any other caller and for any other refusal.",
+              "type": "string"
+            }
+          },
+          {
             "description": "MIME message size in bytes",
             "in": "header",
             "name": "content-length",
@@ -42142,7 +42647,7 @@
                 }
               }
             },
-            "description": "Message staged and queued for webhook or forwarding"
+            "description": "Message staged and queued for webhook or forwarding, a paced mailbox, or (with X-Accept-Held from the system key) a mailbox whose receive hold refused it"
           },
           "400": {
             "content": {
@@ -42172,7 +42677,7 @@
                 }
               }
             },
-            "description": "Permanent per-message refusals, which the MTA answers with an in-session 550: receiving_disabled (the recipient is not accepting mail), sender_blocked (an inbound address list refused this sender), posting_denied (a members-only group refused a poster who is not an authenticated member). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not deliver here — a deployment fault rather than a fact about the message, and a 550 would hard-bounce every message the server sees. account_deleted says the CALLING account is inside its deletion window, which a restore reverses. Note sender_blocked depends on the ENVELOPE SENDER as well as the recipient, so it must never be cached under a recipient key alone."
+            "description": "Permanent per-message refusals, which the MTA answers with an in-session 550: receiving_disabled (the recipient's domain is not accepting mail, or the destination mailbox's receive hold is `disabled`: then the body carries `policyScope: \"mailbox\"`, never to be cached or gossiped), sender_blocked (an inbound address list refused this sender), posting_denied (a members-only group refused a poster who is not an authenticated member). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not deliver here — a deployment fault rather than a fact about the message, and a 550 would hard-bounce every message the server sees. account_deleted says the CALLING account is inside its deletion window, which a restore reverses. Note sender_blocked depends on the ENVELOPE SENDER as well as the recipient, so it must never be cached under a recipient key alone."
           },
           "404": {
             "content": {
@@ -42212,7 +42717,7 @@
                 }
               }
             },
-            "description": "Temporary, retry after the specified delay: receiving_paused (the recipient account is inside its deletion window; a restore receives the backlog) or rate_limited (the domain's forwarding budget is exhausted: the wire code is rate_limited; forward_rate_limited is the traffic log's detail, never the response body's error). rate_limited also answers a recipient whose tenant is over its delivery admission share; the traffic log's detail is then admission_shed. recently_unknown: the recipient did not resolve moments ago and is not asked again until that answer is a minute old (the object directory's negative memo); it may have been created since, so this DEFERS and never bounces, and Retry-After is at most the seconds left before it is asked again. Only the first miss answers 404 unknown_address.",
+            "description": "Temporary, retry after the specified delay: receiving_paused (the recipient account is inside its deletion window, or the destination mailbox's receive hold is `paused`, then with `policyScope: \"mailbox\"`; a restore or a cleared hold receives the backlog) or rate_limited (the domain's forwarding budget is exhausted: the wire code is rate_limited; forward_rate_limited is the traffic log's detail, never the response body's error). rate_limited also answers a recipient whose tenant is over its delivery admission share; the traffic log's detail is then admission_shed. recently_unknown: the recipient did not resolve moments ago and is not asked again until that answer is a minute old (the object directory's negative memo); it may have been created since, so this DEFERS and never bounces, and Retry-After is at most the seconds left before it is asked again. Only the first miss answers 404 unknown_address.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -42240,7 +42745,7 @@
                 }
               }
             },
-            "description": "temporary_failure — retry with the same delivery ID"
+            "description": "temporary_failure — retry with the same delivery ID. Also the answer when the destination mailbox's receive policy could not be established (its store could not confirm whether a receive hold is set): nothing was stored, and the retry decides."
           },
           "507": {
             "content": {
@@ -50131,6 +50636,101 @@
         ]
       }
     },
+    "/api/v1/identities/{identityId}/pim/events": {
+      "get": {
+        "description": "Upgrades to a WebSocket that streams `pim.changed` frames for this identity's calendars, tasks and contacts: `{ v, type, ts, data }` where `data` is the current state token per type (`{ Calendar, CalendarEvent, Task, AddressBook, ContactCard }`), the same tokens the per-collection `/changes` feeds and JMAP accept. A `ready` frame with the session deadline is sent on connect. Signals are not a journal: there is no replay, so on every (re)connect re-sync, and treat each frame as 'this changed, re-fetch it'. The vocabulary is additive: treat an unrecognized `type` as a generic nudge.\n\nOwner-only: a calendar or address book shared with you is not streamed here. Before the first calendar or contact use, the connection waits without creating a store. Its first authorized PIM use creates the default collections and sends one `pim.changed` frame. The session is closed with 4401 (session_expired: reconnect with a fresh bearer) after 12h, 4403 (credential_revoked: the credential was revoked or its owner suspended; do not reconnect with it) or 4410 (mailbox_gone: the identity is being deleted; stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
+        "operationId": "get_PimEvents",
+        "parameters": [
+          {
+            "description": "Identity ULID",
+            "in": "path",
+            "name": "identityId",
+            "required": true,
+            "schema": {
+              "description": "Identity ULID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols: the WebSocket is established"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "forbidden: the identity's owner is suspended and this connection would act for them (an account or system key acting for nobody may still connect)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found (the identity does not exist or is not this principal's to stream)"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "mailbox_gone: the identity is being deleted; stop reconnecting"
+          },
+          "426": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "upgrade_required: the request was not a WebSocket upgrade"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_many_subscribers: the store's subscriber cap is reached",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Subscribe to live calendar and contacts change events over WebSocket",
+        "tags": [
+          "PIM"
+        ]
+      }
+    },
     "/api/v1/accounts/{accountId}/templates": {
       "get": {
         "description": "Every stored template this account owns, with the languages each one has copy for. Needs an unscoped account key: a domain-scoped one is refused on the whole account surface.",
@@ -52296,6 +52896,16 @@
               }
             },
             "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such mailbox, or it has no mail store"
           }
         },
         "summary": "Re-index mailbox messages",
@@ -52371,6 +52981,16 @@
               }
             },
             "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such mailbox, or it has no mail store"
           }
         },
         "summary": "Acquire POP3 maildrop lock",
@@ -52416,6 +53036,16 @@
               }
             },
             "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such mailbox, or it has no mail store"
           }
         },
         "summary": "Get POP3 maildrop lock status",
@@ -52473,6 +53103,16 @@
               }
             },
             "description": "system_credentials_required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "not_found: no such mailbox, or it has no mail store"
           }
         },
         "summary": "Release POP3 maildrop lock",
@@ -54289,6 +54929,48 @@
         ]
       }
     },
+    "/api/v1/system/limits": {
+      "get": {
+        "description": "Returns deployment-wide size limits and constraints (such as maximum message size).",
+        "operationId": "get_SystemLimitsGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemLimits"
+                }
+              }
+            },
+            "description": "Deployment-wide system limits"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Get deployment-wide system limits (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
     "/api/v1/system/metering": {
       "get": {
         "description": "Returns platform rollup shard states, request collection status, and optional per-account storage sweep metrics (system admin only).",
@@ -55762,6 +56444,48 @@
           }
         },
         "summary": "Resolve vanity hostname",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/sieve/capabilities": {
+      "get": {
+        "description": "Returns supported Sieve extensions, maximum allowed scripts per mailbox, and maximum script size in bytes for the deployment.",
+        "operationId": "get_SystemSieveCapabilitiesGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SieveCapabilities"
+                }
+              }
+            },
+            "description": "Deployment-wide Sieve capabilities and engine limits"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          }
+        },
+        "summary": "Get deployment-wide Sieve engine capabilities and limits (system only)",
         "tags": [
           "System"
         ]
