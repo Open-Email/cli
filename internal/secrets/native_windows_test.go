@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-// Holding our own reader open must not block a concurrent save. With os.Open's
-// sharing mode this deterministically exhausts the replacement retry budget.
+// Holding our own reader open must not block a concurrent save. Without delete
+// sharing and POSIX replacement this exhausts the replacement retry budget.
 func TestWindowsCredentialReaderAllowsReplacement(t *testing.T) {
 	dir := t.TempDir()
 	const profile = "shared-reader"
@@ -36,7 +36,7 @@ func TestWindowsCredentialReaderAllowsReplacement(t *testing.T) {
 }
 
 func TestWindowsCredentialLongPath(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), strings.Repeat("long-folder\\", 25))
+	dir := filepath.Join(t.TempDir(), strings.Repeat("long-folder-\u00e9-\U0001f510\\", 25))
 	if _, _, err := Save(dir, "long-path", "oek_complete", true); err != nil {
 		t.Fatal(err)
 	}
