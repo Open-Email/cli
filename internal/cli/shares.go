@@ -148,6 +148,9 @@ func newMailShareSetCmd(a *app) *cobra.Command {
 				return usageError(errors.New(
 					"--keep-folders and --folder ask for opposite things — pass one or neither"))
 			}
+			if err := validateShareRights(rights); err != nil {
+				return usageError(err)
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -203,7 +206,24 @@ func newMailShareSetCmd(a *app) *cobra.Command {
 		"change only the rights, leaving the grant's existing folder scope untouched")
 	cmd.Flags().StringVarP(&mailbox, "mailbox", "m", "",
 		"mailbox to share (defaults to the profile's default mailbox)")
+	registerEnumFlagCompletion(cmd, "rights", "read_only", "read_write", "full")
 	return cmd
+}
+
+func validateShareRights(r string) error {
+	r = strings.TrimSpace(r)
+	switch r {
+	case "read_only", "read_write", "full":
+		return nil
+	case "":
+		return errors.New("--rights cannot be empty (expected read_only, read_write, full, or letters from lrswitea)")
+	}
+	for _, ch := range r {
+		if !strings.ContainsRune("lrswitea", ch) {
+			return fmt.Errorf("invalid --rights %q: expected read_only, read_write, full, or letters from lrswitea", r)
+		}
+	}
+	return nil
 }
 
 func newMailShareRemoveCmd(a *app) *cobra.Command {
@@ -245,7 +265,7 @@ func newMailShareRemoveCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	cmd.Flags().StringVarP(&mailbox, "mailbox", "m", "",
 		"mailbox whose grant is being revoked (defaults to the profile's default mailbox)")
 	return cmd

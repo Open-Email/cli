@@ -389,8 +389,9 @@ func newMessageComposeCmd(a *app) *cobra.Command {
 		filter, draft        bool
 	)
 	cmd := &cobra.Command{
-		Use:   "compose",
-		Short: "File a message into this mailbox from fields, without sending it",
+		Use:     "compose",
+		Aliases: []string{"draft"},
+		Short:   "File a message into this mailbox from fields, without sending it",
 		Long: "Build a message from fields and store it — drafts, imports, seeded threads.\n" +
 			"Nothing leaves the platform: routing, relay and the Sent copy are all bypassed.\n\n" +
 			"  openemail messages compose --from me@x --to you@y --subject Hi --text '…' --draft\n" +
@@ -780,7 +781,7 @@ func newMessageDeleteCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&label, "label", "", "detach from this one label instead of expunging")
 	cmd.Flags().BoolVar(&purge, "purge", false, "permanently purge (bypasses trash, irreversible)")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -981,7 +982,7 @@ func newMessageTrashCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	empty.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	empty.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	cmd.AddCommand(empty)
 	return cmd
 }

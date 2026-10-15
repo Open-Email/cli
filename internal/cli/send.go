@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"os"
 
 	"github.com/Open-Email/cli/internal/compose"
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -16,7 +15,8 @@ func newSendCmd(a *app) *cobra.Command {
 		from, to, subject, text, bodyFile string
 		file, envFrom, envTo, sourceHost  string
 		meta, deliveryID                  string
-		save, bounce                      bool
+		save, noSave                      bool
+		bounce, noBounce                  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "send",
@@ -29,11 +29,15 @@ func newSendCmd(a *app) *cobra.Command {
 			"defaults to --from/--to; override with --envelope-from/--envelope-to.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, err := a.authedClient()
+			savePtr, err := resolveToggleFlag(cmd, "save", save, "no-save", noSave)
 			if err != nil {
 				return err
 			}
-			compose := subject != "" || text != "" || bodyFile != ""
+			bouncePtr, err := resolveToggleFlag(cmd, "bounce", bounce, "no-bounce", noBounce)
+			if err != nil {
+				return err
+			}
+			composeMode := subject != "" || text != "" || bodyFile != ""
 
 			// Envelope resolution: explicit overrides, else --from/--to.
 			ef := firstNonEmpty(envFrom, from)
@@ -46,17 +50,13 @@ func newSendCmd(a *app) *cobra.Command {
 			var length int64
 			var cleanup func() = func() {}
 
-			if compose {
+			if composeMode {
 				if from == "" || to == "" {
 					return usageError(errors.New("compose mode needs --from and --to"))
 				}
-				body := text
-				if bodyFile != "" {
-					b, rerr := os.ReadFile(bodyFile)
-					if rerr != nil {
-						return rerr
-					}
-					body = string(b)
+				body, rerr := inlineOrFile(text, bodyFile)
+				if rerr != nil {
+					return rerr
 				}
 				msg := composeMIME(from, to, subject, body)
 				getBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(msg)), nil }
@@ -69,13 +69,18 @@ func newSendCmd(a *app) *cobra.Command {
 			}
 			defer cleanup()
 
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+
 			opts := coreapi.OutboundOptions{
 				EnvelopeFrom: ef, EnvelopeTo: et, SourceHost: sourceHost, DeliveryMeta: meta,
 				DeliveryID: firstNonEmpty(deliveryID, newDeliveryID()),
 			}
 			// Only send the strict save/bounce flags when the user set them.
-			opts.Save = boolPtrIfChanged(cmd, "save", save)
-			opts.Bounce = boolPtrIfChanged(cmd, "bounce", bounce)
+			opts.Save = savePtr
+			opts.Bounce = bouncePtr
 
 			res, raw, err := client.SubmitOutbound(cmd.Context(), opts, getBody, length)
 			if err != nil {
@@ -89,7 +94,7 @@ func newSendCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&to, "to", "", "recipient address (To header + envelope to; exactly one)")
 	cmd.Flags().StringVar(&subject, "subject", "", "subject (compose mode)")
 	cmd.Flags().StringVar(&text, "text", "", "plain-text body (compose mode)")
-	cmd.Flags().StringVar(&bodyFile, "body-file", "", "read the plain-text body from this file (compose mode)")
+	cmd.Flags().StringVar(&bodyFile, "body-file", "", "read the plain-text body from this file or - for stdin (compose mode)")
 	cmd.Flags().StringVarP(&file, "file", "f", "", "raw MIME message file (raw mode; default stdin)")
 	cmd.Flags().StringVar(&envFrom, "envelope-from", "", "override envelope MAIL FROM")
 	cmd.Flags().StringVar(&envTo, "envelope-to", "", "override envelope RCPT TO")
@@ -97,7 +102,9 @@ func newSendCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&meta, "meta", "", "X-Delivery-Meta JSON object (≤8KB)")
 	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID; reused on retry)")
 	cmd.Flags().BoolVar(&save, "save", false, "write a Sent copy in the sender's mailbox")
+	cmd.Flags().BoolVar(&noSave, "no-save", false, "do not write a Sent copy in the sender's mailbox")
 	cmd.Flags().BoolVar(&bounce, "bounce", false, "deliver a DSN on terminal relay failure")
+	cmd.Flags().BoolVar(&noBounce, "no-bounce", false, "do not deliver a DSN on terminal relay failure")
 	return cmd
 }
 

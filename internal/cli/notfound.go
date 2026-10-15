@@ -34,7 +34,7 @@ var collections = map[string]resourceNoun{
 	"patterns":      {"pattern", "openemail patterns list <domain>", kindInt},
 	"api-keys":      {"API key", "openemail keys list", kindULID},
 	"credentials":   {"credential", "openemail credentials list <mailboxId>", kindULID},
-	"identities":    {"identity", "openemail identities get", kindFree},
+	"identities":    {"identity", "openemail identities get", kindULID},
 	"pickups":       {"pickup", "openemail pickups list", kindULID},
 	"suppressions":  {"suppression for", "openemail do-not-send list", kindAddress},
 	"hostnames":     {"hostname for service", "openemail hostnames list <domain>", kindFree},
@@ -52,6 +52,9 @@ var collections = map[string]resourceNoun{
 	"feeds":         {"feed", "", kindFree},
 	"uploads":       {"upload", "", kindULID},
 	"deliveries":    {"delivery", "", kindULID},
+	"templates":     {"template", "openemail templates list", kindSlug},
+	"variants":      {"variant", "", kindLang},
+	"mail-slots":    {"mail slot", "openemail admin mail-slots list", kindSlug},
 }
 
 // pathLiterals are the segments core's routes spell out — a segment that
@@ -74,6 +77,8 @@ var pathLiterals = map[string]bool{
 	"auth": true, "deliver": true, "inbound": true, "outbound": true,
 	"pickup": true, "dkim": true, "health": true, "audit": true, "usage": true,
 	"scheduled": true, "junk": true, "not-junk": true, "flags": true,
+	"unjunk": true, "submit": true, "untrash": true, "copy": true,
+	"heads": true, "delivery": true, "variants": true,
 }
 
 // notFoundRef is one (collection, id) pair read off the refused path.
@@ -135,6 +140,13 @@ func describeNotFound(ae *coreapi.APIError) (subject string, hints []string) {
 	return subject, hints
 }
 
+func indefiniteNoun(noun string) string {
+	if noun != "" && strings.ContainsRune("aeiouAEIOU", rune(noun[0])) {
+		return "an " + noun
+	}
+	return "a " + noun
+}
+
 // shapeHint says when an id could never have matched, which turns "not found"
 // into "not an id" — the far more common mistake at a keyboard.
 func shapeHint(r notFoundRef) string {
@@ -143,13 +155,14 @@ func shapeHint(r notFoundRef) string {
 		if isULID(r.id) {
 			return ""
 		}
+		art := indefiniteNoun(r.noun.noun)
 		if looksLikeAddress(r.id) {
-			return fmt.Sprintf("%q is an address, but a %s is named by its id (26 upper-case characters, like 01KXRS3SHN1N35G4YETVADSN0R)", r.id, r.noun.noun)
+			return fmt.Sprintf("%q is an address, but %s is named by its id (26 upper-case characters, like 01KXRS3SHN1N35G4YETVADSN0R)", r.id, art)
 		}
 		if up := strings.ToUpper(r.id); isULID(up) {
 			return fmt.Sprintf("%q is lower-case; ids are matched exactly as minted — did you mean %s?", r.id, up)
 		}
-		return fmt.Sprintf("%q does not look like a %s id (26 upper-case characters, like 01KXRS3SHN1N35G4YETVADSN0R)", r.id, r.noun.noun)
+		return fmt.Sprintf("%q does not look like %s id (26 upper-case characters, like 01KXRS3SHN1N35G4YETVADSN0R)", r.id, art)
 	case kindDomain:
 		if looksLikeDomain(r.id) {
 			return ""
@@ -166,6 +179,14 @@ func shapeHint(r notFoundRef) string {
 	case kindInt:
 		if strings.Trim(r.id, "0123456789") != "" {
 			return fmt.Sprintf("%q is not a number", r.id)
+		}
+	case kindSlug:
+		if !slugPattern.MatchString(r.id) {
+			return fmt.Sprintf("%q does not look like a %s slug (lowercase letters, digits, - and _)", r.id, r.noun.noun)
+		}
+	case kindLang:
+		if !isLanguageTag(r.id) {
+			return fmt.Sprintf("%q does not look like a language tag (like en, de or pt-br)", r.id)
 		}
 	}
 	return ""

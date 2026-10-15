@@ -78,7 +78,7 @@ func newPrefsGetCmd(a *app) *cobra.Command {
 				a.out.Successf("Wrote %s (version %d)", outPath, p.Version)
 				return nil
 			}
-			os.Stdout.Write(blob)
+			a.out.out.Write(blob)
 			if !a.out.JSON() && !raw {
 				a.out.Msgf("version %d — pass it to `prefs put --if-match %d` for a safe write", p.Version, p.Version)
 			}
@@ -106,10 +106,6 @@ func newPrefsPutCmd(a *app) *cobra.Command {
 			if force && (ifMatch != "" || createOnly) {
 				return usageError(errors.New("--force cannot be combined with --if-match/--create-only"))
 			}
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			body, err := readRawInput(file)
 			if err != nil {
 				return err
@@ -117,6 +113,10 @@ func newPrefsPutCmd(a *app) *cobra.Command {
 			prefs, embedded, err := parsePrefsInput(body)
 			if err != nil {
 				return usageError(err)
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
 			}
 			guard := ifMatch
 			switch {
@@ -150,7 +150,7 @@ func newPrefsPutCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "read the document from a file (default: stdin)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "read the document from a file (default: stdin)")
 	cmd.Flags().StringVar(&ifMatch, "if-match", "", "write only if the stored version matches")
 	cmd.Flags().BoolVar(&createOnly, "create-only", false, "write only if no document exists yet")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite unconditionally (no compare-and-swap)")

@@ -256,7 +256,8 @@ func newInvitationRespondCmd(a *app) *cobra.Command {
 			"For an .ics that is not in a mailbox at all, the inline form still applies:\n\n" +
 			"  openemail calendars invitations respond accepted --file invite.ics\n\n" +
 			"To re-answer an event already in a calendar, use `openemail calendars respond`.",
-		Args: cobra.ExactArgs(1),
+		Args:      cobra.ExactArgs(1),
+		ValidArgs: []string{"accepted", "declined", "tentative", "needs-action"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			partstat, err := normalizePartstat(args[0])
 			if err != nil {
@@ -329,6 +330,6 @@ func newInvitationRespondCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&message, "message", "", "answer the invitation carried by this message (preferred)")
 	cmd.Flags().StringVar(&section, "section", "", "with --message: the scheduling part's section (default: the server picks it)")
-	cmd.Flags().StringVar(&file, "file", "", "inline form: read the .ics from a file (default: stdin)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "inline form: read the .ics from a file (default: stdin)")
 	return cmd
 }

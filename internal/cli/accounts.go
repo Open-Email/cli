@@ -191,8 +191,9 @@ func newAccountDeleteCmd(a *app) *cobra.Command {
 	var purge bool
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "delete <account-id>",
-		Short: "Delete an account (soft; purged after the grace window)",
+		Use:     "delete <account-id>",
+		Aliases: []string{"rm"},
+		Short:   "Delete an account (soft; purged after the grace window)",
 		Long: "Delete a tenant account. This DESTROYS NOTHING immediately: the account is\n" +
 			"fenced (its keys stop working, its mail defers, its sending holds) and every\n" +
 			"byte survives until the grace window elapses. `accounts restore` undoes it.\n\n" +
@@ -200,18 +201,18 @@ func newAccountDeleteCmd(a *app) *cobra.Command {
 			"IRREVERSIBLE and system-only.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			// Confirmation is required for --purge and only for --purge. The
 			// ordinary delete is reversible for a day and prints how to undo it;
 			// making the safe verb noisy trains people to type -y reflexively,
 			// which is exactly what must not happen for the unsafe one.
 			if purge && !yes {
-				return fmt.Errorf(
+				return usageError(fmt.Errorf(
 					"refusing to purge %s without --yes: this is irreversible and takes effect immediately",
-					args[0])
+					args[0]))
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
 			}
 			res, err := client.DeleteAccount(cmd.Context(), args[0], purge)
 			if err != nil {

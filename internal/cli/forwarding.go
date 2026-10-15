@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -259,7 +260,7 @@ func newForwardingRemoveCmd(a *app) *cobra.Command {
 				return err
 			}
 			if !yes && !confirm(fmt.Sprintf("Remove forwarding destination %s?", args[0])) {
-				return silentExit(1)
+				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
 			}
 			if err := client.DeleteForwardingDestination(cmd.Context(), mbx, destID); err != nil {
 				return err
@@ -354,12 +355,12 @@ func newForwardingOffCmd(a *app) *cobra.Command {
 			"pointing at it again later needs no new code.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !yes && !confirm("Stop forwarding all mail?") {
+				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
+			}
 			client, mbx, err := a.forwardingClient(cmd)
 			if err != nil {
 				return err
-			}
-			if !yes && !confirm("Stop forwarding all mail?") {
-				return silentExit(1)
 			}
 			fwd, err := client.ClearForwardAll(cmd.Context(), mbx)
 			if err != nil {

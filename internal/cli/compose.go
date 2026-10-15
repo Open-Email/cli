@@ -39,6 +39,9 @@ func (b *bodyFlags) register(cmd *cobra.Command) {
 // bodies resolves the text and HTML parts. require makes an empty message an
 // error — true for anything that gets sent, since a body is the whole point.
 func (b *bodyFlags) bodies(cmd *cobra.Command, require bool) (text, html *string, err error) {
+	if b.bodyFile == "-" && b.htmlFile == "-" {
+		return nil, nil, usageError(errors.New("cannot read both --body-file and --html-file from stdin (-)"))
+	}
 	text, err = composeBody(b.text, b.bodyFile, cmd.Flags().Changed("text"))
 	if err != nil {
 		return nil, nil, err
@@ -85,6 +88,23 @@ func (b *bodyFlags) stage(cmd *cobra.Command, a *app, client *coreapi.Client, ma
 	return out, nil
 }
 
+func resolveToggleFlag(cmd *cobra.Command, posName string, posVal bool, negName string, negVal bool) (*bool, error) {
+	posSet := cmd.Flags().Changed(posName)
+	negSet := cmd.Flags().Changed(negName)
+	if posSet && negSet {
+		return nil, usageError(fmt.Errorf("cannot pass both --%s and --%s", posName, negName))
+	}
+	if posSet {
+		v := posVal
+		return &v, nil
+	}
+	if negSet {
+		v := !negVal
+		return &v, nil
+	}
+	return nil, nil
+}
+
 func newComposeCmd(a *app) *cobra.Command {
 	var (
 		body                     bodyFlags
@@ -92,7 +112,8 @@ func newComposeCmd(a *app) *cobra.Command {
 		to, cc, bcc, replyTo     []string
 		references               []string
 		deliveryID               string
-		save, bounce             bool
+		save, noSave             bool
+		bounce, noBounce         bool
 	)
 	cmd := &cobra.Command{
 		Use:     "compose",
@@ -110,7 +131,11 @@ func newComposeCmd(a *app) *cobra.Command {
 			"For raw RFC 5322 bytes you already hold, use `openemail send --file`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, err := a.authedClient()
+			savePtr, err := resolveToggleFlag(cmd, "save", save, "no-save", noSave)
+			if err != nil {
+				return err
+			}
+			bouncePtr, err := resolveToggleFlag(cmd, "bounce", bounce, "no-bounce", noBounce)
 			if err != nil {
 				return err
 			}
@@ -147,6 +172,10 @@ func newComposeCmd(a *app) *cobra.Command {
 				return err
 			}
 
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
 				return err
@@ -161,8 +190,8 @@ func newComposeCmd(a *app) *cobra.Command {
 			// second time. Defaulted to a fresh ULID so a single send is still
 			// one call, and settable so a retry converges.
 			opts := coreapi.SendOptions{DeliveryID: firstNonEmpty(deliveryID, newDeliveryID())}
-			opts.Save = boolPtrIfChanged(cmd, "save", save)
-			opts.Bounce = boolPtrIfChanged(cmd, "bounce", bounce)
+			opts.Save = savePtr
+			opts.Bounce = bouncePtr
 
 			res, raw, err := client.SendMessage(cmd.Context(), mbx, req, opts)
 			if err != nil {
@@ -191,7 +220,9 @@ func newComposeCmd(a *app) *cobra.Command {
 	cmd.Flags().StringArrayVar(&references, "references", nil, "References message-id, repeatable")
 	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID; pass the same one to retry a partial send)")
 	cmd.Flags().BoolVar(&save, "save", true, "write a Sent copy in the sender's mailbox")
-	cmd.Flags().BoolVar(&bounce, "bounce", true, "deliver a DSN on terminal relay failure (--bounce=false to opt out)")
+	cmd.Flags().BoolVar(&noSave, "no-save", false, "do not write a Sent copy in the sender's mailbox")
+	cmd.Flags().BoolVar(&bounce, "bounce", true, "deliver a DSN on terminal relay failure (--no-bounce or --bounce=false to opt out)")
+	cmd.Flags().BoolVar(&noBounce, "no-bounce", false, "do not deliver a DSN on terminal relay failure")
 	return cmd
 }
 

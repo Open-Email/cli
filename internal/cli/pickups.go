@@ -87,9 +87,10 @@ func newPickupListCmd(a *app) *cobra.Command {
 
 func newPickupGetCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <pickupId>",
-		Short: "Show one pickup source (never shows the password)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <pickupId>",
+		Aliases: []string{"show"},
+		Short:   "Show one pickup source (never shows the password)",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -121,15 +122,15 @@ func newPickupCreateCmd(a *app) *cobra.Command {
 		Short: "Create a POP3 pickup source (password prompted if omitted on a TTY)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			if host == "" || username == "" || port == 0 {
 				return usageError(errors.New("--host, --port and --username are required"))
 			}
 			if tls != "" && tls != "tls" && tls != "starttls" {
 				return usageError(errors.New("--tls must be 'tls' or 'starttls'"))
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
 			}
 			if !cmd.Flags().Changed("password") {
 				if !promptTTY() {
@@ -187,6 +188,7 @@ func newPickupCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&deleteAfterFetch, "delete-after-fetch", false, "delete messages from the server after fetching (default true)")
 	cmd.Flags().StringVar(&label, "label", "", "folder to file fetched mail into (created on first use; default INBOX)")
 	cmd.Flags().BoolVar(&markRead, "mark-read", false, "mark every imported message read (default: only mail older than the source)")
+	registerEnumFlagCompletion(cmd, "tls", "tls", "starttls")
 	return cmd
 }
 
@@ -203,10 +205,6 @@ func newPickupUpdateCmd(a *app) *cobra.Command {
 		Short: "Update a pickup source (partial; password write-only, omit to keep)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			if enabled && disabled {
 				return usageError(errors.New("--enabled and --disabled are mutually exclusive"))
 			}
@@ -257,6 +255,10 @@ func newPickupUpdateCmd(a *app) *cobra.Command {
 			if len(patch) == 0 {
 				return usageError(errors.New("nothing to update"))
 			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
 				return err
@@ -286,6 +288,7 @@ func newPickupUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&markRead, "mark-read", false, "mark every imported message read (--mark-read=false: only mail older than the source)")
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "enable the source")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "disable the source")
+	registerEnumFlagCompletion(cmd, "tls", "tls", "starttls")
 	return cmd
 }
 
@@ -317,7 +320,7 @@ func newPickupDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 

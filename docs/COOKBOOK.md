@@ -777,13 +777,11 @@ right after it returns, and reconcile from that state whenever a batch's
 
 ```sh
 openemail domains webhook set acme.example --url https://…
-# The changes feed is REST (`GET /mailboxes/:id/messages/changes`); the CLI
-# has no wrapper for it yet, so call it with your key:
+# Record a baseline state token for each mailbox:
 for id in $(openemail mailboxes list --json | jq -r '.mailboxes[].id'); do
-  curl -s -H "Authorization: Bearer $OE_KEY" \
-    "$OE_BASE/api/v1/mailboxes/$id/messages/changes" | jq -r '.state'   # keep per mailbox
+  openemail messages changes -m "$id" --json | jq -r '.state'   # keep per mailbox
 done
-# later, on a gap: …/messages/changes?since=$saved_state
+# later, on a gap: openemail messages changes -m "$id" --since "$saved_state" --all
 ```
 
 ## Scripting with a system key (operator)
@@ -830,12 +828,12 @@ openemail suppressions remove them@example.net
 ## Stop a tenant that is spamming (operator)
 
 ```sh
-openemail accounts send-usage ACC_01J…                 # how much have they spent today?
-openemail accounts traffic ACC_01J…                    # is the volume real, and where?
-openemail domains events example.com --outcome relayed # which mailbox is sending it
-openemail admin hold account ACC_01J… --pause          # hold everything while you look
-openemail admin hold account ACC_01J… --stop           # or stop it outright
-openemail admin release account ACC_01J…               # once it is sorted out
+openemail accounts send-usage 01JARQ00000000000000000001                 # how much have they spent today?
+openemail accounts traffic 01JARQ00000000000000000001                    # is the volume real, and where?
+openemail domains events example.com --outcome relayed                   # which mailbox is sending it
+openemail admin hold account 01JARQ00000000000000000001 --pause          # hold everything while you look
+openemail admin hold account 01JARQ00000000000000000001 --stop           # or stop it outright
+openemail admin release account 01JARQ000000000000000001                 # once it is sorted out
 ```
 
 **Reach for `--pause` first.** It refuses submissions temporarily (429 → a 451
@@ -856,8 +854,8 @@ If the answer is "they are legitimately busy", the fix is a bigger number rather
 than a freeze:
 
 ```sh
-openemail accounts update ACC_01J… --send-msgs-per-day 20000
-openemail accounts update ACC_01J… --send-rcpts-per-day unlimited
+openemail accounts update 01JARQ00000000000000000001 --send-msgs-per-day 20000
+openemail accounts update 01JARQ00000000000000000001 --send-rcpts-per-day unlimited
 ```
 
 Note `unlimited` and `default` are different words on purpose: `default` drops
@@ -870,8 +868,8 @@ not the `--max-mailboxes` ceiling, and it drains on its own; raise it for that
 one account rather than the platform-wide var:
 
 ```sh
-openemail accounts update ACC_01J… --mailbox-creates-per-day 500
-openemail accounts update ACC_01J… --address-creates-per-day 2000 --domain-creates-per-day 50
+openemail accounts update 01JARQ00000000000000000001 --mailbox-creates-per-day 500
+openemail accounts update 01JARQ00000000000000000001 --address-creates-per-day 2000 --domain-creates-per-day 50
 ```
 
 Vetting the account to the trusted preset stamps all three as well, so an

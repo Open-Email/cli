@@ -245,12 +245,13 @@ func newPatternDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
 func patternDestFlags(cmd *cobra.Command, typ, mailbox, webhookURL, webhookSecret, remote, alias *string) {
 	cmd.Flags().StringVar(typ, "type", "", "destination type: mailbox|webhook|remote|alias")
+	registerEnumFlagCompletion(cmd, "type", "mailbox", "webhook", "remote", "alias")
 	cmd.Flags().StringVar(mailbox, "mailbox", "", "mailbox id (type=mailbox)")
 	cmd.Flags().StringVar(webhookURL, "webhook-url", "", "https webhook URL (type=webhook)")
 	cmd.Flags().StringVar(webhookSecret, "webhook-secret", "", "webhook signing secret (type=webhook)")

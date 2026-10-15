@@ -197,8 +197,7 @@ func newVacationShowCmd(a *app) *cobra.Command {
 					{"State", v.State},
 				})
 				if body := strOr(v.TextBody, ""); body != "" {
-					a.out.Msgf("")
-					a.out.Msgf("%s", body)
+					fmt.Fprintf(w, "\n%s\n", sanitizeBody(body))
 				}
 				if v.HtmlBody != nil && *v.HtmlBody != "" {
 					a.out.Msgf("")

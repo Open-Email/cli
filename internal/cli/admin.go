@@ -250,7 +250,16 @@ var sendHoldScopes = map[string]bool{"domain": true, "mailbox": true, "account":
 // hold is "paused", "disabled" or "" (release — marshals as JSON null, which is
 // what clears BOTH storage columns in core).
 func (a *app) applySendHold(cmd *cobra.Command, scope, id, hold string) error {
-	if !sendHoldScopes[scope] {
+	switch scope {
+	case "domain":
+		if err := checkArg("domain", id, kindDomain); err != nil {
+			return err
+		}
+	case "mailbox", "account":
+		if err := checkArg(scope+"Id", id, kindULID); err != nil {
+			return err
+		}
+	default:
 		return usageError(errors.New("scope must be one of: domain, mailbox, account"))
 	}
 	client, err := a.authedClient()
@@ -298,8 +307,9 @@ func (a *app) applySendHold(cmd *cobra.Command, scope, id, hold string) error {
 func newAdminHoldCmd(a *app) *cobra.Command {
 	var pause, stop bool
 	cmd := &cobra.Command{
-		Use:   "hold <domain|mailbox|account> <id> (--pause | --stop)",
-		Short: "Hold or stop outbound sending for one domain, mailbox or account",
+		Use:       "hold <domain|mailbox|account> <id> (--pause | --stop)",
+		Short:     "Hold or stop outbound sending for one domain, mailbox or account",
+		ValidArgs: []string{"domain", "mailbox", "account"},
 		Long: "Operator enforcement over outbound mail, at any of the three scopes. Two modes:\n\n" +
 			"  --pause  REVERSIBLE HOLD. Submissions are refused temporarily (429), so an\n" +
 			"           SMTP client gets a 451 and ITS OWN queue holds the mail, and the relay\n" +
@@ -336,9 +346,10 @@ func newAdminHoldCmd(a *app) *cobra.Command {
 
 func newAdminReleaseCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "release <domain|mailbox|account> <id>",
-		Short: "Lift a send hold or stop (the inverse of `admin hold`)",
-		Args:  cobra.ExactArgs(2),
+		Use:       "release <domain|mailbox|account> <id>",
+		Short:     "Lift a send hold or stop (the inverse of `admin hold`)",
+		ValidArgs: []string{"domain", "mailbox", "account"},
+		Args:      cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.applySendHold(cmd, args[0], args[1], "")
 		},

@@ -17,17 +17,17 @@ import (
 
 func TestPimObjectsGetAndPutJSONFlag(t *testing.T) {
 	const mbx = "01KXRS3SHN1N35G4YETVADSN0R"
-	var gotPutFormat string
+	var gotPutContentType string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/mailboxes/"+mbx+"/calendars/work/objects/standup.ics":
-			if r.URL.Query().Get("format") != "json" {
-				t.Errorf("expected format=json query, got %q", r.URL.RawQuery)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/identities/"+mbx+"/calendars/work/objects/standup.ics":
+			if !strings.Contains(r.Header.Get("Accept"), "application/json") {
+				t.Errorf("expected Accept: application/json, got %q", r.Header.Get("Accept"))
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"href":"standup.ics","uid":"u-1","etag":"e-1","component":"VEVENT","size":42,"updatedAt":1751000000,"writable":true,"content":"BEGIN:VCALENDAR","data":{"@type":"Event","title":"Standup"}}`))
-		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/mailboxes/"+mbx+"/calendars/work/objects/standup.ics":
-			gotPutFormat = r.URL.Query().Get("format")
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/identities/"+mbx+"/calendars/work/objects/standup.ics":
+			gotPutContentType = r.Header.Get("Content-Type")
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"href":"standup.ics","uid":"u-1","etag":"e-2","created":true}`))
 		default:
@@ -36,7 +36,7 @@ func TestPimObjectsGetAndPutJSONFlag(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	t.Setenv("OPENEMAIL_CONFIG_DIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("OPENEMAIL_API_URL", srv.URL)
 	t.Setenv("OPENEMAIL_API_KEY", "oek_test")
 
@@ -109,8 +109,8 @@ func TestPimObjectsGetAndPutJSONFlag(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("objects put --json: %v", err)
 	}
-	if gotPutFormat != "json" {
-		t.Errorf("expected PUT format=json, got %q", gotPutFormat)
+	if gotPutContentType != "application/json" {
+		t.Errorf("expected PUT Content-Type=application/json, got %q", gotPutContentType)
 	}
 	var putRes map[string]any
 	if err := json.Unmarshal(outBuf.Bytes(), &putRes); err != nil {
@@ -136,7 +136,7 @@ func TestTasksListAllStuckCursorGuard(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	t.Setenv("OPENEMAIL_CONFIG_DIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("OPENEMAIL_API_URL", srv.URL)
 	t.Setenv("OPENEMAIL_API_KEY", "oek_test")
 
@@ -154,8 +154,6 @@ func TestVacationShowWritesBodyToStdout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/api/v1/auth/whoami":
-			_, _ = w.Write([]byte(`{"type":"mailbox","mailboxId":"` + mbx + `"}`))
 		case "/api/v1/mailboxes/" + mbx + "/vacation":
 			_, _ = w.Write([]byte(`{"isEnabled":true,"subject":"Away","textBody":"Out of office until Monday","state":"v1"}`))
 		default:
@@ -164,14 +162,14 @@ func TestVacationShowWritesBodyToStdout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	t.Setenv("OPENEMAIL_CONFIG_DIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("OPENEMAIL_API_URL", srv.URL)
 	t.Setenv("OPENEMAIL_API_KEY", "oek_test")
 
 	var outBuf, errBuf bytes.Buffer
 	a := &app{}
 	root := newRootCmd(a)
-	root.SetArgs([]string{"vacation", "show"})
+	root.SetArgs([]string{"vacation", "-m", mbx, "show"})
 	origPreRun := root.PersistentPreRunE
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if err := origPreRun(cmd, args); err != nil {
@@ -227,7 +225,7 @@ func TestOpenRawBodyDashReadsStdin(t *testing.T) {
 }
 
 func TestPreFlightValidationBeforeAuth(t *testing.T) {
-	t.Setenv("OPENEMAIL_CONFIG_DIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("OPENEMAIL_API_KEY", "")
 
 	cases := [][]string{
