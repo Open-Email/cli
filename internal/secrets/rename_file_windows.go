@@ -47,11 +47,13 @@ func renameCredentialFileWindows(old, new string) error {
 	}
 	var layout renameInfo
 	nameBytes := (len(name) - 1) * 2 // Exclude the terminating NUL.
-	buffer := make([]byte, max(int(unsafe.Sizeof(layout)), int(unsafe.Offsetof(layout.FileName))+nameBytes))
+	// The Win32 API also consumes the NUL terminator when resolving this path,
+	// even though FileNameLength excludes it.
+	buffer := make([]byte, max(int(unsafe.Sizeof(layout)), int(unsafe.Offsetof(layout.FileName))+nameBytes+2))
 	info := (*renameInfo)(unsafe.Pointer(&buffer[0]))
 	info.Flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
 	info.FileNameLength = uint32(nameBytes)
-	copy(unsafe.Slice(&info.FileName[0], len(name)-1), name[:len(name)-1])
+	copy(unsafe.Slice(&info.FileName[0], len(name)), name)
 
 	handle, err := windows.CreateFile(sourceName, windows.DELETE,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,

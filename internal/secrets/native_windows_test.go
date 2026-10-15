@@ -45,6 +45,28 @@ func TestWindowsCredentialLongPath(t *testing.T) {
 	}
 }
 
+// Exercise different native buffer sizes: the destination path must end at its
+// own filename, regardless of allocation padding or previously stored contents.
+func TestWindowsCredentialDestinationNames(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "credential names-\u00e9-\U0001f510")
+	for length := 1; length <= 32; length++ {
+		profile := strings.Repeat("p", length)
+		if _, _, err := Save(dir, profile, "oek_complete", true); err != nil {
+			t.Fatalf("Save for filename length %d: %v", length, err)
+		}
+		if got, err := Load(dir, profile, File); err != nil || got != "oek_complete" {
+			t.Fatalf("Load for filename length %d = %q, %v", length, got, err)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "credentials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 32 {
+		t.Fatalf("credential filenames = %v, want exactly the 32 saved profiles", entries)
+	}
+}
+
 // Exercise actual Windows rename errors, not a stubbed error: keep the target
 // open with read/write sharing but without FILE_SHARE_DELETE.
 func TestWindowsCredentialReplacementWithOpenHandle(t *testing.T) {
