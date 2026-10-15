@@ -216,3 +216,16 @@ func TestMatchCancelsAnUnfinishedPIMUpgrade(t *testing.T) {
 		t.Fatal("upgrade survived match")
 	}
 }
+
+func TestURLEscapesIdentityID(t *testing.T) {
+	got, err := URL("https://api.open.email", Mail, "id/with space?#")
+	if err != nil {
+		t.Fatalf("URL: %v", err)
+	}
+	want := "wss://api.open.email/api/v1/mailboxes/id%2Fwith%20space%3F%23/events"
+	if got != want {
+		t.Fatalf("URL = %q, want %q", got, want)
+	}
+}
+
+

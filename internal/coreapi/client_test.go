@@ -279,3 +279,149 @@ func TestAPIErrorCarriesRequest(t *testing.T) {
 		t.Fatalf("request not carried: %q %q", ae.Method, ae.Path)
 	}
 }
+
+func TestSendMessageAndReplyRetryWhenDeliveryIDSet(t *testing.T) {
+	var sendCalls, replyCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/messages/send"):
+			if atomic.AddInt32(&sendCalls, 1) == 1 {
+				w.WriteHeader(503)
+				w.Write([]byte(`{"error":"unavailable"}`))
+				return
+			}
+			w.WriteHeader(200)
+			w.Write([]byte(`{"messageId":"m1","threadId":"t1","status":"queued"}`))
+		case strings.HasSuffix(r.URL.Path, "/reply"):
+			if atomic.AddInt32(&replyCalls, 1) == 1 {
+				w.WriteHeader(503)
+				w.Write([]byte(`{"error":"unavailable"}`))
+				return
+			}
+			w.WriteHeader(200)
+			w.Write([]byte(`{"messageId":"m2","threadId":"t1","status":"queued"}`))
+		}
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	if _, _, err := c.SendMessage(context.Background(), "mbx1", SendMessageInput{Subject: "hi"}, SendOptions{DeliveryID: "01J00000000000000000000001"}); err != nil {
+		t.Fatalf("SendMessage with DeliveryID should retry on 503: %v", err)
+	}
+	if got := atomic.LoadInt32(&sendCalls); got != 2 {
+		t.Fatalf("SendMessage calls = %d, want 2", got)
+	}
+
+	if _, _, err := c.ReplyToThread(context.Background(), "mbx1", "thr1", ReplyInput{Text: "re"}, SendOptions{DeliveryID: "01J00000000000000000000002"}); err != nil {
+		t.Fatalf("ReplyToThread with DeliveryID should retry on 503: %v", err)
+	}
+	if got := atomic.LoadInt32(&replyCalls); got != 2 {
+		t.Fatalf("ReplyToThread calls = %d, want 2", got)
+	}
+}
+
+func TestUploadBlobAndAppendWithoutDeliveryIDDoNotRetryOn503(t *testing.T) {
+	var blobCalls, appendCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		if strings.HasSuffix(r.URL.Path, "/blobs") {
+			atomic.AddInt32(&blobCalls, 1)
+		} else {
+			atomic.AddInt32(&appendCalls, 1)
+		}
+		w.WriteHeader(503)
+		w.Write([]byte(`{"error":"unavailable"}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	getBody := func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("payload")), nil }
+	_, _ = c.UploadBlob(context.Background(), "mbx1", "text/plain", getBody, 7)
+	if got := atomic.LoadInt32(&blobCalls); got != 1 {
+		t.Fatalf("UploadBlob calls = %d, want 1 (must not retry without idempotency key)", got)
+	}
+
+	_, _, _ = c.AppendMessage(context.Background(), "mbx1", AppendOptions{}, getBody, 7)
+	if got := atomic.LoadInt32(&appendCalls); got != 1 {
+		t.Fatalf("AppendMessage without DeliveryID calls = %d, want 1", got)
+	}
+}
+
+func TestIdempotentReadsAndUpsertsRetryOn503(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			w.WriteHeader(503)
+			w.Write([]byte(`{"error":"unavailable"}`))
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"hostnames":{}}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	if _, err := c.ListDomainHostnames(context.Background(), "example.com"); err != nil {
+		t.Fatalf("ListDomainHostnames should retry on 503: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("ListDomainHostnames calls = %d, want 2", got)
+	}
+}
+
+func TestJSONContentTypeSentOnTemplateAndMailSlotRequests(t *testing.T) {
+	var gotContentTypes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotContentTypes = append(gotContentTypes, r.Header.Get("Content-Type"))
+		w.WriteHeader(200)
+		w.Write([]byte(`{"slug":"welcome","subject":"Hi"}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	_, err := c.CreateTemplate(context.Background(), "acc1", TemplateCreateInput{Slug: "welcome", Name: "Welcome"})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+	_, err = c.PutMailSlotVariant(context.Background(), "welcome", "en", MailSlotVariantInput{Subject: "Hi", TextBody: "Body"})
+	if err != nil {
+		t.Fatalf("PutMailSlotVariant: %v", err)
+	}
+	for i, ct := range gotContentTypes {
+		if ct != "application/json" {
+			t.Fatalf("request %d Content-Type = %q, want application/json", i, ct)
+		}
+	}
+}
+
+func TestCheckRedirectBlocksCrossHostJoin(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte(`{"apiKeys":[]}`))
+	}))
+	defer target.Close()
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/api/v1/keys", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	c := testClient(t, origin.URL)
+	if _, err := c.ListAPIKeys(context.Background(), 0, ""); err == nil {
+		t.Fatal("expected cross-host redirect to be blocked, got nil")
+	}
+}
+
+func TestParseRetryAfterSecondsBoundsAndHTTPDate(t *testing.T) {
+	if got := parseRetryAfterSeconds("-5"); got != 0 {
+		t.Fatalf("negative Retry-After = %v, want 0", got)
+	}
+	if got := parseRetryAfterSeconds("999999"); got != 60*time.Second {
+		t.Fatalf("huge Retry-After = %v, want 60s cap", got)
+	}
+	futureDate := time.Now().UTC().Add(10 * time.Second).Format(http.TimeFormat)
+	if got := parseRetryAfterSeconds(futureDate); got <= 0 || got > 15*time.Second {
+		t.Fatalf("HTTP-date Retry-After = %v, want within (0, 15s]", got)
+	}
+}
+
