@@ -19,7 +19,7 @@ import (
 // unconditionally, even on error.
 func openRawBody(path string) (getBody func() (io.ReadCloser, error), length int64, cleanup func(), err error) {
 	noop := func() {}
-	if path != "" {
+	if path != "" && path != "-" {
 		st, serr := os.Stat(path)
 		if serr != nil {
 			return nil, 0, noop, serr

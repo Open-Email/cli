@@ -127,7 +127,7 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&address, "address", "", "claim this address: the route is created atomically with the mailbox, which receives mail immediately (address_taken if already routed); required unless --without-address")
-	cmd.Flags().BoolVar(&withoutAddress, "without-address", false, "create an identity with calendars and contacts and no email address (takes no --address); it has no login until `credentials create --username` names one, and routing an address to it later makes it receive mail")
+	cmd.Flags().BoolVar(&withoutAddress, "without-address", false, "create an identity with calendars and contacts and no email address (takes no --address); it has no login until 'credentials create --username' names one, and routing an address to it later makes it receive mail")
 	cmd.Flags().StringVar(&quota, "quota", "", "quota in bytes, or 'unlimited'")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system callers only)")
 	return cmd
@@ -568,7 +568,7 @@ func newMailboxDeleteCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&purge, "purge", false, "permanently purge: waive the 7-day undo window (irreversible)")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -632,7 +632,7 @@ func newMailboxPurgeCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 

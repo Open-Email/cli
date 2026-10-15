@@ -182,6 +182,7 @@ func newRetentionGetCmd(a *app, scope retentionScope) *cobra.Command {
 	var (
 		days        string
 		flagAccount string
+		all         bool
 		limit       int
 		cursor      string
 	)
@@ -190,10 +191,6 @@ func newRetentionGetCmd(a *app, scope retentionScope) *cobra.Command {
 		Aliases: []string{"show", "status", "preview"},
 		Short:   "Show the window in force, and preview what a window would move to trash",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			if scope == retentionAccount {
 				var window *int
 				if days != "" {
@@ -203,6 +200,10 @@ func newRetentionGetCmd(a *app, scope retentionScope) *cobra.Command {
 					}
 					window = &n
 				}
+				client, err := a.authedClient()
+				if err != nil {
+					return err
+				}
 				id, err := scope.target(cmd.Context(), a, client, flagAccount)
 				if err != nil {
 					return err
@@ -211,10 +212,29 @@ func newRetentionGetCmd(a *app, scope retentionScope) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				if all {
+					for view.NextCursor != "" {
+						cur := view.NextCursor
+						more, merr := client.GetAccountRetention(cmd.Context(), id, window, limit, cur)
+						if merr != nil {
+							return merr
+						}
+						view.Mailboxes = append(view.Mailboxes, more.Mailboxes...)
+						view.Unreadable = append(view.Unreadable, more.Unreadable...)
+						if more.NextCursor != "" && more.NextCursor == cur {
+							return fmt.Errorf("pagination cursor did not advance (stuck on %q)", more.NextCursor)
+						}
+						view.NextCursor = more.NextCursor
+					}
+				}
 				printAccountRetention(a, view)
 				return nil
 			}
 			ladder, err := parsePreviewDays(days)
+			if err != nil {
+				return err
+			}
+			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
@@ -232,6 +252,7 @@ func newRetentionGetCmd(a *app, scope retentionScope) *cobra.Command {
 	}
 	if scope == retentionAccount {
 		cmd.Flags().StringVar(&days, "days", "", "preview ONE window on every mailbox, e.g. the default you are about to set")
+		cmd.Flags().BoolVar(&all, "all", false, "fetch every page of mailboxes")
 		cmd.Flags().IntVar(&limit, "limit", 0, "mailboxes per page")
 		cmd.Flags().StringVar(&cursor, "cursor", "", "continue from a previous page")
 		accountFlag(cmd, &flagAccount)
@@ -334,7 +355,7 @@ func newRetentionClearCmd(a *app, scope retentionScope) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	if scope == retentionAccount {
 		accountFlag(cmd, &flagAccount)
 	}

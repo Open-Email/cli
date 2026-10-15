@@ -172,7 +172,7 @@ func newMailSlotsDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -185,6 +185,9 @@ func newMailSlotsRenderCmd(a *app) *cobra.Command {
 		Short: "Preview a slot with the registry's samples, or a draft of it (stores nothing)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if vars.file == "-" && (copyF.textFile == "-" || copyF.htmlFile == "-") {
+				return usageError(errors.New("cannot read more than one flag from stdin (-)"))
+			}
 			values, err := vars.read()
 			if err != nil {
 				return err

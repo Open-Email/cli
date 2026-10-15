@@ -236,9 +236,10 @@ func newDomainDNSCmd(a *app) *cobra.Command {
 
 func newDomainGetCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <domain>",
-		Short: "Show a domain",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <domain>",
+		Aliases: []string{"show"},
+		Short:   "Show a domain",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -371,7 +372,7 @@ func newDomainDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 

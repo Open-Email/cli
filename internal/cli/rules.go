@@ -139,7 +139,7 @@ func newRulesGetCmd(a *app) *cobra.Command {
 				a.out.Successf("Wrote %s", outPath)
 				return nil
 			}
-			os.Stdout.Write(doc)
+			a.out.out.Write(doc)
 			return nil
 		},
 	}
@@ -157,10 +157,6 @@ func newRulesPutCmd(a *app) *cobra.Command {
 			"An empty list is legal: rules mode with no rules yet.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			raw, err := readRawInput(file)
 			if err != nil {
 				return err
@@ -168,6 +164,10 @@ func newRulesPutCmd(a *app) *cobra.Command {
 			doc, err := parseRulesDocument(raw)
 			if err != nil {
 				return usageError(err)
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
 			}
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {
@@ -181,7 +181,7 @@ func newRulesPutCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "read the JSON document from a file (default: stdin)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "read the JSON document from a file (default: stdin)")
 	return cmd
 }
 
@@ -247,7 +247,7 @@ func newRulesDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -315,15 +315,17 @@ func newRulesAddCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&stop, "stop", false, "stop evaluating later rules when this one matches")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "add the rule but leave it switched off")
 	cmd.Flags().IntVar(&position, "position", 0, "insert at this 1-based position (default: append)")
+	registerEnumFlagCompletion(cmd, "match", "all", "any")
 	return cmd
 }
 
 func newRulesRemoveCmd(a *app) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "remove <position>",
-		Short: "Remove the rule at a 1-based position (see `rules list`)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "remove <position>",
+		Aliases: []string{"rm", "delete"},
+		Short:   "Remove the rule at a 1-based position (see `rules list`)",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -354,7 +356,7 @@ func newRulesRemoveCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -457,9 +459,9 @@ func newRulesScriptCmd(a *app) *cobra.Command {
 				return err
 			}
 			a.out.Emit(map[string]any{"script": st.Script, "state": st.State}, func(w io.Writer) {
-				fmt.Fprint(os.Stdout, st.Script)
+				fmt.Fprint(w, st.Script)
 				if !strings.HasSuffix(st.Script, "\n") {
-					fmt.Fprintln(os.Stdout)
+					fmt.Fprintln(w)
 				}
 			})
 			return nil

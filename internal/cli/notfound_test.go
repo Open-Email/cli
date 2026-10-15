@@ -78,6 +78,25 @@ func TestDescribeNotFound(t *testing.T) {
 			hints:   []string{`"forty" is not a number`},
 		},
 		{
+			path:    "/accounts/" + mb + "/templates/Bad_Slug",
+			subject: `no template "Bad_Slug" in account "` + mb + `"`,
+			hints:   []string{`"Bad_Slug" does not look like a template slug`, "openemail templates list"},
+		},
+		{
+			path:    "/system/mail-slots/Bad_Slot",
+			subject: `no mail slot "Bad_Slot"`,
+			hints:   []string{`"Bad_Slot" does not look like a mail slot slug`, "openemail admin mail-slots list"},
+		},
+		{
+			path:    "/mailboxes/" + mb + "/messages/unjunk",
+			subject: `no mailbox "` + mb + `"`,
+		},
+		{
+			path:    "/identities/alice",
+			subject: `no identity "alice"`,
+			hints:   []string{`"alice" does not look like an identity id`},
+		},
+		{
 			// Nothing this table knows: say what was asked so the reader can see
 			// the path, instead of pretending to know what it names.
 			path:   "/nonsense/route",

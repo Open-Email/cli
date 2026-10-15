@@ -197,8 +197,9 @@ func newSuppressionAddCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&reason, "reason", "", "complaint (default) or hard_bounce")
-	cmd.Flags().StringVar(&note, "note", "", "why this was entered by hand; stored on the row so `get` can answer it later")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().StringVar(&note, "note", "", "why this was entered by hand; stored on the row so 'get' can answer it later")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
+	registerEnumFlagCompletion(cmd, "reason", "complaint", "hard_bounce")
 	return cmd
 }
 
@@ -245,6 +246,6 @@ func newSuppressionLiftCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }

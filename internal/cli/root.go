@@ -100,7 +100,7 @@ func newRootCmd(a *app) *cobra.Command {
 	pf := root.PersistentFlags()
 	pf.StringVar(&a.flagProfile, "profile", "", "config profile to use (env: OPENEMAIL_PROFILE)")
 	pf.StringVar(&a.flagAPIURL, "api-url", "", "override the API base URL (env: OPENEMAIL_API_URL)")
-	pf.StringVar(&a.flagConsoleURL, "console-url", "", "console origin that authorizes `login` (env: OPENEMAIL_CONSOLE_URL)")
+	pf.StringVar(&a.flagConsoleURL, "console-url", "", "console origin that authorizes 'login' (env: OPENEMAIL_CONSOLE_URL)")
 	pf.StringVar(&a.flagAPIKey, "api-key", "", "use this bearer token for one invocation (env: OPENEMAIL_API_KEY)")
 	pf.BoolVar(&a.flagJSON, "json", false, "output machine-readable JSON")
 	pf.BoolVar(&a.flagNoColor, "no-color", false, "disable color output")
@@ -120,38 +120,48 @@ func newRootCmd(a *app) *cobra.Command {
 		return names, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	root.AddCommand(
+	addCommandGroup(root, "auth", "Authentication & Session:",
 		newLoginCmd(a),
 		newLogoutCmd(a),
 		newWhoamiCmd(a),
 		newStatusCmd(a),
-		newUICmd(a),
-		newKeysCmd(a),
-		newMailboxesCmd(a),
-		newAccountsCmd(a),
-		newTemplatesCmd(a),
-		newDomainsCmd(a),
-		newRoutesCmd(a),
-		newPatternsCmd(a),
-		newCredentialsCmd(a),
-		newIdentitiesCmd(a),
+	)
+	addCommandGroup(root, "mail", "Mail, Threads & Sending:",
 		newMessagesCmd(a),
-		newLabelsCmd(a),
 		newThreadsCmd(a),
 		newSearchCmd(a),
+		newLabelsCmd(a),
+		newComposeCmd(a),
+		newSendCmd(a),
+		newTemplatesCmd(a),
+	)
+	addCommandGroup(root, "filtering", "Filtering, Forwarding & Lists:",
 		newRulesCmd(a),
-		newPrefsCmd(a),
 		newSieveCmd(a),
 		newVacationCmd(a),
 		newForwardingCmd(a),
+		newSuppressionsCmd(a),
+		newListsCmd(a),
+		newPickupsCmd(a),
+	)
+	addCommandGroup(root, "pim", "Calendars, Contacts & Preferences:",
 		newCalendarsCmd(a),
 		newAddressbooksCmd(a),
 		newPimCmd(a),
-		newPickupsCmd(a),
-		newComposeCmd(a),
-		newSendCmd(a),
-		newSuppressionsCmd(a),
-		newListsCmd(a),
+		newPrefsCmd(a),
+	)
+	addCommandGroup(root, "directory", "Directory & Tenant Management:",
+		newMailboxesCmd(a),
+		newIdentitiesCmd(a),
+		newCredentialsCmd(a),
+		newRoutesCmd(a),
+		newPatternsCmd(a),
+		newDomainsCmd(a),
+		newAccountsCmd(a),
+		newKeysCmd(a),
+	)
+	addCommandGroup(root, "tools", "Console, Live Stream & Operator Tools:",
+		newUICmd(a),
 		newWatchCmd(a),
 		newDeliverCmd(a),
 		newAPICmd(a),
@@ -166,6 +176,20 @@ func newRootCmd(a *app) *cobra.Command {
 	}
 	rejectUnknownSubcommands(root)
 	return root
+}
+
+func addCommandGroup(root *cobra.Command, id, title string, cmds ...*cobra.Command) {
+	root.AddGroup(&cobra.Group{ID: id, Title: title})
+	for _, c := range cmds {
+		c.GroupID = id
+		root.AddCommand(c)
+	}
+}
+
+func registerEnumFlagCompletion(cmd *cobra.Command, flagName string, values ...string) {
+	_ = cmd.RegisterFlagCompletionFunc(flagName, func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return values, cobra.ShellCompDirectiveNoFileComp
+	})
 }
 
 // rejectUnknownSubcommands gives every command group a RunE, because cobra
@@ -202,9 +226,11 @@ func rejectUnknownSubcommands(c *cobra.Command) {
 
 func newVersionCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
-		Short: "Print the CLI version",
-		Args:  cobra.NoArgs,
+		Use:     "version",
+		Short:   "Print the CLI version",
+		Long:    "Print the installed openemail CLI version.",
+		Example: "  openemail version\n  openemail version --json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			a.out.Emit(map[string]string{"version": Version}, func(w io.Writer) {
 				fmt.Fprintf(w, "openemail %s\n", Version)
@@ -396,26 +422,26 @@ func (a *app) printError(err error) {
 			}
 		}
 		if subject != "" {
-			fmt.Fprintf(os.Stderr, "%s %s: %s\n", p.paint(colRed, "error:"), ae.Error(), subject)
+			fmt.Fprintf(os.Stderr, "%s %s: %s\n", p.paint(colRed, "error:"), sanitizeCell(ae.Error()), sanitizeCell(subject))
 		} else {
-			fmt.Fprintf(os.Stderr, "%s %s\n", p.paint(colRed, "error:"), ae.Error())
+			fmt.Fprintf(os.Stderr, "%s %s\n", p.paint(colRed, "error:"), sanitizeCell(ae.Error()))
 		}
 		if ae.Line > 0 {
 			fmt.Fprintf(os.Stderr, "  at line %d, column %d\n", ae.Line, ae.Col)
 		}
 		if d := ae.Detail(); d != "" {
-			fmt.Fprintln(os.Stderr, d)
+			fmt.Fprintln(os.Stderr, sanitizeBody(d))
 		}
 		for _, h := range hints {
-			fmt.Fprintln(os.Stderr, p.Dim("  "+h))
+			fmt.Fprintln(os.Stderr, p.Dim("  "+sanitizeCell(h)))
 		}
 		if h := errorHint(ae); h != "" {
-			fmt.Fprintln(os.Stderr, p.Dim("  "+h))
+			fmt.Fprintln(os.Stderr, p.Dim("  "+sanitizeCell(h)))
 		}
 		if a.flagDebug && len(ae.Body) > 0 {
-			fmt.Fprintf(os.Stderr, "%s\n", p.Dim(string(ae.Body)))
+			fmt.Fprintf(os.Stderr, "%s\n", p.Dim(sanitizeBody(string(ae.Body))))
 		}
 		return
 	}
-	fmt.Fprintf(os.Stderr, "%s %v\n", p.paint(colRed, "error:"), err)
+	fmt.Fprintf(os.Stderr, "%s %s\n", p.paint(colRed, "error:"), sanitizeBody(err.Error()))
 }
