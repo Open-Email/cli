@@ -22,6 +22,8 @@ type extraMsg struct {
 	err    error
 }
 
+func (m extraMsg) targetPaneID() int64 { return m.paneID }
+
 // detailPane renders one selected item as aligned key/value lines in a
 // scrollable viewport, with optional async enrichment appended when it lands.
 type detailPane struct {
@@ -127,21 +129,43 @@ func (d *detailPane) view() string {
 		head += "  " + d.spin.View()
 	}
 	if d.extraErr != "" {
-		head += "  " + stErr.Render(truncate(d.extraErr, d.w-width(head)-4))
+		head += "  " + stErr.Render(truncate(d.extraErr, max(8, d.w-width(head)-4)))
 	}
 	return head + "\n" + d.vp.View()
 }
 
 func (d *detailPane) title() string {
+	if len(d.row.cells) > 1 && isDigitsOnly(d.row.cells[0]) && d.row.cells[1] != "" {
+		return d.row.cells[1]
+	}
 	if len(d.row.cells) > 0 {
 		return d.row.cells[0]
 	}
 	return "detail"
 }
 
+func isDigitsOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func (d *detailPane) hints() string       { return "↑/↓ scroll · esc back" }
 func (d *detailPane) capturesInput() bool { return false }
 func (d *detailPane) close()              {}
+func (d *detailPane) paneID() int64       { return d.id }
+func (d *detailPane) spinCmd() tea.Cmd {
+	if d.loading {
+		return d.spin.Tick
+	}
+	return nil
+}
 
 // renderKVs lays out detail lines: keys right-padded to a shared column,
 // values as-is (the viewport scrolls; long values are the rare case).

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -21,17 +22,23 @@ type msgsPageMsg struct {
 	err     error
 }
 
+func (m msgsPageMsg) targetPaneID() int64 { return m.paneID }
+
 // mbxStatsMsg is the GetMailbox enrichment for the header line (best-effort).
 type mbxStatsMsg struct {
 	paneID int64
 	mbx    *coreapi.Mailbox
 }
 
+func (m mbxStatsMsg) targetPaneID() int64 { return m.paneID }
+
 // msgActMsg is a completed inline mutation (flag toggle).
 type msgActMsg struct {
 	paneID int64
 	err    error
 }
+
+func (m msgActMsg) targetPaneID() int64 { return m.paneID }
 
 // msgLearnMsg is completed spam-filter training. It is separate from msgActMsg
 // because nothing about the message changed — re-fetching the list would only
@@ -41,11 +48,15 @@ type msgLearnMsg struct {
 	flash  string
 }
 
+func (m msgLearnMsg) targetPaneID() int64 { return m.paneID }
+
 // labelsMsg caches the mailbox's labels for the label editor (best-effort).
 type labelsMsg struct {
 	paneID int64
 	labels []coreapi.LabelInfo
 }
+
+func (m labelsMsg) targetPaneID() int64 { return m.paneID }
 
 // messagesPane lists one mailbox's live messages newest-first and tails the
 // mailbox's events channel: any change signal triggers a first-page re-sync
@@ -160,6 +171,11 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		}
 		return p, nil
 
+	case noRefreshMsg:
+		p.errMsg = ""
+		p.flash = msg.flash
+		return p, nil
+
 	case refreshMsg:
 		p.flash = msg.flash
 		if p.loading {
@@ -209,10 +225,11 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		p.errMsg = ""
 		if msg.replace {
 			selected := p.selectedID()
+			prevCursor := p.tbl.Cursor()
 			p.all = msg.items
 			p.next = msg.next
 			p.setRows()
-			p.restoreCursor(selected)
+			p.restoreCursor(selected, prevCursor)
 		} else {
 			p.all = append(p.all, msg.items...)
 			p.next = msg.next
@@ -228,7 +245,14 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		if msg.paneID != p.id {
 			return p, nil
 		}
-		cmds := []tea.Cmd{p.sub.wait()}
+		var cmds []tea.Cmd
+		if p.sub != nil {
+			cmds = append(cmds, p.sub.wait())
+		}
+		// PIM events (calendars/addressbooks) do not alter the mail message list.
+		if strings.HasPrefix(msg.typ, "pim.") {
+			return p, tea.Batch(cmds...)
+		}
 		if p.loading || p.more {
 			p.refreshQd = true
 		} else if c := p.refresh(); c != nil {
@@ -242,7 +266,7 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		}
 		p.liveOK = msg.connected
 		p.liveTxt = msg.detail
-		if msg.terminal {
+		if msg.terminal || p.sub == nil {
 			return p, nil // channel is closing; nothing to re-arm
 		}
 		return p, p.sub.wait()
@@ -258,7 +282,7 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 // user is looking at the top when mail arrives.
 func (p *messagesPane) refresh() tea.Cmd {
 	p.loading = true
-	return tea.Batch(p.spin.Tick, p.fetchCmd("", true))
+	return tea.Batch(p.spin.Tick, p.fetchCmd("", true), p.statsCmd())
 }
 
 func (p *messagesPane) updateKey(msg tea.KeyMsg) (pane, tea.Cmd) {
@@ -405,7 +429,7 @@ func (p *messagesPane) selectedID() string {
 	return ""
 }
 
-func (p *messagesPane) restoreCursor(id string) {
+func (p *messagesPane) restoreCursor(id string, prevCursor int) {
 	if id == "" {
 		return
 	}
@@ -415,7 +439,11 @@ func (p *messagesPane) restoreCursor(id string) {
 			return
 		}
 	}
-	p.tbl.SetCursor(0)
+	if len(p.all) == 0 {
+		p.tbl.SetCursor(0)
+	} else {
+		p.tbl.SetCursor(max(0, min(prevCursor, len(p.all)-1)))
+	}
 }
 
 func (p *messagesPane) setRows() {
@@ -430,8 +458,10 @@ func (p *messagesPane) setRows() {
 		}
 	}
 	p.tbl.SetRows(rows)
-	if p.tbl.Cursor() >= len(rows) {
+	if len(rows) == 0 {
 		p.tbl.SetCursor(0)
+	} else if p.tbl.Cursor() >= len(rows) {
+		p.tbl.SetCursor(len(rows) - 1)
 	}
 }
 
@@ -480,7 +510,7 @@ func (p *messagesPane) view() string {
 		head += "  " + stLive.Render(truncate(p.flash, max(8, p.w-width(head)-4)))
 	}
 	if p.errMsg != "" {
-		head += "  " + stErr.Render(truncate(p.errMsg, p.w-width(head)-4))
+		head += "  " + stErr.Render(truncate(p.errMsg, max(8, p.w-width(head)-4)))
 	}
 	return head + "\n" + p.tbl.View()
 }
@@ -505,4 +535,13 @@ func (p *messagesPane) capturesInput() bool { return false }
 
 func (p *messagesPane) close() {
 	p.cancel()
+}
+
+func (p *messagesPane) paneID() int64 { return p.id }
+
+func (p *messagesPane) spinCmd() tea.Cmd {
+	if p.loading || p.more {
+		return p.spin.Tick
+	}
+	return nil
 }

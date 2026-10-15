@@ -63,19 +63,23 @@ type resourceDesc struct {
 // pane to push (nil = no-op); do executes directly — no modal — and the
 // listing refreshes with the returned flash (restore, member remove-less ops).
 type action struct {
-	key      string
-	label    string // status-bar help, e.g. "n new"
-	needsRow bool
-	run      func(ctx context.Context, ui *Options, item any) pane
-	do       func(ctx context.Context, c *coreapi.Client, item any) (flash string, err error)
+	key         string
+	label       string // status-bar help, e.g. "n new"
+	needsRow    bool
+	run         func(ctx context.Context, ui *Options, item any) pane
+	do          func(ctx context.Context, c *coreapi.Client, item any) (flash string, err error)
+	cursorDelta int // optional cursor step applied when a direct action succeeds
 }
 
 // actDoneMsg is a completed direct-run action.
 type actDoneMsg struct {
-	paneID int64
-	flash  string
-	err    error
+	paneID      int64
+	flash       string
+	cursorDelta int
+	err         error
 }
+
+func (m actDoneMsg) targetPaneID() int64 { return m.paneID }
 
 // pageMsg is one fetched page, tagged to its pane instance and request.
 type pageMsg struct {
@@ -86,6 +90,8 @@ type pageMsg struct {
 	replace bool
 	err     error
 }
+
+func (m pageMsg) targetPaneID() int64 { return m.paneID }
 
 // screenPane is the generic resource listing: header line, optional filter
 // input, table, cursor-paginated load-more.
@@ -156,6 +162,11 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		s.spin, cmd = s.spin.Update(msg)
 		return s, cmd
 
+	case noRefreshMsg:
+		s.errMsg = ""
+		s.flash = msg.flash
+		return s, nil
+
 	case refreshMsg:
 		s.flash = msg.flash
 		s.loading = true
@@ -171,6 +182,18 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 			return s, nil
 		}
 		s.errMsg = ""
+		if msg.flash == "" {
+			return s, nil
+		}
+		if msg.cursorDelta != 0 {
+			nextCur := s.tbl.Cursor() + msg.cursorDelta
+			if nextCur < 0 {
+				nextCur = 0
+			} else if len(s.visible) > 0 && nextCur >= len(s.visible) {
+				nextCur = len(s.visible) - 1
+			}
+			s.tbl.SetCursor(nextCur)
+		}
 		s.flash = msg.flash
 		s.loading = true
 		s.next = ""
@@ -263,13 +286,13 @@ func (s *screenPane) updateKey(msg tea.KeyMsg) (pane, tea.Cmd) {
 		}
 		if a.do != nil {
 			s.flash = ""
-			id, client, do := s.id, s.ui.Client, a.do
+			id, client, do, delta := s.id, s.ui.Client, a.do, a.cursorDelta
 			ctx := s.ctx
 			return s, func() tea.Msg {
 				cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
 				flash, err := do(cctx, client, item)
-				return actDoneMsg{paneID: id, flash: flash, err: err}
+				return actDoneMsg{paneID: id, flash: flash, cursorDelta: delta, err: err}
 			}
 		}
 		if p := a.run(s.ctx, s.ui, item); p != nil {
@@ -333,8 +356,10 @@ func (s *screenPane) applyFilter() {
 		rows[i] = table.Row(r.cells)
 	}
 	s.tbl.SetRows(rows)
-	if s.tbl.Cursor() >= len(rows) {
+	if len(rows) == 0 {
 		s.tbl.SetCursor(0)
+	} else if s.tbl.Cursor() >= len(rows) {
+		s.tbl.SetCursor(len(rows) - 1)
 	}
 }
 
@@ -400,7 +425,7 @@ func (s *screenPane) view() string {
 		head += "  " + stLive.Render(truncate(s.flash, max(8, s.w-lipglossSafeWidth(head)-4)))
 	}
 	if s.errMsg != "" {
-		head += "  " + stErr.Render(truncate(s.errMsg, s.w-lipglossSafeWidth(head)-4))
+		head += "  " + stErr.Render(truncate(s.errMsg, max(8, s.w-lipglossSafeWidth(head)-4)))
 	}
 	parts := []string{head}
 	if s.desc.caption != "" {
@@ -437,6 +462,13 @@ func (s *screenPane) hints() string {
 
 func (s *screenPane) capturesInput() bool { return s.filtering }
 func (s *screenPane) close()              {}
+func (s *screenPane) paneID() int64       { return s.id }
+func (s *screenPane) spinCmd() tea.Cmd {
+	if s.loading || s.more {
+		return s.spin.Tick
+	}
+	return nil
+}
 
 // layoutColumns distributes a content width over the declared columns; each
 // rendered column costs its width plus 2 (cell padding), flex columns share

@@ -157,7 +157,7 @@ func searchDesc(mbx coreapi.Mailbox, spec searchSpec) resourceDesc {
 		},
 		actions: []action{
 			{key: "n", label: "n new search", run: func(ctx context.Context, ui *Options, _ any) pane {
-				return searchFormPane(ctx, ui, mbx)
+				return searchFormPaneWithReplace(ctx, ui, mbx, true)
 			}},
 		},
 	}
@@ -210,9 +210,14 @@ func snippetText(sn coreapi.EmailSearchSnippet) string {
 
 // searchFormPane collects a query and opens its results.
 func searchFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox) pane {
+	return searchFormPaneWithReplace(ctx, ui, mbx, false)
+}
+
+func searchFormPaneWithReplace(ctx context.Context, ui *Options, mbx coreapi.Mailbox, replaceParent bool) pane {
 	spec := searchSpec{}
 	return newFormPane(ctx, ui, formSpec{
-		title: "Search — " + mailboxLabel(&mbx),
+		title:         "Search — " + mailboxLabel(&mbx),
+		replaceParent: replaceParent,
 		build: func() *huh.Form {
 			return huh.NewForm(huh.NewGroup(
 				huh.NewInput().Title("Text").Value(&spec.text).
@@ -221,8 +226,8 @@ func searchFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox) pane 
 					Description("used only when Text is empty — core allows one full-text term"),
 				huh.NewInput().Title("From").Value(&spec.from).
 					Description("substring of the sender address or display name"),
-				huh.NewConfirm().Title("Unread only").Value(&spec.unreadOnly).Affirmative("yes").Negative("no"),
-				huh.NewConfirm().Title("Has attachment").Value(&spec.hasAttach).Affirmative("yes").Negative("no"),
+				boolField("Unread only", "", &spec.unreadOnly),
+				boolField("Has attachment", "", &spec.hasAttach),
 			))
 		},
 		submit: func(_ context.Context, c *coreapi.Client) (string, pane, error) {

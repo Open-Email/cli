@@ -26,6 +26,8 @@ type confirmDoneMsg struct {
 	err    error
 }
 
+func (m confirmDoneMsg) targetPaneID() int64 { return m.paneID }
+
 // confirmPane is a modal y/esc gate. It captures input (q and tab do not leak
 // through), submits async, and on error stays open so the user can retry or
 // leave.
@@ -75,7 +77,7 @@ func (p *confirmPane) update(msg tea.Msg) (pane, tea.Cmd) {
 			return p, nil
 		}
 		switch msg.String() {
-		case "y", "Y", "enter":
+		case "y", "Y":
 			p.submitting = true
 			p.errMsg = ""
 			id := p.id
@@ -117,3 +119,10 @@ func (p *confirmPane) title() string       { return p.spec.title }
 func (p *confirmPane) hints() string       { return "y confirm · esc cancel" }
 func (p *confirmPane) capturesInput() bool { return true }
 func (p *confirmPane) close()              {}
+func (p *confirmPane) paneID() int64       { return p.id }
+func (p *confirmPane) spinCmd() tea.Cmd {
+	if p.submitting {
+		return p.spin.Tick
+	}
+	return nil
+}

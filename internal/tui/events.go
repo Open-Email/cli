@@ -14,6 +14,8 @@ type liveEvent struct {
 	typ    string
 }
 
+func (m liveEvent) targetPaneID() int64 { return m.paneID }
+
 // liveState reports the subscription's connection state for the header
 // indicator. terminal means the goroutine is done (deterministic refusal or
 // mailbox gone) and no further messages will arrive.
@@ -23,6 +25,8 @@ type liveState struct {
 	detail    string
 	terminal  bool
 }
+
+func (m liveState) targetPaneID() int64 { return m.paneID }
 
 // subscription combines mail and PIM change signals. Each upstream reconnects
 // independently; canceling ctx closes both readers before closing ch.

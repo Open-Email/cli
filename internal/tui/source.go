@@ -28,6 +28,8 @@ type sourceMsg struct {
 	err       error
 }
 
+func (m sourceMsg) targetPaneID() int64 { return m.paneID }
+
 // sourcePane shows one message's raw MIME source, scrollable. Bytes are shown
 // as they were stored — no decoding, no reflowing of the content itself — with
 // only the transformations a terminal forces: invalid UTF-8 and control bytes
@@ -140,7 +142,7 @@ func (p *sourcePane) setSize(w, h int) {
 func (p *sourcePane) setContent() {
 	if p.lines == nil {
 		if p.errMsg != "" {
-			p.vp.SetContent("\n  " + stErr.Render(p.errMsg))
+			p.vp.SetContent("\n" + indent(stErr.Render(wrapPlain(p.errMsg, max(20, p.vp.Width-4))), "  "))
 		}
 		return
 	}
@@ -175,18 +177,25 @@ func (p *sourcePane) view() string {
 		head += "  " + p.spin.View()
 	}
 	if p.errMsg != "" && p.lines != nil {
-		head += "  " + stErr.Render(truncate(p.errMsg, p.w-width(head)-4))
+		head += "  " + stErr.Render(truncate(p.errMsg, max(8, p.w-width(head)-4)))
 	}
 	return head + "\n" + p.vp.View()
 }
 
 func (p *sourcePane) title() string {
-	return "source"
+	return "Source"
 }
 
 func (p *sourcePane) hints() string       { return "↑/↓ scroll · pgup/pgdn page · esc back" }
 func (p *sourcePane) capturesInput() bool { return false }
 func (p *sourcePane) close()              {}
+func (p *sourcePane) paneID() int64       { return p.id }
+func (p *sourcePane) spinCmd() tea.Cmd {
+	if p.loading {
+		return p.spin.Tick
+	}
+	return nil
+}
 
 // sanitizeSource turns stored message bytes into lines a terminal may print.
 // Everything here is forced by the medium, not by taste: bytes that are not

@@ -22,11 +22,10 @@ func newNotePane(heading string, lines []string) *notePane {
 func (p *notePane) init() tea.Cmd { return nil }
 
 func (p *notePane) update(msg tea.Msg) (pane, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok && (k.String() == "esc" || k.String() == "enter") {
-		// A reveal note sits over the listing of the resource just created; its
-		// refetch was issued while this note was on top, so its result was routed
-		// here and dropped. Refresh the revealed listing on dismiss (when it is
-		// top again) so the new row appears without a manual refresh.
+	if k, ok := msg.(tea.KeyMsg); ok && k.String() == "esc" {
+		// Dismissing a reveal note refreshes the revealed listing so the newly
+		// created row appears immediately. Only esc dismisses so a double-tap of
+		// enter on form submit cannot accidentally close a one-time secret.
 		return p, popRefresh("")
 	}
 	return p, nil

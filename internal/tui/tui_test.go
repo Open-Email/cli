@@ -329,4 +329,3 @@ func TestDetailAndSourceTitles(t *testing.T) {
 		t.Fatalf("sourcePane.title() = %q; want %q", got, "Source")
 	}
 }
-
