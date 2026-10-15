@@ -606,13 +606,21 @@ func TestDeviceLoginRefusesAnUnusableVerificationAddress(t *testing.T) {
 	// the desktop has registered for its scheme. `javascript:`, `file:`, and
 	// cross-origin or userinfo-spoofed URLs are not sign-in pages for the
 	// console we contacted.
-	for _, badURI := range []string{
-		"javascript:alert(1)",
-		"https://phishing.evil.test/cli",
-		"http://evil.test@127.0.0.1/cli",
+	for _, tc := range []struct {
+		name   string
+		badURI func(consoleURL string) string
+	}{
+		{"javascript scheme", func(string) string { return "javascript:alert(1)" }},
+		{"another origin", func(string) string { return "https://phishing.evil.test/cli" }},
+		// The console's own host and port, so only the userinfo rule refuses
+		// it: a human reads the part before @ as the site.
+		{"userinfo on the console's origin", func(consoleURL string) string {
+			return strings.Replace(consoleURL, "://", "://app.open.email@", 1) + "/cli"
+		}},
 	} {
-		t.Run(badURI, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			console := newStubConsole(nil)
+			badURI := tc.badURI(console.URL)
 			console.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == "/api/cli/device/code" {

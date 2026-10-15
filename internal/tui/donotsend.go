@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -81,6 +82,12 @@ func doNotSendDesc(accountID string) resourceDesc {
 				st.set("")
 				if !hadCached {
 					return nil, "", nil
+				}
+				// A load-more page appends to the old list's rows with the old
+				// list's cursor; the new list's first page would mix with them
+				// and can repeat rows already shown. A reload resolves it afresh.
+				if cursor != "" {
+					return nil, "", errors.New("the Do-Not-Send list changed while this screen was open: press r to reload")
 				}
 				list, rerr := findDoNotSendList(ctx, c, accountID)
 				if rerr != nil {

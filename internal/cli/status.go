@@ -43,12 +43,21 @@ func newStatusCmd(a *app) *cobra.Command {
 				}
 			}
 
-			a.out.Emit(map[string]any{
+			result := map[string]any{
 				"apiUrl":        a.apiURL,
 				"healthy":       healthy,
 				"authenticated": authenticated,
 				"principal":     principal,
-			}, func(w io.Writer) {
+			}
+			// Why there is a key but no principal: not sent (it belongs to
+			// another deployment) or rejected by core. The human view warns.
+			switch {
+			case skipAuthErr != nil:
+				result["authError"] = skipAuthErr.Error()
+			case resolveErr != nil:
+				result["authError"] = resolveErr.Error()
+			}
+			a.out.Emit(result, func(w io.Writer) {
 				if healthy {
 					a.out.Successf("core reachable at %s", a.apiURL)
 				} else {

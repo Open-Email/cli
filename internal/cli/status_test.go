@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -194,5 +195,66 @@ func TestPreRunNamesAnInvalidDefaultProfileSource(t *testing.T) {
 	err = (&app{}).preRun()
 	if err == nil || !strings.Contains(err.Error(), "default_profile") || !strings.Contains(err.Error(), "config.toml") {
 		t.Fatalf("want an error naming default_profile in config.toml, got %v", err)
+	}
+}
+
+// --json consumers get the same answer the human view prints: when the key
+// was not sent (another deployment) or was rejected, authError says why;
+// when authentication worked there is no such field.
+func TestStatusJSONSaysWhyItIsNotAuthenticated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/health":
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case r.Header.Get("Authorization") == "Bearer oek_good":
+			_, _ = w.Write([]byte(`{"type":"account","accountId":"acc_1","keyId":"k1"}`))
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+		}
+	}))
+	defer srv.Close()
+
+	for _, tc := range []struct {
+		name, token, source, profileAPI, want string
+	}{
+		{"stored key for another deployment", "oek_good", "profile", "https://api.open.email", "not sent to another deployment"},
+		{"key rejected by core", "oek_bad", "flag", "", "unauthorized"},
+		{"authenticated", "oek_good", "flag", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			a := &app{
+				out:         &Printer{json: true, out: &stdout, err: &bytes.Buffer{}},
+				profileName: "default",
+				profile:     config.Profile{APIURL: tc.profileAPI},
+				apiURL:      srv.URL,
+				token:       tc.token,
+				tokenSource: tc.source,
+			}
+			cmd := newStatusCmd(a)
+			cmd.SetContext(context.Background())
+			if err := cmd.RunE(cmd, nil); err != nil {
+				t.Fatalf("status: %v", err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("status --json is not one JSON document: %v (%q)", err, stdout.String())
+			}
+			if got["healthy"] != true {
+				t.Fatalf("healthy = %v", got["healthy"])
+			}
+			reason, has := got["authError"].(string)
+			if tc.want == "" {
+				if has || got["authenticated"] != true {
+					t.Fatalf("authenticated run: %v", got)
+				}
+				return
+			}
+			if got["authenticated"] != false || !strings.Contains(reason, tc.want) {
+				t.Fatalf("authError = %q (authenticated %v), want it to contain %q", reason, got["authenticated"], tc.want)
+			}
+		})
 	}
 }

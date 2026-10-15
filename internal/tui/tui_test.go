@@ -521,3 +521,50 @@ func TestDoNotSendReResolvesStaleCachedListIDOn404(t *testing.T) {
 		t.Fatalf("fetch after list recreation: rows=%d, err=%v; want 1 row from list_new", len(rows), err)
 	}
 }
+
+// A load-more page carries the OLD list's cursor and appends to the OLD
+// list's rows. When that list is gone, fetching the new list's first page
+// would append rows that may already be on screen, mixed with the old list's.
+// The page is refused with a reload hint instead, and the reload (cursor "")
+// resolves the new list.
+func TestDoNotSendLoadMoreOnReplacedListAsksForReload(t *testing.T) {
+	const accID = "01KXRS3SHN1N35G4YETVADSN0R"
+	currentListID := "list_old"
+	var newListPages int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/accounts/"+accID+"/lists":
+			_, _ = w.Write([]byte(`{"lists":[{"id":"` + currentListID + `","name":"Do not send","direction":"outbound","verdict":"block"}],"nextCursor":""}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/accounts/"+accID+"/lists/"+currentListID+"/entries":
+			if currentListID == "list_new" {
+				newListPages++
+			}
+			_, _ = w.Write([]byte(`{"entries":[{"pattern":"blocked@example.com","createdAt":1700000000,"hitCount":1}],"nextCursor":"c1"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not_found"}`))
+		}
+	}))
+	defer srv.Close()
+	client, err := coreapi.New(coreapi.Config{BaseURL: srv.URL, Token: "oek_test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := doNotSendDesc(accID)
+
+	if rows, next, err := desc.fetch(t.Context(), client, ""); err != nil || len(rows) != 1 || next != "c1" {
+		t.Fatalf("first page: rows=%d next=%q err=%v", len(rows), next, err)
+	}
+	currentListID = "list_new"
+	rows, _, err := desc.fetch(t.Context(), client, "c1")
+	if err == nil || !strings.Contains(err.Error(), "r to reload") || len(rows) != 0 {
+		t.Fatalf("load-more on a replaced list: rows=%d err=%v; want no rows and a reload hint", len(rows), err)
+	}
+	if newListPages != 0 {
+		t.Fatalf("load-more fetched %d page(s) of the new list to append to the old one", newListPages)
+	}
+	if rows, _, err := desc.fetch(t.Context(), client, ""); err != nil || len(rows) != 1 || newListPages != 1 {
+		t.Fatalf("reload after the list was replaced: rows=%d err=%v pages=%d", len(rows), err, newListPages)
+	}
+}
