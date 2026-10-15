@@ -28,6 +28,7 @@ type kv struct{ k, v string }
 
 // rowData pairs rendered cells with the source item for detail/drill-down.
 type rowData struct {
+	id    string // optional selection key, unique within the fetched listing
 	cells []string
 	item  any
 }
@@ -63,19 +64,23 @@ type resourceDesc struct {
 // pane to push (nil = no-op); do executes directly — no modal — and the
 // listing refreshes with the returned flash (restore, member remove-less ops).
 type action struct {
-	key      string
-	label    string // status-bar help, e.g. "n new"
-	needsRow bool
-	run      func(ctx context.Context, ui *Options, item any) pane
-	do       func(ctx context.Context, c *coreapi.Client, item any) (flash string, err error)
+	key         string
+	label       string // status-bar help, e.g. "n new"
+	needsRow    bool
+	run         func(ctx context.Context, ui *Options, item any) pane
+	do          func(ctx context.Context, c *coreapi.Client, item any) (flash string, err error)
+	selectAfter func(item any) string // optional row id to select in the refreshed listing
 }
 
 // actDoneMsg is a completed direct-run action.
 type actDoneMsg struct {
-	paneID int64
-	flash  string
-	err    error
+	paneID      int64
+	flash       string
+	preferredID string
+	err         error
 }
+
+func (m actDoneMsg) targetPaneID() int64 { return m.paneID }
 
 // pageMsg is one fetched page, tagged to its pane instance and request.
 type pageMsg struct {
@@ -86,6 +91,8 @@ type pageMsg struct {
 	replace bool
 	err     error
 }
+
+func (m pageMsg) targetPaneID() int64 { return m.paneID }
 
 // screenPane is the generic resource listing: header line, optional filter
 // input, table, cursor-paginated load-more.
@@ -108,6 +115,9 @@ type screenPane struct {
 	all     []rowData
 	visible []rowData
 	next    string
+	// A successful action can name a row in the next replacement page. Resolve
+	// it after filtering, since a document position is not a visible cursor.
+	preferredID string
 
 	w, h int
 }
@@ -156,6 +166,11 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		s.spin, cmd = s.spin.Update(msg)
 		return s, cmd
 
+	case noRefreshMsg:
+		s.errMsg = ""
+		s.flash = msg.flash
+		return s, nil
+
 	case refreshMsg:
 		s.flash = msg.flash
 		s.loading = true
@@ -171,6 +186,10 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 			return s, nil
 		}
 		s.errMsg = ""
+		if msg.flash == "" {
+			return s, nil
+		}
+		s.preferredID = msg.preferredID
 		s.flash = msg.flash
 		s.loading = true
 		s.next = ""
@@ -180,6 +199,8 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		if msg.paneID != s.id || msg.seq != s.seq {
 			return s, nil // a stale request; a newer one is in flight
 		}
+		preferredID := s.preferredID
+		s.preferredID = ""
 		s.loading, s.more = false, false
 		if msg.err != nil {
 			s.errMsg = msg.err.Error()
@@ -193,6 +214,14 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		}
 		s.next = msg.next
 		s.applyFilter()
+		if msg.replace && preferredID != "" {
+			for i, row := range s.visible {
+				if row.id == preferredID {
+					s.tbl.SetCursor(i)
+					break
+				}
+			}
+		}
 		// A summary block's height is only known once the fetch that produced
 		// it lands, so re-run the layout with the table height it leaves.
 		if s.desc.summary != nil && s.w > 0 && s.h > 0 {
@@ -263,13 +292,17 @@ func (s *screenPane) updateKey(msg tea.KeyMsg) (pane, tea.Cmd) {
 		}
 		if a.do != nil {
 			s.flash = ""
+			preferredID := ""
+			if a.selectAfter != nil {
+				preferredID = a.selectAfter(item)
+			}
 			id, client, do := s.id, s.ui.Client, a.do
 			ctx := s.ctx
 			return s, func() tea.Msg {
 				cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
 				flash, err := do(cctx, client, item)
-				return actDoneMsg{paneID: id, flash: flash, err: err}
+				return actDoneMsg{paneID: id, flash: flash, preferredID: preferredID, err: err}
 			}
 		}
 		if p := a.run(s.ctx, s.ui, item); p != nil {
@@ -333,8 +366,10 @@ func (s *screenPane) applyFilter() {
 		rows[i] = table.Row(r.cells)
 	}
 	s.tbl.SetRows(rows)
-	if s.tbl.Cursor() >= len(rows) {
+	if len(rows) == 0 {
 		s.tbl.SetCursor(0)
+	} else if s.tbl.Cursor() >= len(rows) {
+		s.tbl.SetCursor(len(rows) - 1)
 	}
 }
 
@@ -400,7 +435,7 @@ func (s *screenPane) view() string {
 		head += "  " + stLive.Render(truncate(s.flash, max(8, s.w-lipglossSafeWidth(head)-4)))
 	}
 	if s.errMsg != "" {
-		head += "  " + stErr.Render(truncate(s.errMsg, s.w-lipglossSafeWidth(head)-4))
+		head += "  " + stErr.Render(truncate(s.errMsg, max(8, s.w-lipglossSafeWidth(head)-4)))
 	}
 	parts := []string{head}
 	if s.desc.caption != "" {
@@ -437,6 +472,13 @@ func (s *screenPane) hints() string {
 
 func (s *screenPane) capturesInput() bool { return s.filtering }
 func (s *screenPane) close()              {}
+func (s *screenPane) paneID() int64       { return s.id }
+func (s *screenPane) spinCmd() tea.Cmd {
+	if s.loading || s.more {
+		return s.spin.Tick
+	}
+	return nil
+}
 
 // layoutColumns distributes a content width over the declared columns; each
 // rendered column costs its width plus 2 (cell padding), flex columns share

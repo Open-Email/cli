@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/charmbracelet/huh"
@@ -14,6 +15,23 @@ import (
 // `DoNotSendListName`: a different string here would give a tenant whose rows
 // core already migrated a SECOND, empty list.
 const doNotSendListName = "Do not send"
+
+type doNotSendState struct {
+	mu     sync.Mutex
+	listID string
+}
+
+func (s *doNotSendState) get() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listID
+}
+
+func (s *doNotSendState) set(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.listID = id
+}
 
 // doNotSendDesc shows the ACCOUNT's own do-not-send list — one ADDRESS LIST
 // (core migration 0040: account scope, outbound, block), which is what the
@@ -30,6 +48,7 @@ const doNotSendListName = "Do not send"
 // to account principals only, since a system key has no account of its own.
 func doNotSendDesc(accountID string) resourceDesc {
 	fam := coreapi.AccountLists(accountID)
+	st := &doNotSendState{}
 	return resourceDesc{
 		key:     "do-not-send",
 		name:    "Do-Not-Send",
@@ -42,17 +61,26 @@ func doNotSendDesc(accountID string) resourceDesc {
 			{title: "NOTE", width: 40},
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
-			list, err := findDoNotSendList(ctx, c, accountID)
-			if err != nil {
-				return nil, "", err
+			listID := st.get()
+			if listID == "" {
+				list, err := findDoNotSendList(ctx, c, accountID)
+				if err != nil {
+					return nil, "", err
+				}
+				// No list means nobody has been suppressed — an empty table, not an
+				// error, and emphatically not a list minted by opening a screen.
+				if list == nil {
+					return nil, "", nil
+				}
+				listID = list.ID
+				st.set(listID)
 			}
-			// No list means nobody has been suppressed — an empty table, not an
-			// error, and emphatically not a list minted by opening a screen.
-			if list == nil {
-				return nil, "", nil
-			}
-			pg, err := c.ListAddressListEntries(ctx, fam, list.ID, pageLimit, cursor)
+			pg, err := c.ListAddressListEntries(ctx, fam, listID, pageLimit, cursor)
 			if err != nil {
+				if coreapi.IsNotFound(err) {
+					st.set("")
+					return nil, "", nil
+				}
 				return nil, "", err
 			}
 			rows := make([]rowData, len(pg.Items))
@@ -84,10 +112,10 @@ func doNotSendDesc(accountID string) resourceDesc {
 		},
 		actions: []action{
 			{key: "a", label: "a add", run: func(ctx context.Context, ui *Options, _ any) pane {
-				return doNotSendAddPane(ctx, ui, accountID)
+				return doNotSendAddPane(ctx, ui, accountID, st)
 			}},
 			{key: "u", label: "u allow again", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
-				return doNotSendRemoveConfirm(ctx, ui, accountID, item.(coreapi.AddressListEntry))
+				return doNotSendRemoveConfirm(ctx, ui, accountID, st, item.(coreapi.AddressListEntry))
 			}},
 		},
 	}
@@ -159,7 +187,7 @@ func ensureDoNotSendList(ctx context.Context, c *coreapi.Client, accountID strin
 	return created, nil
 }
 
-func doNotSendAddPane(ctx context.Context, ui *Options, accountID string) pane {
+func doNotSendAddPane(ctx context.Context, ui *Options, accountID string, st *doNotSendState) pane {
 	var (
 		address string
 		note    string
@@ -175,13 +203,38 @@ func doNotSendAddPane(ctx context.Context, ui *Options, accountID string) pane {
 		))
 	}
 	submit := func(sctx context.Context, c *coreapi.Client) (string, pane, error) {
-		list, err := ensureDoNotSendList(sctx, c, accountID)
-		if err != nil {
-			return "", nil, err
+		listID := ""
+		if st != nil {
+			listID = st.get()
 		}
-		e, err := c.AddAddressListEntry(sctx, coreapi.AccountLists(accountID), list.ID, coreapi.AddressListEntryInput{
+		if listID == "" {
+			list, err := ensureDoNotSendList(sctx, c, accountID)
+			if err != nil {
+				return "", nil, err
+			}
+			listID = list.ID
+			if st != nil {
+				st.set(listID)
+			}
+		}
+		e, err := c.AddAddressListEntry(sctx, coreapi.AccountLists(accountID), listID, coreapi.AddressListEntryInput{
 			Pattern: strings.TrimSpace(address), Note: strings.TrimSpace(note),
 		})
+		if err != nil && coreapi.IsNotFound(err) {
+			if st != nil {
+				st.set("")
+			}
+			list, lErr := ensureDoNotSendList(sctx, c, accountID)
+			if lErr != nil {
+				return "", nil, lErr
+			}
+			if st != nil {
+				st.set(list.ID)
+			}
+			e, err = c.AddAddressListEntry(sctx, coreapi.AccountLists(accountID), list.ID, coreapi.AddressListEntryInput{
+				Pattern: strings.TrimSpace(address), Note: strings.TrimSpace(note),
+			})
+		}
 		if err != nil {
 			return "", nil, err
 		}
@@ -198,7 +251,7 @@ func doNotSendAddPane(ctx context.Context, ui *Options, accountID string) pane {
 // block discovered through a refused send is cleared in the same gesture. A
 // global complaint row is untouchable here by construction (core answers the
 // account key 404), which the body says out loud.
-func doNotSendRemoveConfirm(ctx context.Context, ui *Options, accountID string, e coreapi.AddressListEntry) pane {
+func doNotSendRemoveConfirm(ctx context.Context, ui *Options, accountID string, st *doNotSendState, e coreapi.AddressListEntry) pane {
 	body := "Removes " + e.Pattern + " from this account's do-not-send list, and lifts the " +
 		"platform's bounce block on it if one exists.\n\n" +
 		"If the address was suppressed platform-wide over a spam COMPLAINT, mail to it " +
@@ -211,12 +264,24 @@ func doNotSendRemoveConfirm(ctx context.Context, ui *Options, accountID string, 
 		body:  body,
 		verb:  "allow again",
 		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
-			list, err := findDoNotSendList(sctx, c, accountID)
-			if err != nil {
-				return "", err
+			listID := ""
+			if st != nil {
+				listID = st.get()
 			}
-			if list != nil {
-				if _, err := c.RemoveAddressListEntry(sctx, coreapi.AccountLists(accountID), list.ID, e.Pattern); err != nil && !coreapi.IsNotFound(err) {
+			if listID == "" {
+				list, err := findDoNotSendList(sctx, c, accountID)
+				if err != nil {
+					return "", err
+				}
+				if list != nil {
+					listID = list.ID
+					if st != nil {
+						st.set(listID)
+					}
+				}
+			}
+			if listID != "" {
+				if _, err := c.RemoveAddressListEntry(sctx, coreapi.AccountLists(accountID), listID, e.Pattern); err != nil && !coreapi.IsNotFound(err) {
 					return "", err
 				}
 			}

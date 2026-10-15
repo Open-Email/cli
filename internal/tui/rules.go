@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 )
@@ -52,6 +54,7 @@ func rulesDesc(mbx coreapi.Mailbox) resourceDesc {
 			rows := make([]rowData, len(state.Rules))
 			for i, r := range state.Rules {
 				rows[i] = rowData{
+					id: strconv.Itoa(i),
 					cells: []string{
 						fmt.Sprintf("%d", i+1), ruleName(r, i), ruleState(r),
 						ruleMatch(r), ruleConditions(r.Conditions), ruleActions(r.Actions), yn(r.Stop),
@@ -103,12 +106,16 @@ func rulesDesc(mbx coreapi.Mailbox) resourceDesc {
 				}
 				return fmt.Sprintf("rule %d %s", rr.index+1, verb), nil
 			}},
-			{key: "K", label: "K up", needsRow: true, do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
-				return reorderRule(ctx, c, mbx.ID, item.(ruleRow), -1)
-			}},
-			{key: "J", label: "J down", needsRow: true, do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
-				return reorderRule(ctx, c, mbx.ID, item.(ruleRow), +1)
-			}},
+			{key: "K", label: "K up", needsRow: true,
+				selectAfter: func(item any) string { return strconv.Itoa(item.(ruleRow).index - 1) },
+				do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
+					return reorderRule(ctx, c, mbx.ID, item.(ruleRow), -1)
+				}},
+			{key: "J", label: "J down", needsRow: true,
+				selectAfter: func(item any) string { return strconv.Itoa(item.(ruleRow).index + 1) },
+				do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
+					return reorderRule(ctx, c, mbx.ID, item.(ruleRow), +1)
+				}},
 			{key: "d", label: "d delete", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				return ruleDeleteConfirm(ctx, ui, mbx, item.(ruleRow))
 			}},
@@ -135,17 +142,22 @@ type ruleRow struct {
 
 // rulesScreenState holds what the last fetch learned, for the summary header.
 type rulesScreenState struct {
+	mu     sync.Mutex
 	loaded bool
 	state  *coreapi.FilterRulesState
 }
 
 func (s *rulesScreenState) set(st *coreapi.FilterRulesState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.loaded, s.state = true, st
 }
 
 // summaryLines answers the one question a rules screen must never leave
 // ambiguous: do these rules actually filter delivered mail?
 func (s *rulesScreenState) summaryLines(w int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if !s.loaded {
 		return nil
 	}
@@ -176,15 +188,18 @@ func currentRules(ctx context.Context, c *coreapi.Client, mailboxID string) ([]c
 // reorderRule moves a rule one position up (-1) or down (+1). Order is
 // meaning: a rule's position decides whether an earlier `stop` preempts it.
 func reorderRule(ctx context.Context, c *coreapi.Client, mailboxID string, rr ruleRow, delta int) (string, error) {
+	to := rr.index + delta
+	if to < 0 {
+		return "", nil // already at top; avoid a round-trip
+	}
 	rules, err := currentRules(ctx, c, mailboxID)
 	if err != nil {
 		return "", err
 	}
-	to := rr.index + delta
 	if rr.index >= len(rules) {
 		return "", fmt.Errorf("rule %d no longer exists — refresh", rr.index+1)
 	}
-	if to < 0 || to >= len(rules) {
+	if to >= len(rules) {
 		return "", nil // already at the edge; a no-op, not an error
 	}
 	rules[rr.index], rules[to] = rules[to], rules[rr.index]

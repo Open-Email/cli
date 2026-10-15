@@ -255,14 +255,15 @@ func TestFormOutcomes(t *testing.T) {
 // only appears after a manual refresh (the reported credentials-list bug).
 func TestNotePaneDismissRefreshesRevealedList(t *testing.T) {
 	p := newNotePane("Credential created", []string{"token: abc123"})
-	for _, key := range []tea.KeyMsg{{Type: tea.KeyEsc}, {Type: tea.KeyEnter}} {
-		_, cmd := p.update(key)
-		if cmd == nil {
-			t.Fatalf("%v should produce a command", key)
-		}
-		if _, ok := cmd().(popRefreshMsg); !ok {
-			t.Fatalf("note dismiss (%v) should pop-refresh the revealed listing, got %#v", key, cmd())
-		}
+	if _, cmd := p.update(tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil {
+		t.Fatalf("enter must not dismiss a one-time secret notePane, got %#v", cmd())
+	}
+	_, cmd := p.update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatalf("esc should produce a command")
+	}
+	if _, ok := cmd().(popRefreshMsg); !ok {
+		t.Fatalf("note dismiss (esc) should pop-refresh the revealed listing, got %#v", cmd())
 	}
 }
 

@@ -16,6 +16,8 @@ type loadedPaneMsg struct {
 	err    error
 }
 
+func (m loadedPaneMsg) targetPaneID() int64 { return m.paneID }
+
 // loaderPane fetches prerequisite data (e.g. the accounts list a picker
 // needs), showing a spinner, then replaces itself with the pane built from the
 // result. esc cancels; an error shows in place with esc to back out.
@@ -92,3 +94,10 @@ func (p *loaderPane) title() string       { return p.heading }
 func (p *loaderPane) hints() string       { return "esc cancel" }
 func (p *loaderPane) capturesInput() bool { return true }
 func (p *loaderPane) close()              {}
+func (p *loaderPane) paneID() int64       { return p.id }
+func (p *loaderPane) spinCmd() tea.Cmd {
+	if p.errMsg == "" {
+		return p.spin.Tick
+	}
+	return nil
+}

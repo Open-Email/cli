@@ -21,6 +21,8 @@ func newUICmd(a *app) *cobra.Command {
 			"forms, and a live per-mailbox message list fed by the events WebSocket with\n" +
 			"compose, reply, search, previews, and invitation RSVP.\n\n" +
 			"Requires an account or system key; mailbox app passwords cannot browse the directory.",
+		Example: "  openemail ui\n" +
+			"  openemail ui --profile work",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
@@ -35,11 +37,12 @@ func newUICmd(a *app) *cobra.Command {
 
 			// The sidebar is gated by principal. A stored profile key already
 			// knows its role (login recorded it) — trust it and open instantly;
-			// only flag/env tokens pay the Resolve probe, which also validates
-			// the token up front (a bad key fails here, not as a blank screen).
+			// only flag/env tokens (or incomplete profile records) pay the Resolve
+			// probe, which also validates the token up front.
 			role, accountID := "", ""
 			if a.tokenSource == "profile" &&
-				(a.profile.Role == coreapi.PrincipalAccount || a.profile.Role == coreapi.PrincipalSystem) {
+				(a.profile.Role == coreapi.PrincipalSystem ||
+					(a.profile.Role == coreapi.PrincipalAccount && a.profile.AccountID != "")) {
 				role, accountID = a.profile.Role, a.profile.AccountID
 			} else {
 				ident, rerr := client.Resolve(ctx)
@@ -52,13 +55,18 @@ func newUICmd(a *app) *cobra.Command {
 				return errors.New("the console needs an account or system key — a mailbox app password cannot browse the directory (run `openemail login`)")
 			}
 
+			profileLabel := a.profileName
+			if a.tokenSource != "" && a.tokenSource != "profile" {
+				profileLabel = a.tokenSource
+			}
+
 			return tui.Run(ctx, tui.Options{
 				Client:    client,
 				Role:      role,
 				AccountID: accountID,
 				APIURL:    a.apiURL,
 				Token:     a.token,
-				Profile:   a.profileName,
+				Profile:   profileLabel,
 				Version:   Version,
 			})
 		},

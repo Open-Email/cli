@@ -23,13 +23,13 @@ import (
 // a send-path decision, because nothing authenticates an aggregate report.
 const dmarcCaption = "third-party aggregate reports · display only · never a send-path input"
 
-// dmarcState carries the active window and the readiness lines for one DMARC
+// dmarcState carries the active window and the readiness payload for one DMARC
 // screen. Like trafficState it is mutated in place by the window-cycle action
 // and read by fetch/view, hence the atomics: the action and the fetch run in
 // goroutines while view reads concurrently.
 type dmarcState struct {
-	i       atomic.Int64
-	summary atomic.Pointer[[]string]
+	i   atomic.Int64
+	sum atomic.Pointer[coreapi.DomainDmarc]
 }
 
 func newDmarcState() *dmarcState {
@@ -49,11 +49,11 @@ func (d *dmarcState) window() string {
 
 func (d *dmarcState) cycle() string { d.i.Add(1); return d.window() }
 
-func (d *dmarcState) setSummary(lines []string) { d.summary.Store(&lines) }
+func (d *dmarcState) setSummary(sum *coreapi.DomainDmarc) { d.sum.Store(sum) }
 
-func (d *dmarcState) lines() []string {
-	if p := d.summary.Load(); p != nil {
-		return *p
+func (d *dmarcState) lines(width int) []string {
+	if p := d.sum.Load(); p != nil {
+		return dmarcSummaryLines(p, width)
 	}
 	return nil
 }
@@ -75,12 +75,7 @@ func dmarcDesc(domain string) resourceDesc {
 		name:    "DMARC — " + domain,
 		caption: dmarcCaption,
 		summary: func(width int) []string {
-			lines := st.lines()
-			out := make([]string, len(lines))
-			for i, l := range lines {
-				out[i] = truncate(l, width)
-			}
-			return out
+			return st.lines(width)
 		},
 		columns: []column{
 			{title: "SOURCE IP", width: 18},
@@ -115,7 +110,7 @@ func dmarcDesc(domain string) resourceDesc {
 			if srcsErr != nil {
 				return nil, "", srcsErr
 			}
-			st.setSummary(dmarcSummaryLines(sum))
+			st.setSummary(sum)
 
 			sorted := append([]coreapi.DmarcSource(nil), srcs.Sources...)
 			sort.SliceStable(sorted, func(i, j int) bool {
@@ -178,44 +173,62 @@ func dmarcDesc(domain string) resourceDesc {
 // dmarcSummaryLines renders the readiness verdict as the screen's header block.
 // A domain with no reports gets the "why" instead of a wall of zeroes — that
 // state is almost always a rua= DNS problem, not a mail problem.
-func dmarcSummaryLines(d *coreapi.DomainDmarc) []string {
+// Truncation happens on unstyled strings before applying lipgloss styles so
+// truncate() (which calls sanitizePlain) never strips ANSI color escapes.
+func dmarcSummaryLines(d *coreapi.DomainDmarc, w int) []string {
+	bodyW := max(8, w-9)
 	r := d.Readiness
 	verdict := fmt.Sprintf("%s  %s", stDim.Render("verdict"), dmarcVerdictCell(r.Verdict))
 
 	if d.Totals.Reports == 0 {
-		lines := []string{verdict, fmt.Sprintf("%s  no aggregate reports ingested over %d days", stDim.Render("data   "), d.WindowDays)}
+		lines := []string{
+			verdict,
+			fmt.Sprintf("%s  %s", stDim.Render("data   "), truncate(fmt.Sprintf("no aggregate reports ingested over %d days", d.WindowDays), bodyW)),
+		}
 		for _, b := range r.Blockers {
-			lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("why    "), b.Detail))
+			lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("why    "), truncate(b.Detail, bodyW)))
+		}
+		for i, l := range lines {
+			if width(l) > w {
+				lines[i] = truncate(l, w)
+			}
 		}
 		return lines
 	}
 
+	dataLine := fmt.Sprintf("%s msgs · %s reports · %s reporters · %s sources · %d/%d days observed",
+		fmtInt(d.Totals.Messages), fmtInt(d.Totals.Reports),
+		fmtInt(r.Reporters), fmtInt(d.Totals.Sources), r.ObservedDays, r.WindowDays)
 	lines := []string{
 		verdict + stDim.Render("  ·  ") + dmarcPolicyCell(r) + stDim.Render("  ·  aligned ") + fmtRate(r.AlignedRate),
-		fmt.Sprintf("%s  %s msgs · %s reports · %s reporters · %s sources · %d/%d days observed",
-			stDim.Render("data   "), fmtInt(d.Totals.Messages), fmtInt(d.Totals.Reports),
-			fmtInt(r.Reporters), fmtInt(d.Totals.Sources), r.ObservedDays, r.WindowDays),
+		fmt.Sprintf("%s  %s", stDim.Render("data   "), truncate(dataLine, bodyW)),
 	}
 	if r.Sampled {
 		// pct<100: reporters applied the policy to a sample, so every count
 		// above is a fraction of what enforcing would really touch.
 		lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("sampled"),
-			stWarn.Render("a reporter observed pct<100 — these counts UNDERSTATE the impact of enforcing")))
+			stWarn.Render(truncate("a reporter observed pct<100 — these counts UNDERSTATE the impact of enforcing", bodyW))))
 	}
 	switch {
 	case len(r.Blockers) == 0:
-		lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("blocked"), stLive.Render("none — nothing is blocking enforcement")))
+		lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("blocked"),
+			stLive.Render(truncate("none — nothing is blocking enforcement", bodyW))))
 	default:
 		shown := r.Blockers
 		if len(shown) > dmarcBlockersShown {
 			shown = shown[:dmarcBlockersShown]
 		}
 		for _, b := range shown {
-			lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("blocked"), b.Detail))
+			lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("blocked"), truncate(b.Detail, bodyW)))
 		}
 		if n := len(r.Blockers) - len(shown); n > 0 {
 			lines = append(lines, fmt.Sprintf("%s  %s", stDim.Render("       "),
-				stDim.Render(fmt.Sprintf("+%d more blocker(s) — run `openemail domains dmarc %s`", n, d.Domain))))
+				stDim.Render(truncate(fmt.Sprintf("+%d more blocker(s) — run `openemail domains dmarc %s`", n, d.Domain), bodyW))))
+		}
+	}
+	for i, l := range lines {
+		if width(l) > w {
+			lines[i] = truncate(l, w)
 		}
 	}
 	return lines

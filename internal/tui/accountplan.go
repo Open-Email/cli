@@ -299,9 +299,9 @@ func accountPlanFormPane(ctx context.Context, ui *Options, cur coreapi.Account) 
 					huh.NewOption("paused — queued mail HELD, senders retry (reversible)", sendingPaused),
 					huh.NewOption("stopped — queued mail BOUNCED, senders told no (abuse)", sendingStopped),
 				),
-				huh.NewConfirm().Title("Vanity hostnames").Value(&p.vanityHosts).
-					Affirmative("allowed").Negative("no").
-					Description("may this account claim its own mail./smtp./webmail./dav. names — the paid-plan gate; turning it off never revokes hostnames already serving clients"),
+				boolField("Vanity hostnames",
+					"may this account claim its own mail./smtp./webmail./dav. names — the paid-plan gate; turning it off never revokes hostnames already serving clients",
+					&p.vanityHosts),
 				huh.NewInput().Title("Max mailboxes").Value(&p.maxMailboxes).
 					Description("blank = platform default · or a positive number (there is no unlimited)"),
 				huh.NewInput().Title("Messages/day").Value(&p.msgsPerDay).

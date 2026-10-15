@@ -116,6 +116,9 @@ func dkimDesc() resourceDesc {
 			{title: "ACTIVATED", width: 16},
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
+			if cursor == "" {
+				st.clear()
+			}
 			status, err := c.GetDkim(ctx)
 			if err != nil {
 				return nil, "", err
@@ -167,6 +170,12 @@ type dkimScreenState struct {
 	mu     sync.Mutex
 	loaded bool
 	status *coreapi.DkimStatus
+}
+
+func (s *dkimScreenState) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loaded, s.status = false, nil
 }
 
 func (s *dkimScreenState) set(st *coreapi.DkimStatus) {

@@ -242,12 +242,9 @@ func pickupFormPane(ctx context.Context, ui *Options, mbx coreapi.Mailbox, cur *
 				huh.NewInput().Title("Username").Value(&username),
 				huh.NewInput().Title("Password").Value(&password).EchoMode(huh.EchoModePassword).Description(pwDesc),
 				huh.NewInput().Title("Interval (minutes)").Value(&interval),
-				huh.NewConfirm().Title("Delete from the server after fetching").Value(&delAfter).
-					Affirmative("yes").Negative("no"),
-				huh.NewConfirm().Title("Mark every imported message read").Value(&markRead).
-					Description("no = only mail older than this source lands read; POP3 carries no read state").
-					Affirmative("yes").Negative("no"),
-				huh.NewConfirm().Title("Enabled").Value(&enabled).Affirmative("yes").Negative("no"),
+				boolField("Delete from the server after fetching", "", &delAfter),
+				boolField("Mark every imported message read", "no = only mail older than this source lands read; POP3 carries no read state", &markRead),
+				boolField("Enabled", "", &enabled),
 			))
 		},
 		submit: func(sctx context.Context, c *coreapi.Client) (string, pane, error) {

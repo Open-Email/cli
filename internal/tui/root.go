@@ -106,11 +106,24 @@ func (m *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sizeTop()
 		return m, msg.p.init()
 
+	case replaceTopPaneMsg:
+		if len(m.stack) > 0 {
+			m.top().close()
+			m.stack[len(m.stack)-1] = msg.p
+		} else {
+			m.stack = []pane{msg.p}
+		}
+		m.sizeTop()
+		return m, msg.p.init()
+
 	case popPaneMsg:
 		if len(m.stack) > 1 {
 			m.top().close()
 			m.stack = m.stack[:len(m.stack)-1]
 			m.sizeTop()
+			if sp, ok := m.top().(spinningPane); ok {
+				return m, sp.spinCmd()
+			}
 		} else {
 			m.focus = focusSidebar
 			m.side.focused = true
@@ -125,14 +138,32 @@ func (m *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.stack = m.stack[:len(m.stack)-1]
 			m.sizeTop()
 		}
-		return m.forwardTop(refreshMsg(msg))
+		if msg.noRefresh {
+			_, cmd := m.forwardTop(noRefreshMsg{flash: msg.flash})
+			if sp, ok := m.top().(spinningPane); ok {
+				return m, tea.Batch(cmd, sp.spinCmd())
+			}
+			return m, cmd
+		}
+		return m.forwardTop(refreshMsg{flash: msg.flash})
 
 	case tea.KeyMsg:
 		return m.updateKey(msg)
 	}
 
-	// Async results (fetch pages, spinner ticks, live events) go to the top
-	// pane; stale ones are dropped there by pane id.
+	if scoped, ok := msg.(paneScopedMsg); ok {
+		target := scoped.targetPaneID()
+		for i := len(m.stack) - 1; i >= 0; i-- {
+			if ip, ok := m.stack[i].(idPane); ok && ip.paneID() == target {
+				p, cmd := m.stack[i].update(msg)
+				m.stack[i] = p
+				return m, cmd
+			}
+		}
+		return m, nil
+	}
+
+	// Unscoped messages (spinner ticks, etc.) go to the top pane.
 	return m.forwardTop(msg)
 }
 
@@ -219,12 +250,19 @@ func (m *rootModel) titleBar() string {
 	for _, p := range m.stack {
 		crumbs = append(crumbs, p.title())
 	}
-	left := " " + stAppName.Render("OpenEmail") + "  " + stCrumb.Render(strings.Join(crumbs, " › "))
+	crumbText := strings.Join(crumbs, " › ")
+	prefix := " " + stAppName.Render("OpenEmail") + "  "
+	left := prefix + stCrumb.Render(crumbText)
 	role := m.ui.Role
 	right := stMeta.Render(m.ui.Profile+" · "+role+" · v"+m.ui.Version) + " "
 	gap := m.w - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
-		return truncate(left, m.w)
+		prefixW := lipgloss.Width(prefix)
+		avail := m.w - prefixW - lipgloss.Width(right) - 1
+		if avail > 0 {
+			return prefix + stCrumb.Render(truncate(crumbText, avail)) + " " + right
+		}
+		return prefix + stCrumb.Render(truncate(crumbText, max(1, m.w-prefixW)))
 	}
 	return left + strings.Repeat(" ", gap) + right
 }

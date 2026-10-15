@@ -16,9 +16,10 @@ import (
 // flash is the success notice for the underlying listing, after (optional) is
 // a pane to push once the form pops (e.g. the one-time API-key token reveal).
 type formSpec struct {
-	title  string
-	submit func(ctx context.Context, c *coreapi.Client) (flash string, after pane, err error)
-	build  func() *huh.Form
+	title         string
+	replaceParent bool // when true, after replaces the revealed parent pane instead of stacking
+	submit        func(ctx context.Context, c *coreapi.Client) (flash string, after pane, err error)
+	build         func() *huh.Form
 }
 
 // formDoneMsg carries a submit's outcome back to its formPane.
@@ -28,6 +29,8 @@ type formDoneMsg struct {
 	after  pane
 	err    error
 }
+
+func (m formDoneMsg) targetPaneID() int64 { return m.paneID }
 
 // formPane hosts a huh form in the pane stack. esc cancels (huh itself only
 // quits on ctrl+c), a completed form submits async, and an API error re-opens
@@ -101,12 +104,15 @@ func (p *formPane) update(msg tea.Msg) (pane, tea.Cmd) {
 			return p, p.form.Init()
 		}
 		if msg.after != nil {
+			if p.spec.replaceParent {
+				return p, tea.Sequence(popPane, replaceTopPane(msg.after))
+			}
 			// Pop this form and show the after-pane (e.g. the one-time token
-			// reveal). Do NOT refresh the revealed listing here: it would issue a
-			// fetch whose result is routed to the after-pane (now on top) and
-			// dropped, leaving the listing stale AND stuck loading. The after-pane
-			// refreshes the listing when it is dismissed and back on top.
+			// reveal). The after-pane refreshes the listing when it is dismissed.
 			return p, tea.Sequence(popPane, pushPane(msg.after))
+		}
+		if isNoOpFlash(msg.flash) {
+			return p, popNoRefresh(msg.flash)
 		}
 		return p, popRefresh(msg.flash)
 
@@ -135,6 +141,10 @@ func (p *formPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		return p, popPane
 	}
 	return p, cmd
+}
+
+func isNoOpFlash(flash string) bool {
+	return flash == "no changes" || flash == "nothing changed" || flash == "name unchanged"
 }
 
 func (p *formPane) setSize(w, h int) {
@@ -172,3 +182,10 @@ func (p *formPane) title() string       { return p.spec.title }
 func (p *formPane) hints() string       { return "enter next field · shift+tab back · esc cancel" }
 func (p *formPane) capturesInput() bool { return true }
 func (p *formPane) close()              {}
+func (p *formPane) paneID() int64       { return p.id }
+func (p *formPane) spinCmd() tea.Cmd {
+	if p.submitting {
+		return p.spin.Tick
+	}
+	return nil
+}

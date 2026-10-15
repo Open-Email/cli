@@ -19,6 +19,8 @@ type contentMsg struct {
 	err    error
 }
 
+func (m contentMsg) targetPaneID() int64 { return m.paneID }
+
 // previewPane shows one message: decoded headers, the text body inline, and
 // attachments as references (read-only; parts are fetched with the CLI).
 type previewPane struct {
@@ -122,7 +124,7 @@ func (p *previewPane) setSize(w, h int) {
 func (p *previewPane) setContent() {
 	if p.content == nil {
 		if p.errMsg != "" {
-			p.vp.SetContent("\n  " + stErr.Render(p.errMsg))
+			p.vp.SetContent("\n" + indent(stErr.Render(wrapPlain(p.errMsg, max(20, p.vp.Width-4))), "  "))
 		}
 		return
 	}
@@ -190,7 +192,7 @@ func (p *previewPane) view() string {
 		head += "  " + p.spin.View()
 	}
 	if p.errMsg != "" && p.content != nil {
-		head += "  " + stErr.Render(truncate(p.errMsg, p.w-width(head)-4))
+		head += "  " + stErr.Render(truncate(p.errMsg, max(8, p.w-width(head)-4)))
 	}
 	return head + "\n" + p.vp.View()
 }
@@ -207,6 +209,13 @@ func (p *previewPane) hints() string {
 }
 func (p *previewPane) capturesInput() bool { return false }
 func (p *previewPane) close()              {}
+func (p *previewPane) paneID() int64       { return p.id }
+func (p *previewPane) spinCmd() tea.Cmd {
+	if p.loading {
+		return p.spin.Tick
+	}
+	return nil
+}
 
 func fmtAddrs(addrs []coreapi.ContentAddress) string {
 	if len(addrs) == 0 {

@@ -197,9 +197,9 @@ func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox
 				Value(&quota).Validate(validBytesOrEmpty),
 		}
 		if existing == nil {
-			fields = append(fields, huh.NewConfirm().Title("Without address").
-				Description("calendars and contacts, no email address (leave the address empty); give it a login with credentials create --username").
-				Value(&withoutAddress))
+			fields = append(fields, boolField("Without address",
+				"calendars and contacts, no email address (leave the address empty); give it a login with credentials create --username",
+				&withoutAddress))
 		}
 		return huh.NewForm(huh.NewGroup(fields...))
 	}
@@ -510,9 +510,11 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route, lo
 					Options(huh.NewOptions("mailbox", "webhook", "remote", "group")...).
 					Value(&typ))
 		}
-		fields = append(fields,
-			huh.NewInput().Title("Target").DescriptionFunc(destDescription(&typ), &typ).Value(&target),
-		)
+		if lockType != "group" {
+			fields = append(fields,
+				huh.NewInput().Title("Target").DescriptionFunc(destDescription(&typ), &typ).Value(&target),
+			)
+		}
 		if existing == nil || editingGroup {
 			// On create, sent only when the destination type is group; on a
 			// group edit, sent only when actually changed (see submit).
@@ -522,8 +524,12 @@ func routeFormPane(ctx context.Context, ui *Options, existing *coreapi.Route, lo
 					Options(huh.NewOptions("open", "members")...).
 					Value(&posting))
 		}
+		if lockType != "group" {
+			fields = append(fields,
+				huh.NewInput().Title("Webhook secret").Description(secretDesc).EchoMode(huh.EchoModePassword).Value(&secret),
+			)
+		}
 		fields = append(fields,
-			huh.NewInput().Title("Webhook secret").Description(secretDesc).EchoMode(huh.EchoModePassword).Value(&secret),
 			boolField("Paced", "stage + queue-drain instead of synchronous delivery (funnel protection for hot shared inboxes)", &paced),
 		)
 		return huh.NewForm(huh.NewGroup(fields...))
@@ -855,15 +861,17 @@ func accountFormPane(ctx context.Context, ui *Options) pane {
 			huh.NewInput().Title("Name").Placeholder("Acme Corp").
 				Value(&name).Validate(required("name")),
 			huh.NewInput().Title("Max mailboxes").Placeholder("50").
-				Description("cap on live mailboxes — empty for unlimited").
-				Value(&maxMbx).Validate(validIntOrEmpty),
+				Description("cap on live mailboxes — empty for platform default").
+				Value(&maxMbx).Validate(func(s string) error {
+				_, err := parsePlanMailboxCap(s)
+				return err
+			}),
 		))
 	}
 	submit := func(sctx context.Context, c *coreapi.Client) (string, pane, error) {
-		var capPtr *int64
-		if m := strings.TrimSpace(maxMbx); m != "" {
-			n, _ := strconv.ParseInt(m, 10, 64)
-			capPtr = &n
+		capPtr, err := parsePlanMailboxCap(maxMbx)
+		if err != nil {
+			return "", nil, err
 		}
 		a, err := c.CreateAccount(sctx, strings.TrimSpace(name), capPtr)
 		if err != nil {
