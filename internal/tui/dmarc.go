@@ -199,8 +199,15 @@ func dmarcSummaryLines(d *coreapi.DomainDmarc, w int) []string {
 	dataLine := fmt.Sprintf("%s msgs · %s reports · %s reporters · %s sources · %d/%d days observed",
 		fmtInt(d.Totals.Messages), fmtInt(d.Totals.Reports),
 		fmtInt(r.Reporters), fmtInt(d.Totals.Sources), r.ObservedDays, r.WindowDays)
+	// The verdict line is assembled from styled parts, so it cannot go through
+	// truncate(); it drops the aligned rate instead when that does not fit
+	// (about 70 columns in all, against 62 on an 80-column terminal).
+	head := verdict + stDim.Render("  ·  ") + dmarcPolicyCell(r)
+	if full := head + stDim.Render("  ·  aligned ") + fmtRate(r.AlignedRate); width(full) <= w {
+		head = full
+	}
 	lines := []string{
-		verdict + stDim.Render("  ·  ") + dmarcPolicyCell(r) + stDim.Render("  ·  aligned ") + fmtRate(r.AlignedRate),
+		head,
 		fmt.Sprintf("%s  %s", stDim.Render("data   "), truncate(dataLine, bodyW)),
 	}
 	if r.Sampled {

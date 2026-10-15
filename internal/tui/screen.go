@@ -112,6 +112,11 @@ type screenPane struct {
 	errMsg    string
 	flash     string // success notice from a completed form/confirm
 
+	// acting: a direct-run action is in flight. Its row came from s.visible,
+	// so a second one before the refresh lands would act on a stale position
+	// (a second J swapped whatever rule had moved into the old slot).
+	acting bool
+
 	all     []rowData
 	visible []rowData
 	next    string
@@ -181,6 +186,7 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		if msg.paneID != s.id {
 			return s, nil
 		}
+		s.acting = false
 		if msg.err != nil {
 			s.errMsg = msg.err.Error()
 			return s, nil
@@ -291,6 +297,10 @@ func (s *screenPane) updateKey(msg tea.KeyMsg) (pane, tea.Cmd) {
 			item = s.visible[idx].item
 		}
 		if a.do != nil {
+			if s.acting || s.loading {
+				return s, nil
+			}
+			s.acting = true
 			s.flash = ""
 			preferredID := ""
 			if a.selectAfter != nil {
@@ -366,11 +376,7 @@ func (s *screenPane) applyFilter() {
 		rows[i] = table.Row(r.cells)
 	}
 	s.tbl.SetRows(rows)
-	if len(rows) == 0 {
-		s.tbl.SetCursor(0)
-	} else if s.tbl.Cursor() >= len(rows) {
-		s.tbl.SetCursor(len(rows) - 1)
-	}
+	selectFirstRowIfNone(&s.tbl)
 }
 
 func (s *screenPane) setSize(w, h int) {

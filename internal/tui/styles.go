@@ -60,6 +60,16 @@ func newTable() table.Model {
 	return t
 }
 
+// selectFirstRowIfNone follows SetRows. bubbles parks the cursor at -1 on an
+// empty table and keeps it there when rows return (it clamps a too-high
+// cursor itself), which would leave enter and every row action inert until
+// an arrow key was pressed.
+func selectFirstRowIfNone(t *table.Model) {
+	if len(t.Rows()) > 0 && t.Cursor() < 0 {
+		t.SetCursor(0)
+	}
+}
+
 // formTheme adapts huh's base theme to the console palette.
 func formTheme() *huh.Theme {
 	t := huh.ThemeBase()

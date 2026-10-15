@@ -329,3 +329,132 @@ func TestDetailAndSourceTitles(t *testing.T) {
 		t.Fatalf("sourcePane.title() = %q; want %q", got, "Source")
 	}
 }
+
+// bubbles parks the cursor at -1 on an empty table and leaves it there when
+// rows come back, so enter and every needsRow action stayed inert until an
+// arrow key was pressed (Do-Not-Send: remove the only entry, then add one).
+func TestCursorSelectsFirstRowAfterEmptyList(t *testing.T) {
+	s := newScreenPane(t.Context(), &Options{}, resourceDesc{
+		name:    "Things",
+		columns: []column{{title: "NAME", flex: true}},
+		detail:  func(any) []kv { return nil },
+	})
+	s.setSize(80, 20)
+	s.all = []rowData{{cells: []string{"a"}, item: "a"}}
+	s.applyFilter()
+	s.all = nil
+	s.applyFilter()
+	s.all = []rowData{{cells: []string{"x"}, item: "x"}, {cells: []string{"y"}, item: "y"}}
+	s.applyFilter()
+	if got := s.tbl.Cursor(); got != 0 {
+		t.Fatalf("cursor after the list refilled = %d; want 0", got)
+	}
+}
+
+func msgPage(mp *messagesPane, next string, replace bool, ids ...string) {
+	items := make([]coreapi.MessageMeta, len(ids))
+	for i, id := range ids {
+		items[i] = coreapi.MessageMeta{ID: id}
+	}
+	mp.seq++
+	mp.update(msgsPageMsg{paneID: mp.id, seq: mp.seq, items: items, next: next, replace: replace})
+}
+
+func msgIDs(prefix string, n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = prefix + strings.Repeat("x", i+1)
+	}
+	return out
+}
+
+// Same trap on the messages list: trash the only message, new mail arrives,
+// and t/!/d/R/l and enter did nothing.
+func TestMessagesCursorSelectsFirstRowAfterEmptyList(t *testing.T) {
+	mp := newMessagesPane(t.Context(), &Options{}, coreapi.Mailbox{ID: "01M"})
+	mp.setSize(80, 24)
+	msgPage(mp, "", true, "m1")
+	msgPage(mp, "", true)
+	msgPage(mp, "", true, "m2", "m3")
+	if mp.selectedID() != "m2" {
+		t.Fatalf("selected %q after the list refilled (cursor=%d); want m2", mp.selectedID(), mp.tbl.Cursor())
+	}
+}
+
+// A refresh re-fetches only the first page. When the selected message is not
+// in it, either the row was removed (keep the position, so the next message
+// slides under the cursor) or the user had loaded more pages, which the
+// refresh resets (back to the top, as refresh() promises).
+func TestMessagesRefreshCursorWhenSelectionLeavesFirstPage(t *testing.T) {
+	t.Run("deep in a load-more'd list goes to the top", func(t *testing.T) {
+		mp := newMessagesPane(t.Context(), &Options{}, coreapi.Mailbox{ID: "01M"})
+		mp.setSize(80, 24)
+		page1, page2 := msgIDs("a", 50), msgIDs("b", 50)
+		msgPage(mp, "c1", true, page1...)
+		msgPage(mp, "c2", false, page2...)
+		mp.tbl.SetCursor(80)
+		msgPage(mp, "c1b", true, append([]string{"NEW"}, page1[:49]...)...)
+		if got := mp.tbl.Cursor(); got != 0 {
+			t.Fatalf("cursor after a live refresh = %d; want 0", got)
+		}
+	})
+	t.Run("a removed row keeps the position", func(t *testing.T) {
+		mp := newMessagesPane(t.Context(), &Options{}, coreapi.Mailbox{ID: "01M"})
+		mp.setSize(80, 24)
+		msgPage(mp, "", true, "m1", "m2", "m3", "m4")
+		mp.tbl.SetCursor(1)
+		msgPage(mp, "", true, "m1", "m3", "m4")
+		if mp.selectedID() != "m3" {
+			t.Fatalf("selected %q after m2 was removed; want m3", mp.selectedID())
+		}
+	})
+	t.Run("removing the last row selects the new last row", func(t *testing.T) {
+		mp := newMessagesPane(t.Context(), &Options{}, coreapi.Mailbox{ID: "01M"})
+		mp.setSize(80, 24)
+		msgPage(mp, "", true, "m1", "m2", "m3")
+		mp.tbl.SetCursor(2)
+		msgPage(mp, "", true, "m1", "m2")
+		if mp.selectedID() != "m2" {
+			t.Fatalf("selected %q after the last row was removed; want m2", mp.selectedID())
+		}
+	})
+}
+
+// Subjects and senders are wire data from strangers; an OSC sequence in one
+// must not reach the terminal through the messages table.
+func TestMessagesRowsStripTerminalEscapes(t *testing.T) {
+	mp := newMessagesPane(t.Context(), &Options{}, coreapi.Mailbox{ID: "01M"})
+	mp.setSize(120, 24)
+	subj := "hi\x1b]52;c;ZXZpbA==\x07there"
+	mp.seq++
+	mp.update(msgsPageMsg{paneID: mp.id, seq: mp.seq, replace: true, items: []coreapi.MessageMeta{
+		{ID: "m1", Subject: &subj, EnvelopeFrom: "a\x1b[2Jb@example.com"},
+	}})
+	if v := mp.view(); strings.Contains(v, "\x1b]52") || strings.Contains(v, "\x1b[2J") {
+		t.Fatalf("escape sequence reached the messages view: %q", v)
+	}
+}
+
+// Rule names are user-authored and now reach the title bar through the
+// detail pane's numbered-row title.
+func TestTitleBarStripsTerminalEscapes(t *testing.T) {
+	dp := newDetailPane(t.Context(), &Options{}, resourceDesc{
+		detail: func(any) []kv { return nil },
+	}, rowData{cells: []string{"1", "evil\x1b]0;pwned\x07"}, item: "r1"})
+	m := &rootModel{ui: Options{Profile: "default", Role: "account", Version: "dev"}, stack: []pane{dp}, w: 200}
+	if got := m.titleBar(); strings.Contains(got, "\x1b]0;") {
+		t.Fatalf("OSC sequence reached the title bar: %q", got)
+	}
+}
+
+// Every live event re-reads the mailbox stats, so two reads can be in flight
+// and land out of order; the older answer must not overwrite the newer one.
+func TestMessagesStatsIgnoreOlderAnswer(t *testing.T) {
+	mp := newMessagesPane(t.Context(), &Options{}, coreapi.Mailbox{ID: "01M"})
+	newer, older := &coreapi.Mailbox{ID: "new"}, &coreapi.Mailbox{ID: "old"}
+	mp.update(mbxStatsMsg{paneID: mp.id, seq: 2, mbx: newer})
+	mp.update(mbxStatsMsg{paneID: mp.id, seq: 1, mbx: older})
+	if mp.stats != newer {
+		t.Fatalf("stats = %+v after an older answer landed last; want the newer one", mp.stats)
+	}
+}
