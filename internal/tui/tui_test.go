@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -456,5 +458,66 @@ func TestMessagesStatsIgnoreOlderAnswer(t *testing.T) {
 	mp.update(mbxStatsMsg{paneID: mp.id, seq: 1, mbx: older})
 	if mp.stats != newer {
 		t.Fatalf("stats = %+v after an older answer landed last; want the newer one", mp.stats)
+	}
+}
+
+func TestStatusBarOmitsSidebarAndQuitWhenPaneCapturesInput(t *testing.T) {
+	np := newNotePane("Secret", []string{"oek_123"})
+	m := &rootModel{
+		ui:    Options{Profile: "default", Role: "account", Version: "dev"},
+		focus: focusContent,
+		stack: []pane{np},
+		w:     200,
+	}
+	if bar := m.statusBar(); strings.Contains(bar, "tab sidebar") || strings.Contains(bar, "q quit") {
+		t.Fatalf("statusBar on input-capturing pane advertised suspended keys: %q", bar)
+	}
+
+	// Normal non-capturing pane should still advertise tab sidebar · q quit.
+	dp := newDetailPane(t.Context(), &Options{}, resourceDesc{
+		detail: func(any) []kv { return nil },
+	}, rowData{cells: []string{"row"}, item: "x"})
+	m.stack = []pane{dp}
+	if bar := m.statusBar(); !strings.Contains(bar, "tab sidebar · q quit") {
+		t.Fatalf("statusBar on non-capturing pane missing global hints: %q", bar)
+	}
+}
+
+func TestDoNotSendReResolvesStaleCachedListIDOn404(t *testing.T) {
+	const accID = "01KXRS3SHN1N35G4YETVADSN0R"
+	currentListID := "list_old"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/accounts/"+accID+"/lists":
+			_, _ = w.Write([]byte(`{"lists":[{"id":"` + currentListID + `","name":"Do not send","direction":"outbound","verdict":"block"}],"nextCursor":""}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/accounts/"+accID+"/lists/"+currentListID+"/entries":
+			_, _ = w.Write([]byte(`{"entries":[{"pattern":"blocked@example.com","createdAt":1700000000,"hitCount":1}],"nextCursor":""}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/accounts/"+accID+"/lists/"+currentListID+"/entries/blocked@example.com":
+			_, _ = w.Write([]byte(`{"deleted":true}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not_found"}`))
+		}
+	}))
+	defer srv.Close()
+
+	client, err := coreapi.New(coreapi.Config{BaseURL: srv.URL, Token: "oek_test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := doNotSendDesc(accID)
+
+	// 1. Prime the cache with list_old.
+	rows, _, err := desc.fetch(t.Context(), client, "")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("initial fetch: rows=%d, err=%v", len(rows), err)
+	}
+
+	// 2. Recreate the list under list_new; next fetch must re-resolve on 404 and return the entries.
+	currentListID = "list_new"
+	rows, _, err = desc.fetch(t.Context(), client, "")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("fetch after list recreation: rows=%d, err=%v; want 1 row from list_new", len(rows), err)
 	}
 }

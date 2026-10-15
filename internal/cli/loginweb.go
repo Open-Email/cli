@@ -106,7 +106,7 @@ var deviceSlowDownStep = 5 * time.Second
 // for the scheme, and neither `file:` nor `javascript:` is a sign-in page.
 func safeBrowserURI(raw string) bool {
 	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Host == "" {
+	if err != nil || u.Host == "" || u.User != nil {
 		return false
 	}
 	switch {
@@ -441,9 +441,10 @@ func deviceLogin(ctx context.Context, out *Printer, consoleURL, keyName string, 
 	}
 	// The address the human is told to trust, checked before it is shown as much
 	// as before it is opened: this string decides where somebody types a code
-	// that mints a key, so a scheme this CLI would not authorize over is refused
-	// rather than printed with a caveat.
-	if !safeBrowserURI(grant.VerificationURI) {
+	// that mints a key, so a scheme this CLI would not authorize over — or an
+	// origin other than the console we just contacted — is refused rather than
+	// printed with a caveat.
+	if !safeBrowserURI(grant.VerificationURI) || !sameAPIOrigin(grant.VerificationURI, consoleURL) {
 		return nil, fmt.Errorf("the console gave an unusable verification address (%q)", sanitizeCell(grant.VerificationURI))
 	}
 	// Both go straight to a terminal that acts on escape sequences, and these

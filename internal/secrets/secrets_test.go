@@ -148,3 +148,45 @@ func TestConcurrentSaveFileAtomic(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteFileSecureWindowsRenameFallback(t *testing.T) {
+	dir := t.TempDir()
+	profile := "win-locked"
+
+	if _, _, err := Save(dir, profile, "oek_initial", true); err != nil {
+		t.Fatalf("initial Save: %v", err)
+	}
+
+	origRename, origWin := renameFile, isWindows
+	t.Cleanup(func() {
+		renameFile = origRename
+		isWindows = origWin
+	})
+
+	// Simulate Windows where another process holds the credential file open and
+	// os.Rename fails with access denied.
+	renameFile = func(_, _ string) error { return os.ErrPermission }
+	isWindows = true
+
+	if _, _, err := Save(dir, profile, "oek_updated", true); err != nil {
+		t.Fatalf("Save on Windows with locked target should fall back to in-place write: %v", err)
+	}
+	got, err := Load(dir, profile, File)
+	if err != nil || got != "oek_updated" {
+		t.Fatalf("Load after Windows fallback = %q, %v; want oek_updated", got, err)
+	}
+	// Verify no leftover .cred-* temp file in credentials dir.
+	entries, err := os.ReadDir(filepath.Join(dir, "credentials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != profile {
+		t.Fatalf("unexpected files in credentials dir: %v", entries)
+	}
+
+	// On non-Windows, a rename failure must still surface as an error.
+	isWindows = false
+	if _, _, err := Save(dir, profile, "oek_third", true); err == nil {
+		t.Fatal("Save on non-Windows should fail when os.Rename fails")
+	}
+}

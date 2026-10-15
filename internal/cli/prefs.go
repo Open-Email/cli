@@ -106,6 +106,10 @@ func newPrefsPutCmd(a *app) *cobra.Command {
 			if force && (ifMatch != "" || createOnly) {
 				return usageError(errors.New("--force cannot be combined with --if-match/--create-only"))
 			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
 			body, err := readRawInput(file)
 			if err != nil {
 				return err
@@ -113,10 +117,6 @@ func newPrefsPutCmd(a *app) *cobra.Command {
 			prefs, embedded, err := parsePrefsInput(body)
 			if err != nil {
 				return usageError(err)
-			}
-			client, err := a.authedClient()
-			if err != nil {
-				return err
 			}
 			guard := ifMatch
 			switch {

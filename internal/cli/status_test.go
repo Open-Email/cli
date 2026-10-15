@@ -73,12 +73,20 @@ func TestStatusRefusesCrossDeploymentProfileToken(t *testing.T) {
 		t.Fatal("authedClient allowed sending a default-deployment profile token to another API URL")
 	}
 
-	// 2. status command must not leak the token on /health or /auth/whoami
+	// 2. status command must report server health (exiting 0) without leaking the
+	// stored profile token on /health or /auth/whoami.
+	var stdout, stderr bytes.Buffer
+	a.out = &Printer{out: &stdout, err: &stderr}
 	cmd := newStatusCmd(a)
 	cmd.SetContext(context.Background())
-	err = cmd.RunE(cmd, nil)
-	if err == nil {
-		t.Fatal("status succeeded against a foreign --api-url while holding a profile token")
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("status failed instead of reporting health: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "core reachable") {
+		t.Fatalf("status did not report server health on stderr: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "not sent to another deployment") {
+		t.Fatalf("status did not warn why the stored profile key was skipped: %q", stderr.String())
 	}
 	if healthAuth.Load() != 0 {
 		t.Fatal("/health request carried an Authorization header")

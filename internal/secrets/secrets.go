@@ -8,8 +8,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/zalando/go-keyring"
+)
+
+var (
+	renameFile = os.Rename
+	isWindows  = runtime.GOOS == "windows"
 )
 
 // Backends.
@@ -91,11 +97,45 @@ func writeFileSecure(path string, data []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
+		// On Windows, replacing an existing file via MoveFileEx fails with access
+		// denied if another process (an antivirus scanner, indexer, or concurrent
+		// CLI command) holds the target open without FILE_SHARE_DELETE. Fall back
+		// to an in-place 0600 write rather than failing the login.
+		if isWindows {
+			return writeFileInPlace(path, data)
+		}
 		return err
 	}
 	return nil
+}
+
+func writeFileInPlace(path string, data []byte) error {
+	if fi, err := os.Lstat(path); err == nil {
+		if !fi.Mode().IsRegular() {
+			return fmt.Errorf("refusing to write %s: not a regular file", path)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // Load reads the secret for profile from the named backend.

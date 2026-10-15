@@ -157,6 +157,10 @@ func newRulesPutCmd(a *app) *cobra.Command {
 			"An empty list is legal: rules mode with no rules yet.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
 			raw, err := readRawInput(file)
 			if err != nil {
 				return err
@@ -164,10 +168,6 @@ func newRulesPutCmd(a *app) *cobra.Command {
 			doc, err := parseRulesDocument(raw)
 			if err != nil {
 				return usageError(err)
-			}
-			client, err := a.authedClient()
-			if err != nil {
-				return err
 			}
 			mbx, err := a.resolveMailbox(cmd.Context(), client, "")
 			if err != nil {

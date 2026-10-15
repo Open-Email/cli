@@ -454,7 +454,7 @@ func TestDeviceLoginPollsUntilApproved(t *testing.T) {
 		case "/api/cli/device/code":
 			writeJSON(w, 200, map[string]any{
 				"device_code": "oecd_dev", "user_code": "WXYZ-1234",
-				"verification_uri": "https://console.test/cli", "expires_in": 900, "interval": 1,
+				"verification_uri": console.URL + "/cli", "expires_in": 900, "interval": 1,
 			})
 		case "/api/cli/device/token":
 			if console.polls.Add(1) < 3 {
@@ -498,7 +498,7 @@ func TestDeviceLoginWithNoBrowserOpensNothing(t *testing.T) {
 		case "/api/cli/device/code":
 			writeJSON(w, 200, map[string]any{
 				"device_code": "oecd_dev", "user_code": "WXYZ-1234",
-				"verification_uri": "https://console.test/cli",
+				"verification_uri": console.URL + "/cli",
 				"expires_in":       900, "interval": 1,
 			})
 		case "/api/cli/device/token":
@@ -530,7 +530,7 @@ func TestDeviceLoginStopsOnDenial(t *testing.T) {
 		case "/api/cli/device/code":
 			writeJSON(w, 200, map[string]any{
 				"device_code": "oecd_dev", "user_code": "WXYZ-1234",
-				"verification_uri": "https://console.test/cli", "expires_in": 900, "interval": 1,
+				"verification_uri": console.URL + "/cli", "expires_in": 900, "interval": 1,
 			})
 		case "/api/cli/device/token":
 			writeJSON(w, 400, map[string]any{"error": "access_denied"})
@@ -564,7 +564,7 @@ func TestDeviceLoginBacksOffOnSlowDown(t *testing.T) {
 		case "/api/cli/device/code":
 			writeJSON(w, 200, map[string]any{
 				"device_code": "oecd_dev", "user_code": "WXYZ-1234",
-				"verification_uri": "https://console.test/cli", "expires_in": 900, "interval": 1,
+				"verification_uri": console.URL + "/cli", "expires_in": 900, "interval": 1,
 			})
 		case "/api/cli/device/token":
 			mu.Lock()
@@ -603,33 +603,41 @@ func TestDeviceLoginBacksOffOnSlowDown(t *testing.T) {
 
 func TestDeviceLoginRefusesAnUnusableVerificationAddress(t *testing.T) {
 	// This string is printed as the place to go and handed to whatever handler
-	// the desktop has registered for its scheme. `javascript:` and `file:` are
-	// not sign-in pages, and the console is not the only thing that can end up
-	// answering that endpoint.
-	console := newStubConsole(nil)
-	console.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/cli/device/code" {
-			writeJSON(w, 200, map[string]any{
-				"device_code": "oecd_dev", "user_code": "WXYZ-1234",
-				"verification_uri": "javascript:alert(1)", "expires_in": 900, "interval": 1,
+	// the desktop has registered for its scheme. `javascript:`, `file:`, and
+	// cross-origin or userinfo-spoofed URLs are not sign-in pages for the
+	// console we contacted.
+	for _, badURI := range []string{
+		"javascript:alert(1)",
+		"https://phishing.evil.test/cli",
+		"http://evil.test@127.0.0.1/cli",
+	} {
+		t.Run(badURI, func(t *testing.T) {
+			console := newStubConsole(nil)
+			console.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/api/cli/device/code" {
+					writeJSON(w, 200, map[string]any{
+						"device_code": "oecd_dev", "user_code": "WXYZ-1234",
+						"verification_uri": badURI, "expires_in": 900, "interval": 1,
+					})
+					return
+				}
+				t.Errorf("polled for a token on a grant that should never have been shown: %s", r.URL.Path)
 			})
-			return
-		}
-		t.Errorf("polled for a token on a grant that should never have been shown: %s", r.URL.Path)
-	})
-	defer console.Close()
+			defer console.Close()
 
-	opened := ""
-	original := openBrowserFn
-	openBrowserFn = func(raw string) bool { opened = raw; return true }
-	t.Cleanup(func() { openBrowserFn = original })
+			opened := ""
+			original := openBrowserFn
+			openBrowserFn = func(raw string) bool { opened = raw; return true }
+			t.Cleanup(func() { openBrowserFn = original })
 
-	if _, err := deviceLogin(context.Background(), quietPrinter(), console.URL, "cli", true); err == nil {
-		t.Fatal("a non-http(s) verification address was accepted")
-	}
-	if opened != "" {
-		t.Fatalf("the URL opener was handed %q", opened)
+			if _, err := deviceLogin(context.Background(), quietPrinter(), console.URL, "cli", true); err == nil {
+				t.Fatalf("unusable verification address %q was accepted", badURI)
+			}
+			if opened != "" {
+				t.Fatalf("the URL opener was handed %q", opened)
+			}
+		})
 	}
 }
 

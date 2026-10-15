@@ -278,9 +278,12 @@ func (m *rootModel) titleBar() string {
 
 func (m *rootModel) statusBar() string {
 	var hints string
-	if m.focus == focusSidebar {
+	switch {
+	case m.focus == focusSidebar:
 		hints = "↑/↓ navigate · enter open · tab content · q quit"
-	} else {
+	case m.top().capturesInput():
+		hints = m.top().hints()
+	default:
 		hints = m.top().hints() + " · tab sidebar · q quit"
 	}
 	return stStatus.Render(truncate(" "+hints, m.w))

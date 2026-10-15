@@ -14,6 +14,7 @@ import (
 
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // pimFamily parameterizes one command tree over core's two PIM path families —
@@ -764,10 +765,14 @@ func writePimObjectJSON(a *app, obj *coreapi.PimObjectJSON, f pimFamily, outPath
 
 // isPimObjectEnvelope recognizes the `get --json` answer: the document under
 // .data beside the object's href and etag. No JSCalendar or JSContact object
-// has a top-level "data" object, and core would read the envelope as one
-// with none of its fields (a contact stored as a bare UID).
+// has a top-level "data" object (or null), and core would read the envelope as
+// one with none of its fields (a contact stored as a bare UID).
 func isPimObjectEnvelope(doc map[string]any) bool {
-	if _, ok := doc["data"].(map[string]any); !ok {
+	data, hasData := doc["data"]
+	if !hasData {
+		return false
+	}
+	if _, ok := data.(map[string]any); !ok && data != nil {
 		return false
 	}
 	_, hasHref := doc["href"]
@@ -792,6 +797,10 @@ func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			"On a calendar, an organizer's write fans out iTIP invitations to attendees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
 			body, err := readRawInput(file)
 			if err != nil {
 				return err
@@ -807,10 +816,6 @@ func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 						"this is the envelope `objects get --json` prints, not a %s document: pass its .data (jq .data), or fetch with `objects get --%s`",
 						f.jsonName, flagName))
 				}
-			}
-			client, err := a.authedClient()
-			if err != nil {
-				return err
 			}
 			s, err := scope(cmd, client)
 			if err != nil {
@@ -1231,11 +1236,18 @@ func pimHrefArg(args []string, uid string) (string, error) {
 	return "by-uid", nil
 }
 
+var stdinIsTerminal = func() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
 // readRawInput reads a small raw body wholesale from a file or stdin (PIM
 // objects are text; core caps single objects at 1 MiB and imports at 16 MiB).
 func readRawInput(path string) ([]byte, error) {
 	if path != "" && path != "-" {
 		return os.ReadFile(path)
+	}
+	if path == "" && stdinIsTerminal() {
+		return nil, usageError(errors.New("refusing to read from a terminal — pass --file <path> or pipe input on stdin (use --file - to read from the terminal)"))
 	}
 	return io.ReadAll(os.Stdin)
 }

@@ -349,24 +349,146 @@ func TestUploadBlobAndAppendWithoutDeliveryIDDoNotRetryOn503(t *testing.T) {
 }
 
 func TestIdempotentReadsAndUpsertsRetryOn503(t *testing.T) {
-	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if atomic.AddInt32(&calls, 1) == 1 {
-			w.WriteHeader(503)
-			w.Write([]byte(`{"error":"unavailable"}`))
-			return
-		}
-		w.WriteHeader(200)
-		w.Write([]byte(`{"domain":"example.com","canClaim":true,"hostnames":[]}`))
-	}))
-	defer srv.Close()
-
-	c := testClient(t, srv.URL)
-	if _, err := c.ListDomainHostnames(context.Background(), "example.com"); err != nil {
-		t.Fatalf("ListDomainHostnames should retry on 503: %v", err)
+	cases := []struct {
+		name string
+		resp string
+		call func(ctx context.Context, c *Client) error
+	}{
+		{
+			name: "ListDomainHostnames",
+			resp: `{"domain":"example.com","canClaim":true,"hostnames":[]}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.ListDomainHostnames(ctx, "example.com")
+				return err
+			},
+		},
+		{
+			name: "SetDomainHostname",
+			resp: `{"service":"jmap","hostname":"mail.example.com"}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.SetDomainHostname(ctx, "example.com", "jmap", "mail.example.com")
+				return err
+			},
+		},
+		{
+			name: "PutSieveScript",
+			resp: `{"script":"keep;","updatedAt":1}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.PutSieveScript(ctx, "mbx1", "keep;", "")
+				return err
+			},
+		},
+		{
+			name: "ActivateSieve",
+			resp: `{"active":true,"filterMode":"sieve"}`,
+			call: func(ctx context.Context, c *Client) error {
+				return c.ActivateSieve(ctx, "mbx1", "main")
+			},
+		},
+		{
+			name: "DeactivateSieve",
+			resp: `{"active":false,"filterMode":"none"}`,
+			call: func(ctx context.Context, c *Client) error {
+				return c.DeactivateSieve(ctx, "mbx1")
+			},
+		},
+		{
+			name: "CheckSieve",
+			resp: `{"valid":true}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.CheckSieve(ctx, "mbx1", "keep;")
+				return err
+			},
+		},
+		{
+			name: "AddAddressListEntry",
+			resp: `{"pattern":"a@example.com","createdAt":1}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.AddAddressListEntry(ctx, AccountLists("acc1"), "lst1", AddressListEntryInput{Pattern: "a@example.com"})
+				return err
+			},
+		},
+		{
+			name: "EvaluateAddressLists",
+			resp: `{"matched":false}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.EvaluateAddressLists(ctx, AccountLists("acc1"), AddressListEvaluateInput{Direction: "inbound", Address: "a@example.com"})
+				return err
+			},
+		},
+		{
+			name: "AddSuppression",
+			resp: `{"address":"a@example.com","reason":"manual"}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.AddSuppression(ctx, SuppressionCreate{Address: "a@example.com"})
+				return err
+			},
+		},
+		{
+			name: "PutMailboxEventWebhook",
+			resp: `{"url":"https://example.com/hook","enabled":true}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.PutMailboxEventWebhook(ctx, "mbx1", EventWebhookInput{URL: "https://example.com/hook"})
+				return err
+			},
+		},
+		{
+			name: "SetForwardAll",
+			resp: `{"destinationId":"dst1","paused":false}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.SetForwardAll(ctx, "mbx1", "dst1")
+				return err
+			},
+		},
+		{
+			name: "PauseForwardAll",
+			resp: `{"destinationId":"dst1","paused":true}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.PauseForwardAll(ctx, "mbx1", true)
+				return err
+			},
+		},
+		{
+			name: "ReplaceMembers",
+			resp: `{"address":"team@example.com","members":[]}`,
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.ReplaceMembers(ctx, "team@example.com", []string{"a@example.com"})
+				return err
+			},
+		},
+		{
+			name: "PutVacationUnguarded",
+			resp: `{"isEnabled":true,"textBody":"away","state":"s1"}`,
+			call: func(ctx context.Context, c *Client) error {
+				body := "away"
+				_, err := c.PutVacation(ctx, "mbx1", VacationInput{IsEnabled: true, TextBody: &body}, "")
+				return err
+			},
+		},
 	}
-	if got := atomic.LoadInt32(&calls); got != 2 {
-		t.Fatalf("ListDomainHostnames calls = %d, want 2", got)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if atomic.AddInt32(&calls, 1) == 1 {
+					w.WriteHeader(503)
+					w.Write([]byte(`{"error":"unavailable"}`))
+					return
+				}
+				w.WriteHeader(200)
+				w.Write([]byte(tc.resp))
+			}))
+			defer srv.Close()
+
+			c := testClient(t, srv.URL)
+			if err := tc.call(context.Background(), c); err != nil {
+				t.Fatalf("%s should retry on 503: %v", tc.name, err)
+			}
+			if got := atomic.LoadInt32(&calls); got != 2 {
+				t.Fatalf("%s calls = %d, want 2", tc.name, got)
+			}
+		})
 	}
 }
 

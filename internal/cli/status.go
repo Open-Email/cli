@@ -29,12 +29,13 @@ func newStatusCmd(a *app) *cobra.Command {
 			principal := ""
 			authenticated := a.token != ""
 			var resolveErr error
+			var skipAuthErr error
 			if authenticated {
 				authed, aerr := a.authedClient()
 				if aerr != nil {
-					return aerr
-				}
-				if id, rerr := authed.Resolve(ctx); rerr == nil {
+					skipAuthErr = aerr
+					authenticated = false
+				} else if id, rerr := authed.Resolve(ctx); rerr == nil {
 					principal = id.Type
 				} else {
 					resolveErr = rerr
@@ -56,6 +57,8 @@ func newStatusCmd(a *app) *cobra.Command {
 				switch {
 				case principal != "":
 					a.out.Msgf("authenticated as %s (profile %q)", principal, a.profileName)
+				case skipAuthErr != nil:
+					a.out.Warnf("%v", skipAuthErr)
 				case resolveErr != nil:
 					a.out.Warnf("stored key rejected: %v", resolveErr)
 				default:
