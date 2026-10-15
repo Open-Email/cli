@@ -639,16 +639,21 @@ clears it.
 ## Edit calendar and contact objects as JSON
 
 ```sh
-openemail calendars objects get work standup.ics --json > event.json
+openemail calendars objects get work standup.ics --jscalendar -o event.json
 # edit event.json …
-openemail calendars objects put work standup.ics --json --file event.json
+openemail calendars objects put work standup.ics --jscalendar --file event.json
 ```
 
-`--json` reads and writes JSCalendar (RFC 8984) / JSContact (RFC 9553) instead of
-raw iCalendar/vCard, so a program never has to parse wire text. Core converts on the
-way in, which means ETags, `--if-match`, and invitation fan-out behave identically.
-A read reports `writable:false` when an object converts to JSON but could never be
-converted back — the CLI warns rather than letting you edit something unsavable.
+`--jscalendar` (calendars) and `--jscontact` (address books) read and write
+JSCalendar (RFC 8984) / JSContact (RFC 9553) instead of raw iCalendar/vCard, so a
+program never has to parse wire text. Core converts on the way in, which means
+ETags, `--if-match`, and invitation fan-out behave identically. The CLI warns when
+an object converts to JSON but could never be converted back, rather than letting
+you edit something unsavable.
+
+The global `--json` on `get` answers the whole envelope (`href`, `etag`,
+`writable`, `data`); the document is its `.data`. `put` refuses the envelope
+itself: core would read it as an object with none of its fields.
 
 ## Store client preferences
 
@@ -777,11 +782,13 @@ right after it returns, and reconcile from that state whenever a batch's
 
 ```sh
 openemail domains webhook set acme.example --url https://…
+# The changes feed is REST (`GET /mailboxes/:id/messages/changes`) with no
+# dedicated command yet; `openemail api` calls it with your profile's key.
 # Record a baseline state token for each mailbox:
 for id in $(openemail mailboxes list --json | jq -r '.mailboxes[].id'); do
-  openemail messages changes -m "$id" --json | jq -r '.state'   # keep per mailbox
+  openemail api GET "/mailboxes/$id/messages/changes" | jq -r '.state'   # keep per mailbox
 done
-# later, on a gap: openemail messages changes -m "$id" --since "$saved_state" --all
+# later, on a gap: openemail api GET "/mailboxes/$id/messages/changes" --query since="$saved_state"
 ```
 
 ## Scripting with a system key (operator)
@@ -833,7 +840,7 @@ openemail accounts traffic 01JARQ00000000000000000001                    # is th
 openemail domains events example.com --outcome relayed                   # which mailbox is sending it
 openemail admin hold account 01JARQ00000000000000000001 --pause          # hold everything while you look
 openemail admin hold account 01JARQ00000000000000000001 --stop           # or stop it outright
-openemail admin release account 01JARQ000000000000000001                 # once it is sorted out
+openemail admin release account 01JARQ00000000000000000001               # once it is sorted out
 ```
 
 **Reach for `--pause` first.** It refuses submissions temporarily (429 → a 451

@@ -198,9 +198,24 @@ func session(ctx context.Context, token string, kind Kind, address string, updat
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 		return &Failure{Kind: kind, Message: ctx.Err().Error()}
 	}
-	readCtx, stop := context.WithCancel(ctx)
+	// Derive readCtx from Background rather than ctx: coder/websocket's Read
+	// immediately tears down the TCP socket when its context is canceled, before
+	// any close frame can be sent. Instead, an AfterFunc on ctx initiates a
+	// clean 1000 close handshake and cancels readCtx only after the handshake
+	// completes (or after a short fallback timeout if the peer does not echo).
+	readCtx, stop := context.WithCancel(context.Background())
+	stopClose := context.AfterFunc(ctx, func() {
+		fallback := time.AfterFunc(250*time.Millisecond, stop)
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+		fallback.Stop()
+		stop()
+	})
 	pingDone := make(chan struct{})
-	defer func() { stop(); <-pingDone }()
+	defer func() {
+		stopClose()
+		stop()
+		<-pingDone
+	}()
 	go func() {
 		defer close(pingDone)
 		ticker := time.NewTicker(30 * time.Second)
@@ -220,6 +235,9 @@ func session(ctx context.Context, token string, kind Kind, address string, updat
 	for {
 		typ, data, err := conn.Read(readCtx)
 		if err != nil {
+			if ctx.Err() != nil {
+				return &Failure{Kind: kind, Message: ctx.Err().Error()}
+			}
 			code := websocket.CloseStatus(err)
 			failure := &Failure{Kind: kind, CloseCode: code, Retryable: true, Message: err.Error()}
 			switch code {

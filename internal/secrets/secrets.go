@@ -8,8 +8,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
+	"time"
 
 	"github.com/zalando/go-keyring"
+)
+
+var (
+	renameFile = os.Rename
+	isWindows  = runtime.GOOS == "windows"
 )
 
 // Backends.
@@ -91,11 +99,32 @@ func writeFileSecure(path string, data []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := replaceCredentialFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	return nil
+}
+
+// Windows scanners and readers can temporarily prevent replacement by holding
+// the destination without FILE_SHARE_DELETE. Retry the completed temp file;
+// never truncate the live credential, even if the lock does not clear.
+func replaceCredentialFile(tmp, path string) error {
+	// ERROR_SHARING_VIOLATION is 32 on Windows. The numeric value keeps the
+	// retry path testable on other platforms; it is only interpreted on Windows.
+	const sharingViolation = syscall.Errno(32)
+	for attempt := 0; ; attempt++ {
+		err := renameFile(tmp, path)
+		if err == nil {
+			return nil
+		}
+		if !isWindows || attempt == 4 ||
+			(!errors.Is(err, os.ErrPermission) && !errors.Is(err, sharingViolation)) {
+			return err
+		}
+		// Five total attempts, with at most 375 ms of backoff.
+		time.Sleep((25 * time.Millisecond) << attempt)
+	}
 }
 
 // Load reads the secret for profile from the named backend.

@@ -27,6 +27,7 @@ func (m msgsPageMsg) targetPaneID() int64 { return m.paneID }
 // mbxStatsMsg is the GetMailbox enrichment for the header line (best-effort).
 type mbxStatsMsg struct {
 	paneID int64
+	seq    int // statsSeq at request time; every live event asks again
 	mbx    *coreapi.Mailbox
 }
 
@@ -70,6 +71,9 @@ type messagesPane struct {
 	labels []coreapi.LabelInfo // for the label editor; fetched once at init
 	id     int64
 	seq    int
+
+	// statsSeq numbers stats requests; statsSeqSeen is the newest applied.
+	statsSeq, statsSeqSeen int
 
 	tbl     table.Model
 	spin    spinner.Model
@@ -138,14 +142,16 @@ func (p *messagesPane) fetchCmd(cursor string, replace bool) tea.Cmd {
 
 func (p *messagesPane) statsCmd() tea.Cmd {
 	id := p.id
+	p.statsSeq++
+	seq := p.statsSeq
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(p.ctx, 15*time.Second)
 		defer cancel()
 		mbx, err := p.ui.Client.GetMailbox(ctx, p.mbx.ID)
 		if err != nil {
-			return mbxStatsMsg{paneID: id} // best-effort; header just omits stats
+			return mbxStatsMsg{paneID: id, seq: seq} // best-effort; header just omits stats
 		}
-		return mbxStatsMsg{paneID: id, mbx: mbx}
+		return mbxStatsMsg{paneID: id, seq: seq, mbx: mbx}
 	}
 }
 
@@ -160,8 +166,11 @@ func (p *messagesPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		return p, cmd
 
 	case mbxStatsMsg:
-		if msg.paneID == p.id && msg.mbx != nil {
-			p.stats = msg.mbx
+		if msg.paneID == p.id && msg.seq >= p.statsSeqSeen {
+			p.statsSeqSeen = msg.seq
+			if msg.mbx != nil {
+				p.stats = msg.mbx
+			}
 		}
 		return p, nil
 
@@ -439,10 +448,17 @@ func (p *messagesPane) restoreCursor(id string, prevCursor int) {
 			return
 		}
 	}
-	if len(p.all) == 0 {
+	// Not in the fresh first page. A cursor still inside it (or just past
+	// its end, when that page is the whole list) means the row was removed:
+	// keep the position so the next message slides under it. Anything deeper
+	// was a load-more'd page, which the refresh resets: back to the top.
+	switch {
+	case prevCursor >= 0 && prevCursor < len(p.all):
+		p.tbl.SetCursor(prevCursor)
+	case p.next == "" && len(p.all) > 0 && prevCursor == len(p.all):
+		p.tbl.SetCursor(len(p.all) - 1)
+	default:
 		p.tbl.SetCursor(0)
-	} else {
-		p.tbl.SetCursor(max(0, min(prevCursor, len(p.all)-1)))
 	}
 }
 
@@ -452,17 +468,13 @@ func (p *messagesPane) setRows() {
 		rows[i] = table.Row{
 			fmtEpoch(m.ReceivedAt),
 			fmtMsgFlags(m.Flags),
-			m.EnvelopeFrom,
-			strOr(m.Subject, "(no subject)"),
+			sanitizePlain(m.EnvelopeFrom),
+			sanitizePlain(strOr(m.Subject, "(no subject)")),
 			fmtBytes(m.Size),
 		}
 	}
 	p.tbl.SetRows(rows)
-	if len(rows) == 0 {
-		p.tbl.SetCursor(0)
-	} else if p.tbl.Cursor() >= len(rows) {
-		p.tbl.SetCursor(len(rows) - 1)
-	}
+	selectFirstRowIfNone(&p.tbl)
 }
 
 func (p *messagesPane) setSize(w, h int) {

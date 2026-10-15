@@ -227,3 +227,55 @@ func TestURLEscapesIdentityID(t *testing.T) {
 		t.Fatalf("URL = %q, want %q", got, want)
 	}
 }
+
+func TestCleanStopSendsNormalClosureFrame(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	pimReady := make(chan struct{})
+	mailCode := make(chan websocket.StatusCode, 1)
+	pimCode := make(chan websocket.StatusCode, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		isPIM := strings.HasSuffix(r.URL.Path, "/pim/events")
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+
+		if isPIM {
+			close(pimReady)
+			_, _, rerr := conn.Read(ctx)
+			pimCode <- websocket.CloseStatus(rerr)
+			return
+		}
+		select {
+		case <-pimReady:
+		case <-ctx.Done():
+			return
+		}
+		_ = conn.Write(ctx, websocket.MessageText, []byte(`{"type":"message.new"}`))
+		_, _, rerr := conn.Read(ctx)
+		mailCode <- websocket.CloseStatus(rerr)
+	}))
+	defer srv.Close()
+
+	err := Run(ctx, Config{APIURL: srv.URL, Token: "test", IdentityID: "MBX", Reconnect: true}, func(u Update) bool {
+		return strings.Contains(string(u.Frame), "message.new")
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	for name, ch := range map[string]<-chan websocket.StatusCode{"mail": mailCode, "pim": pimCode} {
+		select {
+		case got := <-ch:
+			if got != websocket.StatusNormalClosure {
+				t.Fatalf("%s socket close status = %v, want %v (StatusNormalClosure)", name, got, websocket.StatusNormalClosure)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for %s socket close", name)
+		}
+	}
+}

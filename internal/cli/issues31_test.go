@@ -235,7 +235,7 @@ func TestPreFlightValidationBeforeAuth(t *testing.T) {
 		{"admin", "release", "account", "not-a-ulid"},
 		{"calendars", "create", "work", "--visibility", "bogus"},
 		{"calendars", "update", "work", "--visibility", "bogus"},
-		{"mailboxes", "shares", "set", "alice@example.com", "--rights", "bogus"},
+		{"mailboxes", "shares", "set", "alice@example.com", "--rights", " "},
 		{"templates", "variants", "put", "order-shipped", "en", "--subject", "Hi", "--text-file", "-", "--html-file", "-"},
 		{"compose", "--from", "a@example.com", "--to", "b@example.com", "--subject", "Hi", "--text", "Yo", "--save", "--no-save"},
 	}

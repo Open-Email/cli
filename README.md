@@ -202,8 +202,8 @@ openemail vacation set --text "Back on the 20th, not the 15th."
 openemail vacation off
 
 # Read or edit an event as JSCalendar instead of raw .ics.
-openemail calendars objects get work standup.ics --json
-openemail calendars objects put work standup.ics --json --file event.json
+openemail calendars objects get work standup.ics --jscalendar -o event.json
+openemail calendars objects put work standup.ics --jscalendar --file event.json
 
 # Share a calendar with a teammate, or publish a read-only feed URL.
 openemail calendars update work --visibility shared

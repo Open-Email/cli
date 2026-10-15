@@ -389,9 +389,8 @@ func newMessageComposeCmd(a *app) *cobra.Command {
 		filter, draft        bool
 	)
 	cmd := &cobra.Command{
-		Use:     "compose",
-		Aliases: []string{"draft"},
-		Short:   "File a message into this mailbox from fields, without sending it",
+		Use:   "compose",
+		Short: "File a message into this mailbox from fields, without sending it",
 		Long: "Build a message from fields and store it — drafts, imports, seeded threads.\n" +
 			"Nothing leaves the platform: routing, relay and the Sent copy are all bypassed.\n\n" +
 			"  openemail messages compose --from me@x --to you@y --subject Hi --text '…' --draft\n" +

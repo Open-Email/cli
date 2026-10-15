@@ -37,9 +37,12 @@ func newDomainsCmd(a *app) *cobra.Command {
 
 func newDomainListCmd(a *app) *cobra.Command {
 	var (
-		all    bool
-		limit  int
-		cursor string
+		all     bool
+		counts  bool
+		usage   bool
+		account string
+		limit   int
+		cursor  string
 	)
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -47,40 +50,80 @@ func newDomainListCmd(a *app) *cobra.Command {
 		Short:   "List domains",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.Flags().Changed("account") && account == "" {
+				return usageError(errors.New("--account must not be empty"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
 			ctx := cmd.Context()
+			opts := coreapi.ListDomainsOptions{
+				AccountID:     account,
+				MailboxCounts: counts,
+				Usage:         usage,
+				Limit:         limit,
+				Cursor:        cursor,
+			}
 			var items []coreapi.Domain
 			next := ""
 			if all {
 				items, err = coreapi.Depaginate(ctx, func(ctx context.Context, cur string) (coreapi.Page[coreapi.Domain], error) {
-					return client.ListDomains(ctx, limit, cur)
+					pageOpts := opts
+					pageOpts.Cursor = cur
+					return client.ListDomainsWithOptions(ctx, pageOpts)
 				})
 			} else {
 				var page coreapi.Page[coreapi.Domain]
-				page, err = client.ListDomains(ctx, limit, cursor)
+				page, err = client.ListDomainsWithOptions(ctx, opts)
 				items, next = page.Items, page.NextCursor
 			}
 			if err != nil {
 				return err
 			}
 			a.out.Emit(map[string]any{"domains": items, "nextCursor": next}, func(w io.Writer) {
+				headers := []string{"DOMAIN", "ENABLED", "RECEIVING", "SENDING", "FBL", "DMARC RUA", "ALIAS OF"}
+				if counts {
+					headers = append(headers, "MAILBOXES")
+				}
+				if usage {
+					headers = append(headers, "MAIL BYTES", "PIM BYTES")
+				}
 				rows := make([][]string, 0, len(items))
 				for _, d := range items {
-					rows = append(rows, []string{
+					row := []string{
 						d.Domain, boolYN(d.Enabled), boolYN(d.Receiving), boolYN(d.Sending),
 						boolYN(d.FBL), boolYN(d.DMARC), strOr(d.AliasOf, "—"),
-					})
+					}
+					if counts {
+						mc := "—"
+						if d.MailboxCount != nil {
+							mc = fmt.Sprintf("%d", *d.MailboxCount)
+						}
+						row = append(row, mc)
+					}
+					if usage {
+						ub, pb := "—", "—"
+						if d.UsedBytes != nil {
+							ub = fmtBytes(*d.UsedBytes)
+						}
+						if d.PimBytes != nil {
+							pb = fmtBytes(*d.PimBytes)
+						}
+						row = append(row, ub, pb)
+					}
+					rows = append(rows, row)
 				}
-				printTable(w, a.out, []string{"DOMAIN", "ENABLED", "RECEIVING", "SENDING", "FBL", "DMARC RUA", "ALIAS OF"}, rows)
+				printTable(w, a.out, headers, rows)
 				a.moreHint(next)
 			})
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
+	cmd.Flags().BoolVar(&counts, "counts", false, "include mailbox count per domain")
+	cmd.Flags().BoolVar(&usage, "usage", false, "include sampled mail and PIM storage usage per domain")
+	cmd.Flags().StringVar(&account, "account", "", "filter by account ID (system keys only)")
 	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–200)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor")
 	return cmd

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -161,7 +162,16 @@ func versionNewer(latest, current string) bool {
 			return lv[i] > cv[i]
 		}
 	}
-	return lv != [3]int{} && hasPreRelease(current)
+	return lv != [3]int{} && hasPreRelease(trimGitDescribe(current))
+}
+
+// gitDescribeSuffix is what `git describe --tags --always --dirty` (the
+// Makefile's version stamp) appends to a tag: commits since it, and a dirty
+// tree. Either marks a build at or after the tag, never a pre-release of it.
+var gitDescribeSuffix = regexp.MustCompile(`(-[0-9]+-g[0-9a-f]+)?(-dirty)?$`)
+
+func trimGitDescribe(v string) string {
+	return gitDescribeSuffix.ReplaceAllString(strings.TrimSpace(v), "")
 }
 
 func hasPreRelease(s string) bool {

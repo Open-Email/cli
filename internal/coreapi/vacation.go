@@ -72,7 +72,11 @@ func (c *Client) PutVacation(ctx context.Context, mailboxID string, in VacationI
 	var out Vacation
 	err := c.doJSON(ctx, request{
 		method: http.MethodPut, path: vacationPath(mailboxID),
-		body: mustJSON(in), contentType: "application/json", headers: headers, idempotent: true,
+		body: mustJSON(in), contentType: "application/json", headers: headers,
+		// Unguarded, a replay lands on core's same-document no-op. Guarded, core
+		// checks If-Match first, so replaying a write that committed answers 412
+		// and reports the caller's own change as someone else's.
+		idempotent: ifMatch == "",
 	}, &out)
 	if err != nil {
 		return nil, err

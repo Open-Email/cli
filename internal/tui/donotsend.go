@@ -62,7 +62,8 @@ func doNotSendDesc(accountID string) resourceDesc {
 		},
 		fetch: func(ctx context.Context, c *coreapi.Client, cursor string) ([]rowData, string, error) {
 			listID := st.get()
-			if listID == "" {
+			hadCached := listID != ""
+			if !hadCached {
 				list, err := findDoNotSendList(ctx, c, accountID)
 				if err != nil {
 					return nil, "", err
@@ -76,9 +77,30 @@ func doNotSendDesc(accountID string) resourceDesc {
 				st.set(listID)
 			}
 			pg, err := c.ListAddressListEntries(ctx, fam, listID, pageLimit, cursor)
+			if err != nil && coreapi.IsNotFound(err) {
+				st.set("")
+				if !hadCached {
+					return nil, "", nil
+				}
+				// A load-more page appends to the old list's rows with the old
+				// list's cursor; the new list's first page would mix with them
+				// and can repeat rows already shown. A reload resolves it afresh.
+				if cursor != "" {
+					return nil, "", fmt.Errorf("the Do-Not-Send list changed while this screen was open: %w", errReloadRequired)
+				}
+				list, rerr := findDoNotSendList(ctx, c, accountID)
+				if rerr != nil {
+					return nil, "", rerr
+				}
+				if list == nil || list.ID == listID {
+					return nil, "", nil
+				}
+				listID = list.ID
+				st.set(listID)
+				pg, err = c.ListAddressListEntries(ctx, fam, listID, pageLimit, "")
+			}
 			if err != nil {
 				if coreapi.IsNotFound(err) {
-					st.set("")
 					return nil, "", nil
 				}
 				return nil, "", err
@@ -268,7 +290,8 @@ func doNotSendRemoveConfirm(ctx context.Context, ui *Options, accountID string, 
 			if st != nil {
 				listID = st.get()
 			}
-			if listID == "" {
+			hadCached := listID != ""
+			if !hadCached {
 				list, err := findDoNotSendList(sctx, c, accountID)
 				if err != nil {
 					return "", err
@@ -281,7 +304,23 @@ func doNotSendRemoveConfirm(ctx context.Context, ui *Options, accountID string, 
 				}
 			}
 			if listID != "" {
-				if _, err := c.RemoveAddressListEntry(sctx, coreapi.AccountLists(accountID), listID, e.Pattern); err != nil && !coreapi.IsNotFound(err) {
+				_, err := c.RemoveAddressListEntry(sctx, coreapi.AccountLists(accountID), listID, e.Pattern)
+				if err != nil && coreapi.IsNotFound(err) && hadCached {
+					if st != nil {
+						st.set("")
+					}
+					list, rerr := findDoNotSendList(sctx, c, accountID)
+					if rerr != nil {
+						return "", rerr
+					}
+					if list != nil && list.ID != listID {
+						if st != nil {
+							st.set(list.ID)
+						}
+						_, err = c.RemoveAddressListEntry(sctx, coreapi.AccountLists(accountID), list.ID, e.Pattern)
+					}
+				}
+				if err != nil && !coreapi.IsNotFound(err) {
 					return "", err
 				}
 			}

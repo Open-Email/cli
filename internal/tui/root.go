@@ -15,7 +15,8 @@ const (
 )
 
 // rootModel owns the frame: title bar, sidebar, the content pane stack, and
-// the status bar. All async messages are routed to the top pane only.
+// the status bar. Async results that carry a pane id (paneScopedMsg) reach
+// that pane wherever it sits in the stack; everything else goes to the top.
 type rootModel struct {
 	ctx   context.Context
 	ui    Options
@@ -145,7 +146,14 @@ func (m *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, cmd
 		}
-		return m.forwardTop(refreshMsg{flash: msg.flash})
+		model, cmd := m.forwardTop(refreshMsg{flash: msg.flash})
+		// The modal on top swallowed the revealed pane's spinner ticks; a pane
+		// that was already loading (messages queues the refresh) needs a new
+		// one. bubbles drops duplicate ticks, so a fresh loop cannot double.
+		if sp, ok := m.top().(spinningPane); ok {
+			return model, tea.Batch(cmd, sp.spinCmd())
+		}
+		return model, cmd
 
 	case tea.KeyMsg:
 		return m.updateKey(msg)
@@ -250,7 +258,8 @@ func (m *rootModel) titleBar() string {
 	for _, p := range m.stack {
 		crumbs = append(crumbs, p.title())
 	}
-	crumbText := strings.Join(crumbs, " › ")
+	// Titles carry server and user data (rule names, addresses).
+	crumbText := sanitizePlain(strings.Join(crumbs, " › "))
 	prefix := " " + stAppName.Render("OpenEmail") + "  "
 	left := prefix + stCrumb.Render(crumbText)
 	role := m.ui.Role
@@ -269,9 +278,12 @@ func (m *rootModel) titleBar() string {
 
 func (m *rootModel) statusBar() string {
 	var hints string
-	if m.focus == focusSidebar {
+	switch {
+	case m.focus == focusSidebar:
 		hints = "↑/↓ navigate · enter open · tab content · q quit"
-	} else {
+	case m.top().capturesInput():
+		hints = m.top().hints()
+	default:
 		hints = m.top().hints() + " · tab sidebar · q quit"
 	}
 	return stStatus.Render(truncate(" "+hints, m.w))

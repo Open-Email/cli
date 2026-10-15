@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // windowRecorder collects the ?range each stubbed request carried. The screen
@@ -244,5 +246,36 @@ func TestScreenSummaryBlockRendersAndReservesHeight(t *testing.T) {
 	}
 	if strings.Contains(plain.view(), "verdict") {
 		t.Error("a summary-less screen must render no summary block")
+	}
+}
+
+// On an 80-column terminal the summary gets 62 columns. The verdict line ran
+// about 70 wide, so the fallback truncate() stripped its colour, which is the
+// state the comment on dmarcSummaryLines says it avoids. It now drops the
+// aligned segment instead and keeps the styling.
+func TestDmarcSummaryVerdictKeepsColourWhenNarrow(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	cur, rec, rate := "quarantine", "reject", 0.993
+	d := &coreapi.DomainDmarc{
+		Domain: "example.test", WindowDays: 30,
+		Totals: coreapi.DmarcTotals{Messages: 1000, Reports: 12, Sources: 4},
+		Readiness: coreapi.DmarcReadiness{
+			Verdict: "ready_for_reject", CurrentPolicy: &cur, RecommendedPolicy: &rec,
+			AlignedRate: &rate, Reporters: 3, ObservedDays: 30, WindowDays: 30,
+		},
+	}
+	const w = 62
+	first := dmarcSummaryLines(d, w)[0]
+	if width(first) > w {
+		t.Fatalf("verdict line is %d wide, want <= %d: %q", width(first), w, first)
+	}
+	if !strings.Contains(first, "\x1b[") {
+		t.Fatalf("verdict line lost its colour at width %d: %q", w, first)
+	}
+	if wide := dmarcSummaryLines(d, 120)[0]; !strings.Contains(wide, "aligned") {
+		t.Fatalf("a wide summary should keep the aligned rate: %q", wide)
 	}
 }

@@ -187,9 +187,10 @@ func contractPairings() []pairing {
 		{val: DkimKey{}, comp: "DkimKey"},
 		{val: DkimCname{}, comp: "DkimCname"},
 		{val: DkimRotated{}, comp: "DkimRotated"},
-		// Structured search. EmailSearchFilter and EmailSearchComparator are
-		// free-form objects (`additionalProperties: {}`) on the wire in the
-		// OpenAPI snapshot (validated by core); EmailSearchRequest is NOT, and
+		// Structured search. EmailSearchComparator is a free-form object
+		// (`additionalProperties: {}`) and EmailSearchFilter an anyOf of an
+		// operator and an open-ended condition, both validated by core, so the
+		// client keeps them as maps; EmailSearchRequest is NOT free-form, and
 		// the comment that used to lump them together is what kept `fields` — the
 		// ids-only answer mode — out of this client after core added it.
 		{val: EmailSearchRequest{}, comp: "EmailSearchRequest"},

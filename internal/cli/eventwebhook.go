@@ -83,9 +83,14 @@ func (s eventWebhookScope) test(ctx context.Context, c *coreapi.Client, id strin
 
 // newEventWebhookCmd is the `webhook` group for one scope.
 func newEventWebhookCmd(a *app, scope eventWebhookScope) *cobra.Command {
+	aliases := []string{"event-webhook"}
+	// `domains events` is the domain's traffic log, which would shadow the alias.
+	if scope != eventWebhookDomain {
+		aliases = append(aliases, "events")
+	}
 	cmd := &cobra.Command{
 		Use:     "webhook",
-		Aliases: []string{"event-webhook", "events"},
+		Aliases: aliases,
 		Short:   "The event webhook: signed, fact-only event batches POSTed to your endpoint",
 		Long: "One URL per " + string(scope) + " receiving every event as ordered, signed, fact-only\n" +
 			"batches — ids, states, an actor and a sequence, never content; your receiver\n" +

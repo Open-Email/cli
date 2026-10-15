@@ -51,7 +51,10 @@ func (c *Client) PutPrefs(ctx context.Context, id string, prefs map[string]any, 
 	err := c.doJSON(ctx, request{
 		method: http.MethodPut, path: prefsPath(id),
 		body:        mustJSON(map[string]any{"prefs": prefs}),
-		contentType: "application/json", headers: headers, idempotent: true,
+		contentType: "application/json", headers: headers,
+		// Only the unconditional upsert replays safely; a version guard would
+		// meet the version its own committed write bumped and answer 412.
+		idempotent: ifMatch == "" || ifMatch == "*",
 	}, &out)
 	if err != nil {
 		return nil, err

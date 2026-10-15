@@ -545,7 +545,7 @@ func newDeviceFlowConsole(keyID string) *deviceFlowConsole {
 			dc.grants.Add(1)
 			writeJSON(w, 200, map[string]any{
 				"device_code": "oecd_dev", "user_code": "WXYZ-1234",
-				"verification_uri": "https://console.test/cli",
+				"verification_uri": dc.URL + "/cli",
 				// A second, so the poll loop is not a stopwatch.
 				"expires_in": 900, "interval": 1,
 			})
@@ -566,15 +566,14 @@ func newDeviceFlowConsole(keyID string) *deviceFlowConsole {
 // full five-minute deadline for a redirect from a browser on another machine.
 func TestDeviceFlagsBeatAnAvailableBrowser(t *testing.T) {
 	cases := []struct {
-		name string
-		opts loginOpts
-		// The URL the flow may hand to a browser; "" when it must open none.
-		wantOpened string
+		name        string
+		opts        loginOpts
+		wantBrowser bool
 	}{
 		// The device flow still offers to open the verification page — a
 		// convenience, since the code the human carries is what authorizes.
-		{"--device", loginOpts{device: true}, "https://console.test/cli"},
-		{"--no-browser", loginOpts{noBrowser: true}, ""},
+		{"--device", loginOpts{device: true}, true},
+		{"--no-browser", loginOpts{noBrowser: true}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -612,8 +611,12 @@ func TestDeviceFlagsBeatAnAvailableBrowser(t *testing.T) {
 			if console.grants.Load() != 1 {
 				t.Fatalf("the console was asked for %d device grants, want exactly one", console.grants.Load())
 			}
-			if opened != tc.wantOpened {
-				t.Fatalf("opened %q, want %q", opened, tc.wantOpened)
+			wantOpened := ""
+			if tc.wantBrowser {
+				wantOpened = console.URL + "/cli"
+			}
+			if opened != wantOpened {
+				t.Fatalf("opened %q, want %q", opened, wantOpened)
 			}
 			stored, _ := a.cfg.Profile("default")
 			if stored.KeyID != "key_from_device" {
@@ -761,5 +764,37 @@ func TestLoginPasteReadsFromPipedStdin(t *testing.T) {
 	}
 	if secret != "oek_piped_via_stdin" {
 		t.Fatalf("stored %q, want oek_piped_via_stdin", secret)
+	}
+}
+
+// Re-login is how a user recovers from a key that was revoked or idle-lapsed,
+// and the replaced key is revoked with its own secret: core answers that
+// bearer 401. The key is already dead, so there is nothing to warn about.
+func TestReLoginOverADeadKeyDoesNotWarn(t *testing.T) {
+	oldCore := newFakeCore()
+	defer oldCore.Close()
+	oldCore.failRevocations(http.StatusUnauthorized)
+	newCore := newFakeCore()
+	defer newCore.Close()
+
+	a := loginFixture(t, oldCore.URL, config.Profile{
+		APIURL: oldCore.URL, AccountID: "acc_old", Role: "account",
+		KeyStorage: secrets.File, KeyID: "key_old",
+	})
+	if _, _, err := secrets.Save(a.cfg.ConfigDir(), "default", "oek_old_secret", true); err != nil {
+		t.Fatal(err)
+	}
+	var warnings *bytes.Buffer
+	a.out, warnings = capturingPrinter()
+	a.apiURL = newCore.URL
+	a.flagAPIKey = "oek_new_unmanaged"
+	if err := runLoginWith(t, a, loginOpts{noMint: true}); err != nil {
+		t.Fatalf("runLogin: %v", err)
+	}
+	if got := oldCore.revokedKeys(); len(got) != 1 || got[0] != "key_old" {
+		t.Fatalf("oldCore saw revocations %v, want [key_old]", got)
+	}
+	if strings.Contains(warnings.String(), "could not revoke") {
+		t.Fatalf("a dead key drew a revocation warning: %q", warnings.String())
 	}
 }

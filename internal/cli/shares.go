@@ -114,10 +114,10 @@ func newMailShareSetCmd(a *app) *cobra.Command {
 		Long: "Give another identity in your account access to this mailbox.\n\n" +
 			"Sending a grant REPLACES any previous grant for that identity, so this is how " +
 			"access is widened or narrowed as well as how it is created.\n\n" +
-			"--rights takes a preset (read_only = lrs, read_write = lrswit, full = lrswitea) " +
-			"or a literal letter set. Pass --folder to confine the grant to named folders; " +
+			"--rights takes a preset (read_only = lrs, read_write = lrswit, full = lrswikte) " +
+			"or a literal letter set from lrswikte. Pass --folder to confine the grant to named folders; " +
 			"repeat it for several. A folder-scoped grant may go up to read_write (lrswit); " +
-			"core refuses `e` (permanent delete) and `a` (folder management) on one, so " +
+			"core refuses `k` (create/rename folders) and `e` (expunge) on one, so " +
 			"full is not available with --folder. It follows a folder through a RENAME, " +
 			"because the names are resolved to ids at the time of the grant.\n\n" +
 			"With neither --folder nor --keep-folders the grant covers the WHOLE mailbox, " +
@@ -199,7 +199,7 @@ func newMailShareSetCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&rights, "rights", "read_only",
-		"read_only (lrs) | read_write (lrswit) | full (lrswitea), or a literal letter set")
+		"read_only (lrs) | read_write (lrswit) | full (lrswikte), or a literal letter set")
 	cmd.Flags().StringArrayVar(&folders, "folder", nil,
 		"confine the grant to this folder (repeatable); a folder share allows at most read_write")
 	cmd.Flags().BoolVar(&keepFolders, "keep-folders", false,
@@ -210,18 +210,13 @@ func newMailShareSetCmd(a *app) *cobra.Command {
 	return cmd
 }
 
+// validateShareRights refuses only the empty value. Core is the sole
+// validator of everything else (presets in several spellings, case-folded;
+// letters from lrswikte) and names the letters it refuses, so a local copy of
+// its grammar could only drift into refusing what core accepts.
 func validateShareRights(r string) error {
-	r = strings.TrimSpace(r)
-	switch r {
-	case "read_only", "read_write", "full":
-		return nil
-	case "":
-		return errors.New("--rights cannot be empty (expected read_only, read_write, full, or letters from lrswitea)")
-	}
-	for _, ch := range r {
-		if !strings.ContainsRune("lrswitea", ch) {
-			return fmt.Errorf("invalid --rights %q: expected read_only, read_write, full, or letters from lrswitea", r)
-		}
+	if strings.TrimSpace(r) == "" {
+		return errors.New("--rights cannot be empty (expected read_only, read_write, full, or a letter set such as lrs)")
 	}
 	return nil
 }

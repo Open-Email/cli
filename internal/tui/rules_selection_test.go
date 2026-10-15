@@ -120,3 +120,71 @@ func TestRulesReorderKeepsSelection(t *testing.T) {
 		})
 	}
 }
+
+// A second J before the first move's refresh lands carried the stale row
+// index, so it swapped whatever rule now sat there: A,J,J left A where it
+// started and selected B, while the flash said "rule moved". Direct-run
+// actions now wait for the previous one and its refresh.
+func TestRulesDirectActionRefusedWhileInFlight(t *testing.T) {
+	var mu sync.Mutex
+	rules := []coreapi.FilterRule{}
+	for _, n := range []string{"A", "B", "C"} {
+		rules = append(rules, coreapi.FilterRule{Name: n, Match: "all",
+			Conditions: []coreapi.RuleCondition{{Field: "subject", Op: "contains", Value: "x"}},
+			Actions:    []coreapi.RuleAction{{Type: "discard"}}})
+	}
+	client, closeFn := credClient(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Method == http.MethodPut {
+			var doc coreapi.RulesDocument
+			_ = json.NewDecoder(r.Body).Decode(&doc)
+			rules = doc.Rules
+		}
+		_ = json.NewEncoder(w).Encode(coreapi.FilterRulesState{Rules: rules, State: "active"})
+	})
+	defer closeFn()
+	order := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		var names []string
+		for _, r := range rules {
+			names = append(names, r.Name)
+		}
+		return fmt.Sprint(names)
+	}
+
+	s := newScreenPane(t.Context(), &Options{Client: client}, rulesDesc(rulesMbx()))
+	s.setSize(100, 30)
+	s.update(s.fetchCmd("", true)())
+	J := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
+
+	_, j1 := s.update(J)
+	if _, j2 := s.update(J); j2 != nil {
+		t.Fatal("a second J while the first move is in flight must be refused")
+	}
+	_, refresh := s.update(j1())
+	if _, j3 := s.update(J); j3 != nil {
+		t.Fatal("a J while the refresh after a move is in flight must be refused")
+	}
+	for _, msg := range collectMsgs(refresh) {
+		if pg, ok := msg.(pageMsg); ok {
+			s.update(pg)
+		}
+	}
+	if got := order(); got != "[B A C]" {
+		t.Fatalf("server order after one accepted J = %s; want [B A C]", got)
+	}
+	if got := s.visible[s.tbl.Cursor()].item.(ruleRow).rule.Name; got != "A" {
+		t.Fatalf("selected %q after the move; want A", got)
+	}
+
+	_, j4 := s.update(J)
+	if j4 == nil {
+		t.Fatal("J after the refresh landed must run")
+	}
+	s.update(j4())
+	if got := order(); got != "[B C A]" {
+		t.Fatalf("server order after the second J = %s; want [B C A]", got)
+	}
+}

@@ -394,6 +394,11 @@ type PimPutOpts struct {
 	IfNoneMatchStar bool
 }
 
+// replayable: an unguarded PUT is an upsert and safe to retry. A guarded one
+// is not: replaying a write that committed meets a stale ETag (or If-None-Match
+// on what now exists) and answers 412 for the caller's own write.
+func (o PimPutOpts) replayable() bool { return o.IfMatch == "" && !o.IfNoneMatchStar }
+
 func pimBase(s PimScope, kind PimKind) string {
 	return "/identities/" + escapeSegment(s.MailboxID) + "/" + string(kind)
 }
@@ -610,7 +615,8 @@ func (c *Client) PutPimObjectJSON(ctx context.Context, s PimScope, kind PimKind,
 	var out PimPutResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodPut, path: pimObjPath(s, kind, ref, href),
-		body: mustJSON(data), contentType: "application/json", headers: h, idempotent: true,
+		body: mustJSON(data), contentType: "application/json", headers: h,
+		idempotent: opts.replayable(),
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -635,7 +641,8 @@ func (c *Client) PutPimObject(ctx context.Context, s PimScope, kind PimKind, ref
 	var out PimPutResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodPut, path: pimObjPath(s, kind, ref, href),
-		body: body, contentType: pimMedia(kind), headers: h, idempotent: true,
+		body: body, contentType: pimMedia(kind), headers: h,
+		idempotent: opts.replayable(),
 	}, &out)
 	if err != nil {
 		return nil, err

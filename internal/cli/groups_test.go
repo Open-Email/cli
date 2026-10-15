@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -99,10 +100,6 @@ func TestNoFlagUsageContainsBackticks(t *testing.T) {
 	// flag's placeholder type name, mangling help output whenever prose uses
 	// backticks.
 	root := newRootCmd(&app{})
-	var walk func(cmdPath string, c interface {
-		CommandPath() string
-	})
-	_ = walk
 	var checkCmd func(c *cobra.Command)
 	checkCmd = func(c *cobra.Command) {
 		c.LocalFlags().VisitAll(func(f *pflag.Flag) {
@@ -120,4 +117,63 @@ func TestNoFlagUsageContainsBackticks(t *testing.T) {
 		}
 	}
 	checkCmd(root)
+}
+
+// walkCommands visits every command in the tree, root first.
+func walkCommands(c *cobra.Command, visit func(*cobra.Command)) {
+	visit(c)
+	for _, sub := range c.Commands() {
+		walkCommands(sub, visit)
+	}
+}
+
+// Cobra resolves a word to the FIRST sibling that claims it, so a name or
+// alias claimed twice under one parent is dead for one of them. #35 gave
+// `rules remove` the aliases rm and delete, which `rules delete` (delete the
+// whole document) already answered to: `rules delete -y` with a forgotten
+// position deleted every rule.
+func TestNoSiblingCommandNameOrAliasCollides(t *testing.T) {
+	walkCommands(newRootCmd(&app{}), func(c *cobra.Command) {
+		claimed := map[string]string{}
+		for _, sub := range c.Commands() {
+			for _, word := range append([]string{sub.Name()}, sub.Aliases...) {
+				if prev, ok := claimed[word]; ok {
+					t.Errorf("%s: %q is claimed by both %q and %q", c.CommandPath(), word, prev, sub.Name())
+					continue
+				}
+				claimed[word] = sub.Name()
+			}
+		}
+	})
+}
+
+// Every confirmation skip is spelled the same way, so -y works wherever --yes does.
+func TestEveryYesFlagHasShorthand(t *testing.T) {
+	walkCommands(newRootCmd(&app{}), func(c *cobra.Command) {
+		if f := c.LocalFlags().Lookup("yes"); f != nil && f.Shorthand != "y" {
+			t.Errorf("%s --yes has no -y", c.CommandPath())
+		}
+	})
+}
+
+// The partstat is the THIRD argument; ValidArgs completes only the first.
+func TestCalendarsRespondCompletesPartstatInThirdSlot(t *testing.T) {
+	root := newRootCmd(&app{})
+	cmd, _, err := root.Find([]string{"calendars", "respond"})
+	if err != nil || cmd.ValidArgsFunction == nil {
+		t.Fatalf("calendars respond has no argument completion (err %v)", err)
+	}
+	if got, _ := cmd.ValidArgsFunction(cmd, []string{"work", "ev.ics"}, ""); !slices.Contains(got, "accepted") {
+		t.Fatalf("third slot completes %v; want the partstats", got)
+	}
+	if got, _ := cmd.ValidArgsFunction(cmd, nil, ""); slices.Contains(got, "accepted") {
+		t.Fatalf("first slot (the calendar) completes partstats: %v", got)
+	}
+}
+
+// `messages draft` filed an unread message into INBOX, not a draft.
+func TestMessagesHasNoDraftAlias(t *testing.T) {
+	if cmd, _, err := newRootCmd(&app{}).Find([]string{"messages", "draft"}); err == nil && cmd.Name() == "compose" {
+		t.Fatal("`messages draft` runs compose, which files into INBOX unless --draft is passed")
+	}
 }

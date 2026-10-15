@@ -3,7 +3,11 @@ package cli
 import (
 	"bytes"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -247,5 +251,48 @@ func TestSemanticCoverageWarnsOnlyWhenIncomplete(t *testing.T) {
 	printSemanticCoverage(a, &coreapi.SemanticSearchResult{Coverage: coreapi.SemanticCoverage{Complete: false}})
 	if !strings.Contains(buf.String(), "still running") {
 		t.Fatalf("an incomplete index must warn, got %q", buf.String())
+	}
+}
+
+// --before/--after are the two narrowing flags the semantic route honours, and
+// the refusal above tells users to reach for them. Accepted and then dropped,
+// they answer an unbounded question while the user believes it was bounded.
+// Core reads since as "at or after" and before as "strictly before", in epoch
+// seconds, the same reading JMAP gives after/before on the structured route.
+func TestSemanticModeSendsDateBounds(t *testing.T) {
+	var mu sync.Mutex
+	var got url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/whoami":
+			_, _ = io.WriteString(w, accountWhoami)
+		case "/api/v1/mailboxes/MBX/search/semantic":
+			mu.Lock()
+			got = r.URL.Query()
+			mu.Unlock()
+			_, _ = io.WriteString(w, `{"results":[],"nextCursor":null,"coverage":{"since":0,"complete":true},"fused":true}`)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	_, stderr, code := runCLI(t, srv.URL, "search", "invoice", "--mode", "hybrid",
+		"--mailbox", "MBX", "--after", "2025-01-01", "--before", "2026-01-01")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if got.Get("since") != "1735689600" || got.Get("before") != "1767225600" {
+		t.Fatalf("semantic query dropped or mangled the date bounds: %q", got.Encode())
+	}
+
+	_, stderr, code = runCLI(t, srv.URL, "search", "invoice", "--mode", "hybrid",
+		"--mailbox", "MBX", "--before", "yesterday")
+	if code == 0 || !strings.Contains(stderr, "--before") {
+		t.Fatalf("an unparseable --before must be refused by name, got exit %d stderr %q", code, stderr)
 	}
 }

@@ -136,10 +136,10 @@ func (d *detailPane) view() string {
 
 func (d *detailPane) title() string {
 	if len(d.row.cells) > 1 && isDigitsOnly(d.row.cells[0]) && d.row.cells[1] != "" {
-		return d.row.cells[1]
+		return sanitizePlain(d.row.cells[1])
 	}
 	if len(d.row.cells) > 0 {
-		return d.row.cells[0]
+		return sanitizePlain(d.row.cells[0])
 	}
 	return "detail"
 }

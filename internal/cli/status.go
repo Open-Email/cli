@@ -29,12 +29,13 @@ func newStatusCmd(a *app) *cobra.Command {
 			principal := ""
 			authenticated := a.token != ""
 			var resolveErr error
+			var skipAuthErr error
 			if authenticated {
 				authed, aerr := a.authedClient()
 				if aerr != nil {
-					return aerr
-				}
-				if id, rerr := authed.Resolve(ctx); rerr == nil {
+					skipAuthErr = aerr
+					authenticated = false
+				} else if id, rerr := authed.Resolve(ctx); rerr == nil {
 					principal = id.Type
 				} else {
 					resolveErr = rerr
@@ -42,12 +43,21 @@ func newStatusCmd(a *app) *cobra.Command {
 				}
 			}
 
-			a.out.Emit(map[string]any{
+			result := map[string]any{
 				"apiUrl":        a.apiURL,
 				"healthy":       healthy,
 				"authenticated": authenticated,
 				"principal":     principal,
-			}, func(w io.Writer) {
+			}
+			// Why there is a key but no principal: not sent (it belongs to
+			// another deployment) or rejected by core. The human view warns.
+			switch {
+			case skipAuthErr != nil:
+				result["authError"] = skipAuthErr.Error()
+			case resolveErr != nil:
+				result["authError"] = resolveErr.Error()
+			}
+			a.out.Emit(result, func(w io.Writer) {
 				if healthy {
 					a.out.Successf("core reachable at %s", a.apiURL)
 				} else {
@@ -56,6 +66,8 @@ func newStatusCmd(a *app) *cobra.Command {
 				switch {
 				case principal != "":
 					a.out.Msgf("authenticated as %s (profile %q)", principal, a.profileName)
+				case skipAuthErr != nil:
+					a.out.Warnf("%v", skipAuthErr)
 				case resolveErr != nil:
 					a.out.Warnf("stored key rejected: %v", resolveErr)
 				default:

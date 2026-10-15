@@ -47,7 +47,7 @@ Pagination exceptions (mirroring core):
 | `0` | success |
 | `1` | a runtime/API error (rendered on stderr) |
 | `2` | a usage error (bad flags/args; also non-TTY refusing to prompt) |
-| `3` | resource not found (`404`) |
+| `3` | accepted but still being applied (`mailboxes suspend`/`resume`) |
 | `4` | authentication required / failed (`login` needed, or a 401) |
 
 A few commands use the exit code as a signal: `sieve check` exits `1` when a

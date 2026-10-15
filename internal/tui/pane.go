@@ -7,8 +7,8 @@ import (
 )
 
 // pane is one content view (a listing, a detail, a live tail). Panes stack:
-// drill-downs push, esc pops. Async results are routed to the TOP pane only,
-// so every fetch message carries its pane's id and panes drop foreign ids.
+// drill-downs push, esc pops. Async results carry their pane's id and are
+// routed to that pane even under a child (see idPane); panes drop foreign ids.
 type pane interface {
 	init() tea.Cmd
 	update(msg tea.Msg) (pane, tea.Cmd)
