@@ -2,11 +2,48 @@ package secrets
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
+
+// Holding our own reader open must not block a concurrent save. With os.Open's
+// sharing mode this deterministically exhausts the replacement retry budget.
+func TestWindowsCredentialReaderAllowsReplacement(t *testing.T) {
+	dir := t.TempDir()
+	const profile = "shared-reader"
+	if _, _, err := Save(dir, profile, "oek_original", true); err != nil {
+		t.Fatal(err)
+	}
+	f, err := openCredentialFile(filepath.Join(dir, "credentials", profile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, _, err := Save(dir, profile, "oek_replacement", true); err != nil {
+		t.Fatalf("Save while the credential reader remains open: %v", err)
+	}
+	previous, err := io.ReadAll(f)
+	if err != nil || string(previous) != "oek_original" {
+		t.Fatalf("open reader lost its original snapshot: %q, %v", previous, err)
+	}
+	if got, err := Load(dir, profile, File); err != nil || got != "oek_replacement" {
+		t.Fatalf("fresh reader did not see the replacement: %q, %v", got, err)
+	}
+}
+
+func TestWindowsCredentialLongPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), strings.Repeat("long-folder\\", 25))
+	if _, _, err := Save(dir, "long-path", "oek_complete", true); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Load(dir, "long-path", File); err != nil || got != "oek_complete" {
+		t.Fatalf("long-path credential read = %q, %v", got, err)
+	}
+}
 
 // Exercise actual Windows rename errors, not a stubbed error: keep the target
 // open with read/write sharing but without FILE_SHARE_DELETE.

@@ -95,6 +95,10 @@ falls back, with a printed warning, to a file under
 Windows access follows filesystem ACLs. Force the file backend with `--no-keyring` or
 `OPENEMAIL_NO_KEYRING=1` (useful for CI/headless).
 
+Concurrent commands can read credentials while another command replaces them.
+Temporary Windows file locks are retried; if a lock persists, the command reports
+the failure and leaves the stored credential intact.
+
 The config file itself (`~/.config/openemail/config.toml`) never contains a
 secret — only a pointer to which backend holds it.
 
