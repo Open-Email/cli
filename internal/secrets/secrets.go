@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
+	"time"
 
 	"github.com/zalando/go-keyring"
 )
@@ -97,45 +99,32 @@ func writeFileSecure(path string, data []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := renameFile(tmp, path); err != nil {
+	if err := replaceCredentialFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		// On Windows, replacing an existing file via MoveFileEx fails with access
-		// denied if another process (an antivirus scanner, indexer, or concurrent
-		// CLI command) holds the target open without FILE_SHARE_DELETE. Fall back
-		// to an in-place 0600 write rather than failing the login.
-		if isWindows {
-			return writeFileInPlace(path, data)
-		}
 		return err
 	}
 	return nil
 }
 
-func writeFileInPlace(path string, data []byte) error {
-	if fi, err := os.Lstat(path); err == nil {
-		if !fi.Mode().IsRegular() {
-			return fmt.Errorf("refusing to write %s: not a regular file", path)
+// Windows scanners and readers can temporarily prevent replacement by holding
+// the destination without FILE_SHARE_DELETE. Retry the completed temp file;
+// never truncate the live credential, even if the lock does not clear.
+func replaceCredentialFile(tmp, path string) error {
+	// ERROR_SHARING_VIOLATION is 32 on Windows. The numeric value keeps the
+	// retry path testable on other platforms; it is only interpreted on Windows.
+	const sharingViolation = syscall.Errno(32)
+	for attempt := 0; ; attempt++ {
+		err := renameFile(tmp, path)
+		if err == nil {
+			return nil
 		}
-	} else if !os.IsNotExist(err) {
-		return err
+		if !isWindows || attempt == 4 ||
+			(!errors.Is(err, os.ErrPermission) && !errors.Is(err, sharingViolation)) {
+			return err
+		}
+		// Five total attempts, with at most 375 ms of backoff.
+		time.Sleep((25 * time.Millisecond) << attempt)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	if err := f.Chmod(0o600); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return err
-	}
-	return f.Close()
 }
 
 // Load reads the secret for profile from the named backend.

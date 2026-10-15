@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +15,10 @@ import (
 )
 
 const pageLimit = 50
+
+// A page from a replaced collection cannot be appended to the visible rows.
+// Preserve the rows and warning, but block pagination until a full refresh.
+var errReloadRequired = errors.New("press r to reload")
 
 // column is one table column; flex columns share the leftover width.
 type column struct {
@@ -210,6 +215,9 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		s.loading, s.more = false, false
 		if msg.err != nil {
 			s.errMsg = msg.err.Error()
+			if errors.Is(msg.err, errReloadRequired) {
+				s.next = ""
+			}
 			return s, nil
 		}
 		s.errMsg = ""
