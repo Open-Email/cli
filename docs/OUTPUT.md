@@ -20,7 +20,7 @@ error goes to stderr.
 
 - **Single resources** are emitted as the object itself (`mailboxes get`,
   `messages get`, `domains get`, …).
-- **Lists** are wrapped `{ "<plural>": [ … ], "nextCursor": "<cursor|"">" }`.
+- **Cursor-paginated lists** are wrapped `{ "<plural>": [ … ], "nextCursor": "<cursor|"">" }`.
   `nextCursor` is **always present** (empty string on the last page). Pass it back
   with `--cursor`, or use `--all` to drain every page client-side.
 - **Delivery & append results** (`send`, `deliver inbound`, `messages append`,
@@ -38,6 +38,9 @@ Pagination exceptions (mirroring core):
   the folder-sync projection (uid, modseq, flags, keywords, size, dates,
   blobHash) at up to 10000 rows a page; `messages` is the full metadata at 1000.
 - `search --group-thread` is single-page (a `--cursor` there is rejected).
+- Structured search pages by `--position`, not `--cursor` or `--all`.
+- `search --mode hybrid|semantic` returns ranked candidates and accepts
+  `--cursor`, but does not support `--all`.
 - `labels list`, `sieve scripts list`, and `credentials list` are unpaginated.
 
 ## Exit codes
@@ -49,6 +52,7 @@ Pagination exceptions (mirroring core):
 | `2` | a usage error (bad flags/args; also non-TTY refusing to prompt) |
 | `3` | accepted but still being applied (`mailboxes suspend`/`resume`) |
 | `4` | authentication required / failed (`login` needed, or a 401) |
+| `130` | interrupted with Ctrl-C |
 
 A few commands use the exit code as a signal: `sieve check` exits `1` when a
 script does not compile (the report is still emitted), `deliver check` exits `1`
