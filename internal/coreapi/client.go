@@ -1,8 +1,9 @@
 // Package coreapi is the typed HTTP client for the openemail-core REST API used
 // by the openemail CLI. It carries an arbitrary bearer (a system, account, or
 // mailbox principal — set per invocation from the resolved profile), pools
-// connections, and retries per core's documented error vocabulary (503
-// superseded/reaped always; transport and 502/504 for idempotent calls).
+// connections, and retries per core's documented error vocabulary: transport
+// errors and 502/503/504 for calls that are safe to replay, plus core's
+// pre-commit 503 upload_cleanup_pending for any call.
 //
 // The transport kernel — request descriptor + single do(), APIError decode with
 // Is* predicates, RawPath escaping, buffered-body-before-cancel, re-openable
@@ -92,21 +93,7 @@ func New(cfg Config) (*Client, error) {
 				IdleConnTimeout:     90 * time.Second,
 				TLSHandshakeTimeout: 10 * time.Second,
 			},
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return errors.New("stopped after 10 redirects")
-				}
-				if len(via) > 0 {
-					orig := via[0].URL
-					if strings.EqualFold(orig.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
-						return fmt.Errorf("coreapi: refusing redirect that downgrades https to %s", req.URL.Scheme)
-					}
-					if !strings.EqualFold(orig.Host, req.URL.Host) {
-						return fmt.Errorf("coreapi: refusing cross-host redirect from %s to %s", orig.Host, req.URL.Host)
-					}
-				}
-				return nil
-			},
+			CheckRedirect: checkRedirect,
 		} // per-request timeouts via context, not http.Client.Timeout
 	}
 	return &Client{
@@ -115,6 +102,24 @@ func New(cfg Config) (*Client, error) {
 		hc:     hc,
 		retryP: retryPolicy{attempts: cfg.RetryAttempts, backoffMin: cfg.RetryBackoffMin, backoffMax: cfg.RetryBackoffMax},
 	}, nil
+}
+
+// checkRedirect keeps the bearer on the origin it was configured for: a
+// redirect may neither leave the host nor downgrade https to http.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if len(via) > 0 {
+		orig := via[0].URL
+		if strings.EqualFold(orig.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
+			return fmt.Errorf("coreapi: refusing redirect that downgrades https to %s", req.URL.Scheme)
+		}
+		if !strings.EqualFold(orig.Host, req.URL.Host) {
+			return fmt.Errorf("coreapi: refusing cross-host redirect from %s to %s", orig.Host, req.URL.Host)
+		}
+	}
+	return nil
 }
 
 // BaseURL returns the configured deployment root.
@@ -133,8 +138,9 @@ type request struct {
 	contentType string
 	headers     map[string]string
 	timeout     time.Duration // 0 → RequestTimeout
-	// idempotent widens retry to transport errors + 502/504. GETs and calls made
-	// idempotent by an X-Delivery-Id set it; unsafe mutations do not.
+	// idempotent widens retry to transport errors + 502/503/504. GETs, PUT
+	// upserts that replay to the same state, and calls made idempotent by an
+	// X-Delivery-Id set it; unsafe mutations and guarded (If-Match) writes do not.
 	idempotent   bool
 	streamResult bool // caller consumes resp.Body; do() returns it open
 }
@@ -253,7 +259,7 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 		ae := decodeAPIError(hr.StatusCode, data)
 		ae.Method = r.method
 		ae.Path = u.Path[len(c.base.Path)+len("/api/v1"):]
-		if shouldRetryStatus(hr.StatusCode, r) {
+		if shouldRetryStatus(hr.StatusCode, ae.Code, r) {
 			return true, ae
 		}
 		return false, ae
@@ -359,9 +365,15 @@ func (b *cancelBody) Close() error {
 // injected by the edge *after* the write committed (Workers overload, "no
 // healthy origin") would otherwise mint a duplicate resource, since directory
 // creates carry no idempotency key.
-func shouldRetryStatus(status int, r request) bool {
+//
+// The one exception is 503 upload_cleanup_pending: core answers it before it
+// stores anything (src/endpoints/uploads.ts, Retry-After: 1) and documents it
+// as "must be retried", so it is safe to replay for any call.
+func shouldRetryStatus(status int, code string, r request) bool {
 	switch status {
-	case 502, 503, 504:
+	case 503:
+		return r.idempotent || code == "upload_cleanup_pending"
+	case 502, 504:
 		return r.idempotent
 	}
 	return false

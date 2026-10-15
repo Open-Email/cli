@@ -212,7 +212,28 @@ func runSemanticSearch(cmd *cobra.Command, a *app, client *coreapi.Client, mbx, 
 		return usageError(errors.New("--all cannot be combined with --mode: the semantic route answers the 100 most relevant candidates by construction, so there is no every-page to fetch"))
 	}
 
-	res, err := client.SemanticSearch(cmd.Context(), mbx, query, label, limit, cursor, fuse, sf.snippet)
+	opts := coreapi.SemanticSearchOptions{
+		Query: query, Label: label, Limit: limit, Cursor: cursor, Fuse: fuse, Snippet: sf.snippet,
+	}
+	// The route's since/before are epoch seconds ("at or after", "before"),
+	// the same reading the structured route gives --after/--before.
+	for _, b := range []struct {
+		flag, value string
+		dst         **int64
+	}{{"--after", sf.after, &opts.Since}, {"--before", sf.before, &opts.Before}} {
+		if b.value == "" {
+			continue
+		}
+		ts, err := parseSearchDate(b.value)
+		if err != nil {
+			return usageError(fmt.Errorf("%s: %w", b.flag, err))
+		}
+		t, _ := time.Parse(time.RFC3339, ts)
+		sec := t.Unix()
+		*b.dst = &sec
+	}
+
+	res, err := client.SemanticSearchWithOptions(cmd.Context(), mbx, opts)
 	if err != nil {
 		return err
 	}

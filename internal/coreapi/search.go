@@ -135,16 +135,6 @@ type SemanticSearchResult struct {
 	Snippets []EmailSearchSnippet `json:"snippets,omitempty"`
 }
 
-// SemanticSearch runs a MEANING-based query over a mailbox
-// (docs/semantic-search-design.md §V). Hybrid by default — the BM25 ranking is
-// fused in by reciprocal rank, which is what keeps exact identifiers findable —
-// and fuse "none" asks for the vector ranking alone.
-//
-// Needs the mailbox opted in AND its account's plan gate: without either, core
-// answers 409 semantic_not_enabled for both causes and the CLI's error hint is
-// what separates them. Bounded at the 100 most relevant candidates before
-// filtering: this is "the most relevant", never "every match ranked" — deep
-// paging is Search's job.
 // SemanticSearchOptions configures a GET /mailboxes/:id/search/semantic query.
 type SemanticSearchOptions struct {
 	Query   string
@@ -157,7 +147,7 @@ type SemanticSearchOptions struct {
 	Before  *int64
 }
 
-// SemanticSearch runs a MEANING-based query over a mailbox
+// SemanticSearchWithOptions runs a MEANING-based query over a mailbox
 // (docs/semantic-search-design.md §V). Hybrid by default — the BM25 ranking is
 // fused in by reciprocal rank, which is what keeps exact identifiers findable —
 // and fuse "none" asks for the vector ranking alone.
@@ -167,18 +157,9 @@ type SemanticSearchOptions struct {
 // what separates them. Bounded at the 100 most relevant candidates before
 // filtering: this is "the most relevant", never "every match ranked" — deep
 // paging is Search's job.
-func (c *Client) SemanticSearch(ctx context.Context, mailboxID, query, label string, limit int, cursor, fuse string, snippet bool) (*SemanticSearchResult, error) {
-	return c.SemanticSearchWithOptions(ctx, mailboxID, SemanticSearchOptions{
-		Query:   query,
-		Label:   label,
-		Limit:   limit,
-		Cursor:  cursor,
-		Fuse:    fuse,
-		Snippet: snippet,
-	})
-}
-
-// SemanticSearchWithOptions runs a semantic query with optional Since/Before bounds.
+//
+// Since and Before are epoch seconds: core reads since as "at or after" and
+// before as "strictly before".
 func (c *Client) SemanticSearchWithOptions(ctx context.Context, mailboxID string, opts SemanticSearchOptions) (*SemanticSearchResult, error) {
 	q := url.Values{}
 	q.Set("q", opts.Query)

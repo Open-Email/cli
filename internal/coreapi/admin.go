@@ -102,7 +102,10 @@ func (c *Client) PickupIngest(ctx context.Context, pickupID string, getBody func
 	raw, err := c.doJSONRaw(ctx, request{
 		method: http.MethodPost, path: "/deliver/pickup/" + escapeSegment(pickupID),
 		getBody: getBody, bodyLen: bodyLen, contentType: "message/rfc822",
-		headers: headers, idempotent: checksum != "",
+		// Idempotent with or without X-Checksum: core keys the delivery on the
+		// header when present and on the staged content hash when not, so a
+		// replay of the same bytes converges as a duplicate.
+		headers: headers, idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, nil, err

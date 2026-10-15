@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -462,5 +463,127 @@ func TestSemanticSearchWithOptionsAndListDomainsWithOptions(t *testing.T) {
 	}
 	if !strings.Contains(gotDomQuery, "accountId=acc1") || !strings.Contains(gotDomQuery, "mailboxCounts=true") || !strings.Contains(gotDomQuery, "usage=true") {
 		t.Fatalf("domains query = %q, want accountId, mailboxCounts, usage", gotDomQuery)
+	}
+}
+
+// Core answers 503 upload_cleanup_pending BEFORE anything is stored, with
+// Retry-After: 1, and its spec says the upload "must be retried". So that one
+// 503 is safe to replay even though the upload carries no idempotency key; a
+// generic 503 (TestUploadBlobAndAppendWithoutDeliveryIDDoNotRetryOn503) is not.
+func TestUploadBlobRetriesCleanupPending(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		if atomic.AddInt32(&calls, 1) == 1 {
+			w.WriteHeader(503)
+			w.Write([]byte(`{"error":"upload_cleanup_pending"}`))
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"blobId":"B1","size":7}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	getBody := func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("payload")), nil }
+	if _, err := c.UploadBlob(context.Background(), "mbx1", getBody, 7, "text/plain"); err != nil {
+		t.Fatalf("UploadBlob should retry upload_cleanup_pending: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("UploadBlob calls = %d, want 2", got)
+	}
+}
+
+// A guarded PUT is a compare-and-swap: core checks If-Match BEFORE its
+// same-document no-op, so a replay of a write that committed carries a state
+// that is no longer current and comes back 412, reporting the user's own
+// change as someone else's. An unguarded PUT replays to a no-op and is safe.
+func TestPutVacationRetriesOnlyWithoutIfMatch(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		if atomic.AddInt32(&calls, 1) == 1 {
+			w.WriteHeader(503)
+			w.Write([]byte(`{"error":"unavailable"}`))
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"isEnabled":true,"state":"s2"}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	if _, err := c.PutVacation(context.Background(), "mbx1", VacationInput{IsEnabled: true}, ""); err != nil {
+		t.Fatalf("unguarded PutVacation should retry on 503: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("unguarded PutVacation calls = %d, want 2", got)
+	}
+
+	atomic.StoreInt32(&calls, 0)
+	_, err := c.PutVacation(context.Background(), "mbx1", VacationInput{IsEnabled: true}, "s1")
+	if Status(err) != 503 {
+		t.Fatalf("guarded PutVacation should surface the 503, got %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("guarded PutVacation calls = %d, want 1", got)
+	}
+}
+
+// Without X-Checksum core keys the pickup delivery on the staged content
+// hash, so a replay of the same bytes converges as a duplicate.
+func TestPickupIngestWithoutChecksumRetries(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		if atomic.AddInt32(&calls, 1) == 1 {
+			w.WriteHeader(502)
+			w.Write([]byte(`{"error":"bad_gateway"}`))
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"status":"delivered"}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	getBody := func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("payload")), nil }
+	if _, _, err := c.PickupIngest(context.Background(), "p1", getBody, 7, ""); err != nil {
+		t.Fatalf("PickupIngest without checksum should retry on 502: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("PickupIngest calls = %d, want 2", got)
+	}
+}
+
+// The downgrade is the vector #29 named: a bearer that left over https must
+// not follow a redirect onto plain http, even on the same host.
+func TestCheckRedirectRefusesHTTPSDowngrade(t *testing.T) {
+	via := []*http.Request{{URL: &url.URL{Scheme: "https", Host: "api.open.email"}}}
+	if err := checkRedirect(&http.Request{URL: &url.URL{Scheme: "http", Host: "api.open.email"}}, via); err == nil {
+		t.Fatal("https -> http on the same host must be refused")
+	}
+	if err := checkRedirect(&http.Request{URL: &url.URL{Scheme: "https", Host: "api.open.email"}}, via); err != nil {
+		t.Fatalf("same-origin redirect must be allowed: %v", err)
+	}
+}
+
+// The default in do(): a JSON body sent without an explicit contentType still
+// goes out as application/json.
+func TestJSONBodyDefaultsContentType(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("Content-Type")
+		w.WriteHeader(200)
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	if err := c.doJSON(context.Background(), request{method: http.MethodPost, path: "/x", body: []byte(`{}`)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
 	}
 }
