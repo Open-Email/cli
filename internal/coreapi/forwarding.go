@@ -167,6 +167,7 @@ func (c *Client) SetForwardAll(ctx context.Context, mailboxID, destinationID str
 		method: http.MethodPut, path: forwardingPath(mailboxID) + "/all",
 		body:        mustJSON(map[string]string{"destinationId": destinationID}),
 		contentType: "application/json",
+		idempotent:  true,
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -184,6 +185,7 @@ func (c *Client) PauseForwardAll(ctx context.Context, mailboxID string, paused b
 		method: http.MethodPatch, path: forwardingPath(mailboxID) + "/all",
 		body:        mustJSON(map[string]bool{"paused": paused}),
 		contentType: "application/json",
+		idempotent:  true,
 	}, &out)
 	if err != nil {
 		return nil, err

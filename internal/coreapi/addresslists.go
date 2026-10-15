@@ -251,7 +251,7 @@ func (c *Client) AddAddressListEntry(ctx context.Context, fam AddressLists, list
 	var out AddressListEntry
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost, path: fam.base + "/" + escapeSegment(listID) + "/entries",
-		body: mustJSON(in), contentType: "application/json",
+		body: mustJSON(in), contentType: "application/json", idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -293,7 +293,7 @@ func (c *Client) EvaluateAddressLists(ctx context.Context, fam AddressLists, in 
 	var out AddressListVerdict
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost, path: fam.base + "/evaluate",
-		body: mustJSON(in), contentType: "application/json",
+		body: mustJSON(in), contentType: "application/json", idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err

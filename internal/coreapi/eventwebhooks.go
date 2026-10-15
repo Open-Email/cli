@@ -79,7 +79,7 @@ func (c *Client) getEventWebhook(ctx context.Context, path string) (*EventWebhoo
 func (c *Client) putEventWebhook(ctx context.Context, path string, in EventWebhookInput) (*EventWebhook, error) {
 	var out EventWebhook
 	err := c.doJSON(ctx, request{
-		method: http.MethodPut, path: path, body: mustJSON(in), contentType: "application/json",
+		method: http.MethodPut, path: path, body: mustJSON(in), contentType: "application/json", idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
