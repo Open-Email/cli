@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -53,6 +54,7 @@ func rulesDesc(mbx coreapi.Mailbox) resourceDesc {
 			rows := make([]rowData, len(state.Rules))
 			for i, r := range state.Rules {
 				rows[i] = rowData{
+					id: strconv.Itoa(i),
 					cells: []string{
 						fmt.Sprintf("%d", i+1), ruleName(r, i), ruleState(r),
 						ruleMatch(r), ruleConditions(r.Conditions), ruleActions(r.Actions), yn(r.Stop),
@@ -104,12 +106,16 @@ func rulesDesc(mbx coreapi.Mailbox) resourceDesc {
 				}
 				return fmt.Sprintf("rule %d %s", rr.index+1, verb), nil
 			}},
-			{key: "K", label: "K up", needsRow: true, cursorDelta: -1, do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
-				return reorderRule(ctx, c, mbx.ID, item.(ruleRow), -1)
-			}},
-			{key: "J", label: "J down", needsRow: true, cursorDelta: +1, do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
-				return reorderRule(ctx, c, mbx.ID, item.(ruleRow), +1)
-			}},
+			{key: "K", label: "K up", needsRow: true,
+				selectAfter: func(item any) string { return strconv.Itoa(item.(ruleRow).index - 1) },
+				do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
+					return reorderRule(ctx, c, mbx.ID, item.(ruleRow), -1)
+				}},
+			{key: "J", label: "J down", needsRow: true,
+				selectAfter: func(item any) string { return strconv.Itoa(item.(ruleRow).index + 1) },
+				do: func(ctx context.Context, c *coreapi.Client, item any) (string, error) {
+					return reorderRule(ctx, c, mbx.ID, item.(ruleRow), +1)
+				}},
 			{key: "d", label: "d delete", needsRow: true, run: func(ctx context.Context, ui *Options, item any) pane {
 				return ruleDeleteConfirm(ctx, ui, mbx, item.(ruleRow))
 			}},

@@ -28,6 +28,7 @@ type kv struct{ k, v string }
 
 // rowData pairs rendered cells with the source item for detail/drill-down.
 type rowData struct {
+	id    string // optional selection key, unique within the fetched listing
 	cells []string
 	item  any
 }
@@ -68,14 +69,14 @@ type action struct {
 	needsRow    bool
 	run         func(ctx context.Context, ui *Options, item any) pane
 	do          func(ctx context.Context, c *coreapi.Client, item any) (flash string, err error)
-	cursorDelta int // optional cursor step applied when a direct action succeeds
+	selectAfter func(item any) string // optional row id to select in the refreshed listing
 }
 
 // actDoneMsg is a completed direct-run action.
 type actDoneMsg struct {
 	paneID      int64
 	flash       string
-	cursorDelta int
+	preferredID string
 	err         error
 }
 
@@ -114,6 +115,9 @@ type screenPane struct {
 	all     []rowData
 	visible []rowData
 	next    string
+	// A successful action can name a row in the next replacement page. Resolve
+	// it after filtering, since a document position is not a visible cursor.
+	preferredID string
 
 	w, h int
 }
@@ -185,15 +189,7 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		if msg.flash == "" {
 			return s, nil
 		}
-		if msg.cursorDelta != 0 {
-			nextCur := s.tbl.Cursor() + msg.cursorDelta
-			if nextCur < 0 {
-				nextCur = 0
-			} else if len(s.visible) > 0 && nextCur >= len(s.visible) {
-				nextCur = len(s.visible) - 1
-			}
-			s.tbl.SetCursor(nextCur)
-		}
+		s.preferredID = msg.preferredID
 		s.flash = msg.flash
 		s.loading = true
 		s.next = ""
@@ -203,6 +199,8 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		if msg.paneID != s.id || msg.seq != s.seq {
 			return s, nil // a stale request; a newer one is in flight
 		}
+		preferredID := s.preferredID
+		s.preferredID = ""
 		s.loading, s.more = false, false
 		if msg.err != nil {
 			s.errMsg = msg.err.Error()
@@ -216,6 +214,14 @@ func (s *screenPane) update(msg tea.Msg) (pane, tea.Cmd) {
 		}
 		s.next = msg.next
 		s.applyFilter()
+		if msg.replace && preferredID != "" {
+			for i, row := range s.visible {
+				if row.id == preferredID {
+					s.tbl.SetCursor(i)
+					break
+				}
+			}
+		}
 		// A summary block's height is only known once the fetch that produced
 		// it lands, so re-run the layout with the table height it leaves.
 		if s.desc.summary != nil && s.w > 0 && s.h > 0 {
@@ -286,13 +292,17 @@ func (s *screenPane) updateKey(msg tea.KeyMsg) (pane, tea.Cmd) {
 		}
 		if a.do != nil {
 			s.flash = ""
-			id, client, do, delta := s.id, s.ui.Client, a.do, a.cursorDelta
+			preferredID := ""
+			if a.selectAfter != nil {
+				preferredID = a.selectAfter(item)
+			}
+			id, client, do := s.id, s.ui.Client, a.do
 			ctx := s.ctx
 			return s, func() tea.Msg {
 				cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
 				flash, err := do(cctx, client, item)
-				return actDoneMsg{paneID: id, flash: flash, cursorDelta: delta, err: err}
+				return actDoneMsg{paneID: id, flash: flash, preferredID: preferredID, err: err}
 			}
 		}
 		if p := a.run(s.ctx, s.ui, item); p != nil {
