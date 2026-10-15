@@ -72,7 +72,7 @@ func (c *Client) PutVacation(ctx context.Context, mailboxID string, in VacationI
 	var out Vacation
 	err := c.doJSON(ctx, request{
 		method: http.MethodPut, path: vacationPath(mailboxID),
-		body: mustJSON(in), contentType: "application/json", headers: headers,
+		body: mustJSON(in), contentType: "application/json", headers: headers, idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err

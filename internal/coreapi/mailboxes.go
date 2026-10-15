@@ -277,12 +277,33 @@ func newIdempotencyKey() string {
 	return hex.EncodeToString(buf[:])
 }
 
-// parseRetryAfterSeconds reads a delta-seconds Retry-After; anything else
-// (absent, an HTTP date, garbage) is 0 and the caller picks its own interval.
+// parseRetryAfterSeconds reads a delta-seconds or HTTP-date Retry-After;
+// negative values clamp to 0 and positive values cap at 60s.
 func parseRetryAfterSeconds(v string) time.Duration {
-	n, err := strconv.Atoi(strings.TrimSpace(v))
-	if err != nil || n < 0 {
+	const maxRetryAfter = 60 * time.Second
+	v = strings.TrimSpace(v)
+	if v == "" {
 		return 0
 	}
-	return time.Duration(n) * time.Second
+	if n, err := strconv.Atoi(v); err == nil {
+		if n <= 0 {
+			return 0
+		}
+		if d := time.Duration(n) * time.Second; d > maxRetryAfter {
+			return maxRetryAfter
+		} else {
+			return d
+		}
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		d := time.Until(t)
+		if d <= 0 {
+			return 0
+		}
+		if d > maxRetryAfter {
+			return maxRetryAfter
+		}
+		return d
+	}
+	return 0
 }

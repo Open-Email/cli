@@ -284,14 +284,14 @@ func TestSendMessageAndReplyRetryWhenDeliveryIDSet(t *testing.T) {
 	var sendCalls, replyCalls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/messages/send"):
+		case strings.HasSuffix(r.URL.Path, "/send"):
 			if atomic.AddInt32(&sendCalls, 1) == 1 {
 				w.WriteHeader(503)
 				w.Write([]byte(`{"error":"unavailable"}`))
 				return
 			}
 			w.WriteHeader(200)
-			w.Write([]byte(`{"messageId":"m1","threadId":"t1","status":"queued"}`))
+			w.Write([]byte(`{"deliveryId":"01J00000000000000000000001","recipients":[]}`))
 		case strings.HasSuffix(r.URL.Path, "/reply"):
 			if atomic.AddInt32(&replyCalls, 1) == 1 {
 				w.WriteHeader(503)
@@ -299,20 +299,20 @@ func TestSendMessageAndReplyRetryWhenDeliveryIDSet(t *testing.T) {
 				return
 			}
 			w.WriteHeader(200)
-			w.Write([]byte(`{"messageId":"m2","threadId":"t1","status":"queued"}`))
+			w.Write([]byte(`{"deliveryId":"01J00000000000000000000002","recipients":[]}`))
 		}
 	}))
 	defer srv.Close()
 
 	c := testClient(t, srv.URL)
-	if _, _, err := c.SendMessage(context.Background(), "mbx1", SendMessageInput{Subject: "hi"}, SendOptions{DeliveryID: "01J00000000000000000000001"}); err != nil {
+	if _, _, err := c.SendMessage(context.Background(), "mbx1", SendRequest{Subject: "hi"}, SendOptions{DeliveryID: "01J00000000000000000000001"}); err != nil {
 		t.Fatalf("SendMessage with DeliveryID should retry on 503: %v", err)
 	}
 	if got := atomic.LoadInt32(&sendCalls); got != 2 {
 		t.Fatalf("SendMessage calls = %d, want 2", got)
 	}
 
-	if _, _, err := c.ReplyToThread(context.Background(), "mbx1", "thr1", ReplyInput{Text: "re"}, SendOptions{DeliveryID: "01J00000000000000000000002"}); err != nil {
+	if _, _, err := c.ReplyToThread(context.Background(), "mbx1", "thr1", ThreadReplyRequest{Subject: "re"}, SendOptions{DeliveryID: "01J00000000000000000000002"}); err != nil {
 		t.Fatalf("ReplyToThread with DeliveryID should retry on 503: %v", err)
 	}
 	if got := atomic.LoadInt32(&replyCalls); got != 2 {
@@ -324,7 +324,7 @@ func TestUploadBlobAndAppendWithoutDeliveryIDDoNotRetryOn503(t *testing.T) {
 	var blobCalls, appendCalls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)
-		if strings.HasSuffix(r.URL.Path, "/blobs") {
+		if strings.HasSuffix(r.URL.Path, "/uploads") {
 			atomic.AddInt32(&blobCalls, 1)
 		} else {
 			atomic.AddInt32(&appendCalls, 1)
@@ -336,7 +336,7 @@ func TestUploadBlobAndAppendWithoutDeliveryIDDoNotRetryOn503(t *testing.T) {
 
 	c := testClient(t, srv.URL)
 	getBody := func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("payload")), nil }
-	_, _ = c.UploadBlob(context.Background(), "mbx1", "text/plain", getBody, 7)
+	_, _ = c.UploadBlob(context.Background(), "mbx1", getBody, 7, "text/plain")
 	if got := atomic.LoadInt32(&blobCalls); got != 1 {
 		t.Fatalf("UploadBlob calls = %d, want 1 (must not retry without idempotency key)", got)
 	}
@@ -356,7 +356,7 @@ func TestIdempotentReadsAndUpsertsRetryOn503(t *testing.T) {
 			return
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"hostnames":{}}`))
+		w.Write([]byte(`{"domain":"example.com","canClaim":true,"hostnames":[]}`))
 	}))
 	defer srv.Close()
 
@@ -379,11 +379,11 @@ func TestJSONContentTypeSentOnTemplateAndMailSlotRequests(t *testing.T) {
 	defer srv.Close()
 
 	c := testClient(t, srv.URL)
-	_, err := c.CreateTemplate(context.Background(), "acc1", TemplateCreateInput{Slug: "welcome", Name: "Welcome"})
+	_, err := c.CreateTemplate(context.Background(), "acc1", TemplateCreate{Slug: "welcome", Name: "Welcome"})
 	if err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
 	}
-	_, err = c.PutMailSlotVariant(context.Background(), "welcome", "en", MailSlotVariantInput{Subject: "Hi", TextBody: "Body"})
+	_, err = c.PutMailSlotVariant(context.Background(), "welcome", "en", VariantCopy{Subject: "Hi", Text: "Body"})
 	if err != nil {
 		t.Fatalf("PutMailSlotVariant: %v", err)
 	}
@@ -425,3 +425,42 @@ func TestParseRetryAfterSecondsBoundsAndHTTPDate(t *testing.T) {
 	}
 }
 
+func TestSemanticSearchWithOptionsAndListDomainsWithOptions(t *testing.T) {
+	var gotSemQuery, gotDomQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		if strings.HasSuffix(r.URL.Path, "/search/semantic") {
+			gotSemQuery = r.URL.RawQuery
+			w.Write([]byte(`{"results":[],"coverage":{"since":0,"complete":true},"fused":true}`))
+			return
+		}
+		gotDomQuery = r.URL.RawQuery
+		w.Write([]byte(`{"domains":[]}`))
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv.URL)
+	since := int64(1700000000)
+	before := int64(1700086400)
+	if _, err := c.SemanticSearchWithOptions(context.Background(), "mbx1", SemanticSearchOptions{
+		Query:  "invoice",
+		Since:  &since,
+		Before: &before,
+	}); err != nil {
+		t.Fatalf("SemanticSearchWithOptions: %v", err)
+	}
+	if !strings.Contains(gotSemQuery, "since=1700000000") || !strings.Contains(gotSemQuery, "before=1700086400") {
+		t.Fatalf("semantic query = %q, want since and before", gotSemQuery)
+	}
+
+	if _, err := c.ListDomainsWithOptions(context.Background(), ListDomainsOptions{
+		AccountID:     "acc1",
+		MailboxCounts: true,
+		Usage:         true,
+	}); err != nil {
+		t.Fatalf("ListDomainsWithOptions: %v", err)
+	}
+	if !strings.Contains(gotDomQuery, "accountId=acc1") || !strings.Contains(gotDomQuery, "mailboxCounts=true") || !strings.Contains(gotDomQuery, "usage=true") {
+		t.Fatalf("domains query = %q, want accountId, mailboxCounts, usage", gotDomQuery)
+	}
+}

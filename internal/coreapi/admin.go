@@ -102,7 +102,7 @@ func (c *Client) PickupIngest(ctx context.Context, pickupID string, getBody func
 	raw, err := c.doJSONRaw(ctx, request{
 		method: http.MethodPost, path: "/deliver/pickup/" + escapeSegment(pickupID),
 		getBody: getBody, bodyLen: bodyLen, contentType: "message/rfc822",
-		headers: headers, idempotent: true,
+		headers: headers, idempotent: checksum != "",
 	}, &out)
 	if err != nil {
 		return nil, nil, err

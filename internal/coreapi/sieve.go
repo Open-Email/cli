@@ -85,7 +85,7 @@ func (c *Client) PutSieveScript(ctx context.Context, mailboxID, name, script str
 	var out SievePutResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodPut, path: c.sieveScriptPath(mailboxID, name),
-		body: mustJSON(map[string]string{"script": script}), contentType: "application/json",
+		body: mustJSON(map[string]string{"script": script}), contentType: "application/json", idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -124,14 +124,14 @@ func (c *Client) SieveActiveName(ctx context.Context, mailboxID string) (string,
 func (c *Client) ActivateSieve(ctx context.Context, mailboxID, name string) error {
 	return c.doJSON(ctx, request{
 		method: http.MethodPut, path: c.sievePath(mailboxID) + "/active",
-		body: mustJSON(map[string]string{"name": name}), contentType: "application/json",
+		body: mustJSON(map[string]string{"name": name}), contentType: "application/json", idempotent: true,
 	}, nil)
 }
 
 // DeactivateSieve clears the active filter (delivery runs unfiltered).
 func (c *Client) DeactivateSieve(ctx context.Context, mailboxID string) error {
 	return c.doJSON(ctx, request{
-		method: http.MethodDelete, path: c.sievePath(mailboxID) + "/active",
+		method: http.MethodDelete, path: c.sievePath(mailboxID) + "/active", idempotent: true,
 	}, nil)
 }
 
@@ -141,7 +141,7 @@ func (c *Client) CheckSieve(ctx context.Context, mailboxID, script string) (*Sie
 	var out SieveCheckResult
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost, path: c.sievePath(mailboxID) + "/check",
-		body: mustJSON(map[string]string{"script": script}), contentType: "application/json",
+		body: mustJSON(map[string]string{"script": script}), contentType: "application/json", idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
