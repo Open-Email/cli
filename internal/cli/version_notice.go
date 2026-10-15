@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,7 +46,7 @@ func (a *app) maybeNotifyUpdate() {
 	st := loadUpdateState(path)
 	if time.Since(time.Unix(st.LastCheck, 0)) >= updateCheckInterval {
 		if latest, ok := fetchLatestTag(releasesURL, 1200*time.Millisecond); ok {
-			st.Latest = latest
+			st.Latest = sanitizeCell(latest)
 		}
 		st.LastCheck = time.Now().Unix()
 		saveUpdateState(path, st)
@@ -56,7 +57,7 @@ func (a *app) maybeNotifyUpdate() {
 			p = newPrinter(false, a.flagNoColor)
 		}
 		fmt.Fprintf(os.Stderr, "\n%s a new release of openemail is available: %s → %s\n",
-			p.paint(colYellow, "update:"), Version, st.Latest)
+			p.paint(colYellow, "update:"), sanitizeCell(Version), sanitizeCell(st.Latest))
 		fmt.Fprintln(os.Stderr, "  upgrade with your package manager (e.g. `brew upgrade openemail`).")
 	}
 }
@@ -91,14 +92,31 @@ func saveUpdateState(path string, st updateState) {
 	if path == "" {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
 	data, err := json.Marshal(st)
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(path, data, 0o600)
+	f, err := os.CreateTemp(dir, ".version-check-*")
+	if err != nil {
+		return
+	}
+	tmp := f.Name()
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+	}
 }
 
 // fetchLatestTag GETs the GitHub latest-release tag, bounded by timeout.
@@ -122,16 +140,20 @@ func fetchLatestTag(url string, timeout time.Duration) (string, bool) {
 	var body struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
 		return "", false
 	}
-	return strings.TrimSpace(body.TagName), body.TagName != ""
+	tag := sanitizeCell(strings.TrimSpace(body.TagName))
+	return tag, tag != ""
 }
 
-// versionNewer reports whether latest is a strictly higher semver than current.
-// Leading 'v' and any pre-release/build suffix are ignored; unparsable parts sort
-// as 0. A dev/unparsable current never triggers a notice (guarded upstream).
+// versionNewer reports whether latest is a strictly higher release than current.
+// A pre-release latest never triggers an upgrade notice, and a stable release X.Y.Z
+// is considered newer than a pre-release X.Y.Z-rc1.
 func versionNewer(latest, current string) bool {
+	if hasPreRelease(latest) {
+		return false
+	}
 	lv := parseSemver(latest)
 	cv := parseSemver(current)
 	for i := 0; i < 3; i++ {
@@ -139,7 +161,15 @@ func versionNewer(latest, current string) bool {
 			return lv[i] > cv[i]
 		}
 	}
-	return false
+	return lv != [3]int{} && hasPreRelease(current)
+}
+
+func hasPreRelease(s string) bool {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "v")
+	if plus := strings.IndexByte(s, '+'); plus >= 0 {
+		s = s[:plus]
+	}
+	return strings.Contains(s, "-")
 }
 
 func parseSemver(s string) [3]int {

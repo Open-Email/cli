@@ -89,7 +89,18 @@ func (a *app) preRun() error {
 	}
 	a.cfg = cfg
 
-	a.profileName = cfg.ResolveProfileName(firstNonEmpty(a.flagProfile, os.Getenv(envProfile)))
+	explicitProfile := firstNonEmpty(a.flagProfile, os.Getenv(envProfile))
+	if explicitProfile != "" {
+		if err := config.ValidateProfileName(explicitProfile); err != nil {
+			return usageError(err)
+		}
+	} else if cfg.DefaultProfile != "" {
+		if err := config.ValidateProfileName(cfg.DefaultProfile); err != nil {
+			return usageError(err)
+		}
+	}
+
+	a.profileName = cfg.ResolveProfileName(explicitProfile)
 	a.profile, _ = cfg.Profile(a.profileName)
 
 	// API URL: flag > env > profile > default. Normalized here, once, because
@@ -136,11 +147,10 @@ func eagerProfileRole() string {
 	return p.Role
 }
 
-// client builds an unauthenticated-capable client (used by login and /health).
+// client builds an unauthenticated client (used by /health and public feeds).
 func (a *app) client() (*coreapi.Client, error) {
 	return coreapi.New(coreapi.Config{
 		BaseURL:   a.apiURL,
-		Token:     a.token,
 		UserAgent: "openemail-cli/" + Version,
 	})
 }
@@ -170,17 +180,19 @@ func (a *app) authedClient() (*coreapi.Client, error) {
 	// A key supplied explicitly for this invocation (--api-key / OPENEMAIL_API_KEY)
 	// is the caller saying which credential goes with which host, so it is never
 	// blocked.
-	if a.tokenSource == "profile" && a.profile.APIURL != "" && a.apiURL != a.profile.APIURL {
-		return nil, authRequired(fmt.Sprintf(
-			"profile %q holds a key for %s, but this call targets %s — a stored key is not sent to another deployment.\n"+
-				"Pass --api-key (or OPENEMAIL_API_KEY) with a key for %s, or `openemail login` on a separate --profile.",
-			a.profileName, a.profile.APIURL, a.apiURL, a.apiURL))
+	if a.tokenSource == "profile" {
+		profAPI := firstNonEmpty(a.profile.APIURL, config.DefaultAPIURL)
+		if !sameAPIOrigin(a.apiURL, profAPI) {
+			return nil, authRequired(fmt.Sprintf(
+				"profile %q holds a key for %s, but this call targets %s — a stored key is not sent to another deployment.\n"+
+					"Pass --api-key (or OPENEMAIL_API_KEY) with a key for %s, or `openemail login` on a separate --profile.",
+				a.profileName, profAPI, a.apiURL, a.apiURL))
+		}
 	}
-	if a.tokenSource == "profile" && strings.HasPrefix(a.apiURL, "http://") &&
-		!strings.HasPrefix(a.apiURL, "http://localhost") && !strings.HasPrefix(a.apiURL, "http://127.0.0.1") {
+	if parsed, err := url.Parse(a.apiURL); err == nil && strings.EqualFold(parsed.Scheme, "http") && !isLoopbackHost(parsed.Hostname()) {
 		a.out.Warnf("sending a stored key over plain HTTP to %s", a.apiURL)
 	}
-	return a.client()
+	return a.clientWithToken(a.token)
 }
 
 // resolveConsoleURL answers where `login` should open a browser.
@@ -192,9 +204,13 @@ func (a *app) authedClient() (*coreapi.Client, error) {
 // that would send somebody's authorization for a staging or self-hosted
 // deployment to a login screen belonging to a different platform.
 func (a *app) resolveConsoleURL() (string, error) {
-	explicit := firstNonEmpty(a.flagConsoleURL, os.Getenv(envConsoleURL), a.profile.ConsoleURL)
+	profConsole := a.profile.ConsoleURL
+	if a.profile.APIURL != "" && !sameAPIOrigin(a.apiURL, a.profile.APIURL) {
+		profConsole = ""
+	}
+	explicit := firstNonEmpty(a.flagConsoleURL, os.Getenv(envConsoleURL), profConsole)
 	if explicit == "" {
-		if a.apiURL != config.DefaultAPIURL {
+		if !sameAPIOrigin(a.apiURL, config.DefaultAPIURL) {
 			return "", usageError(fmt.Errorf(
 				"no console URL for %s — pass --console-url (or set %s) for the deployment this API belongs to,\n"+
 					"or use --api-key for a key you already hold", a.apiURL, envConsoleURL))
