@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 )
@@ -79,13 +80,14 @@ func TestSaveAndLoadFileSecure(t *testing.T) {
 		t.Errorf("unexpected warn: %v", warn)
 	}
 
-	// Verify file mode 0600
+	// Windows represents the read-only attribute here, rather than Unix
+	// permission bits; access there is governed by ACLs.
 	credPath := filepath.Join(dir, "credentials", profile)
 	fi, err := os.Stat(credPath)
 	if err != nil {
 		t.Fatalf("stat failed: %v", err)
 	}
-	if fi.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Errorf("expected 0600 perms, got %o", fi.Mode().Perm())
 	}
 
@@ -133,6 +135,9 @@ func TestConcurrentSaveFileAtomic(t *testing.T) {
 			}
 		}
 	}()
+	// Join the writer even after a failed read, before TempDir cleanup removes
+	// its files and turns the original failure into more write errors.
+	defer func() { <-done }()
 
 	for {
 		select {
@@ -212,6 +217,58 @@ func TestWriteFileSecureRenameRetry(t *testing.T) {
 			}
 			if len(entries) != 1 || entries[0].Name() != profile {
 				t.Errorf("temporary credential was not cleaned up: %v", entries)
+			}
+		})
+	}
+}
+
+func TestLoadRetriesWindowsSharingErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		windows   bool
+		err       error
+		failures  int
+		wantCalls int
+	}{
+		{"transient sharing violation", true, syscall.Errno(32), 2, 3},
+		{"transient access denied", true, os.ErrPermission, 2, 3},
+		{"persistent sharing violation", true, syscall.Errno(32), 10, 5},
+		{"missing credential", true, os.ErrNotExist, 10, 1},
+		{"other error", true, errors.New("read failure"), 10, 1},
+		{"non-Windows sharing error", false, syscall.Errno(32), 10, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if _, _, err := Save(dir, "read-test", "oek_complete", true); err != nil {
+				t.Fatal(err)
+			}
+			originalRead, originalWindows := readFile, isWindows
+			t.Cleanup(func() { readFile, isWindows = originalRead, originalWindows })
+			isWindows = tc.windows
+			calls := 0
+			readFile = func(path string) ([]byte, error) {
+				calls++
+				if calls <= tc.failures {
+					return []byte("partial"), &os.PathError{Op: "open", Path: path, Err: tc.err}
+				}
+				return originalRead(path)
+			}
+			got, err := Load(dir, "read-test", File)
+			if tc.failures < tc.wantCalls {
+				if err != nil || got != "oek_complete" {
+					t.Errorf("Load = %q, %v; want the complete credential", got, err)
+				}
+			} else {
+				wantErr := tc.err
+				if errors.Is(wantErr, os.ErrNotExist) {
+					wantErr = ErrNotFound
+				}
+				if got != "" || !errors.Is(err, wantErr) {
+					t.Errorf("Load = %q, %v; want empty token and %v", got, err, wantErr)
+				}
+			}
+			if calls != tc.wantCalls {
+				t.Errorf("read attempts = %d, want %d", calls, tc.wantCalls)
 			}
 		})
 	}

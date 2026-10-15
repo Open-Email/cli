@@ -23,6 +23,23 @@ jobs:
       - name: test
         run: go test -race ./...
 
+  windows-credentials:
+    name: Windows credential tests
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          check-latest: true
+      - name: Credential suite and native Windows locks (10 runs)
+        run: go test -race -count=10 -v ./internal/secrets
+
   # The vendored openapi.snapshot.json is a COPY of core's, and the Go wire
   # structs in internal/coreapi are pinned to it by TestWireStructsMatchOpenAPI-
   # Snapshot. That test cannot notice this: it compares the structs against the

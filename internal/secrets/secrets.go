@@ -17,6 +17,7 @@ import (
 
 var (
 	renameFile = os.Rename
+	readFile   = os.ReadFile
 	isWindows  = runtime.GOOS == "windows"
 )
 
@@ -110,11 +111,18 @@ func writeFileSecure(path string, data []byte) error {
 // the destination without FILE_SHARE_DELETE. Retry the completed temp file;
 // never truncate the live credential, even if the lock does not clear.
 func replaceCredentialFile(tmp, path string) error {
+	return retryCredentialAccess(func() error { return renameFile(tmp, path) })
+}
+
+// Reads can also meet a sharing violation while another process replaces the
+// credential. Use the same bounded retry policy for both operations, preserving
+// permanent errors and the missing-credential result without a delay.
+func retryCredentialAccess(operation func() error) error {
 	// ERROR_SHARING_VIOLATION is 32 on Windows. The numeric value keeps the
 	// retry path testable on other platforms; it is only interpreted on Windows.
 	const sharingViolation = syscall.Errno(32)
 	for attempt := 0; ; attempt++ {
-		err := renameFile(tmp, path)
+		err := operation()
 		if err == nil {
 			return nil
 		}
@@ -147,7 +155,12 @@ func Load(configDir, profile, backend string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		data, err := os.ReadFile(path)
+		var data []byte
+		err = retryCredentialAccess(func() error {
+			var readErr error
+			data, readErr = readFile(path)
+			return readErr
+		})
 		if err != nil {
 			if os.IsNotExist(err) {
 				return "", ErrNotFound
