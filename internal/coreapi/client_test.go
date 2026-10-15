@@ -587,3 +587,73 @@ func TestJSONBodyDefaultsContentType(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want application/json", got)
 	}
 }
+
+// The vacation rule holds for every compare-and-swap write: a replay of a
+// guarded write that committed carries a precondition that is no longer true
+// (a stale ETag or version, or If-None-Match: * on what now exists) and comes
+// back 412, reporting the caller's own write as a conflict. Unguarded, the
+// same PUT is an upsert and safe to replay.
+func TestGuardedWritesAreNotReplayed(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		if atomic.AddInt32(&calls, 1)%2 == 1 {
+			w.WriteHeader(503)
+			w.Write([]byte(`{"error":"unavailable"}`))
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"href":"a.ics","etag":"e2","version":2,"prefs":{}}`))
+	}))
+	defer srv.Close()
+	c := testClient(t, srv.URL)
+	ctx := context.Background()
+	s := PimScope{MailboxID: "mbx1"}
+	data := map[string]any{"@type": "Event"}
+	raw := []byte("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n")
+
+	for _, tc := range []struct {
+		name  string
+		want  int32
+		write func() error
+	}{
+		{"pim json, unguarded", 2, func() error {
+			_, err := c.PutPimObjectJSON(ctx, s, PimCalendars, "work", "a.ics", data, PimPutOpts{})
+			return err
+		}},
+		{"pim json, if-match", 1, func() error {
+			_, err := c.PutPimObjectJSON(ctx, s, PimCalendars, "work", "a.ics", data, PimPutOpts{IfMatch: "e1"})
+			return err
+		}},
+		{"pim json, create-only", 1, func() error {
+			_, err := c.PutPimObjectJSON(ctx, s, PimCalendars, "work", "a.ics", data, PimPutOpts{IfNoneMatchStar: true})
+			return err
+		}},
+		{"pim raw, unguarded", 2, func() error {
+			_, err := c.PutPimObject(ctx, s, PimCalendars, "work", "a.ics", raw, PimPutOpts{})
+			return err
+		}},
+		{"pim raw, if-match", 1, func() error {
+			_, err := c.PutPimObject(ctx, s, PimCalendars, "work", "a.ics", raw, PimPutOpts{IfMatch: "e1"})
+			return err
+		}},
+		{"prefs, unconditional", 2, func() error {
+			_, err := c.PutPrefs(ctx, "mbx1", nil, "")
+			return err
+		}},
+		{"prefs, explicit *", 2, func() error {
+			_, err := c.PutPrefs(ctx, "mbx1", nil, "*")
+			return err
+		}},
+		{"prefs, version guard", 1, func() error {
+			_, err := c.PutPrefs(ctx, "mbx1", nil, "1")
+			return err
+		}},
+	} {
+		atomic.StoreInt32(&calls, 0)
+		_ = tc.write()
+		if got := atomic.LoadInt32(&calls); got != tc.want {
+			t.Errorf("%s: %d attempts, want %d", tc.name, got, tc.want)
+		}
+	}
+}
