@@ -90,8 +90,9 @@ explicit `-m` overrides must pass a mailbox ULID rather than an email address.
 
 By default the key lives in the OS keychain (macOS Keychain, Windows Credential
 Manager, or the Secret Service on Linux). If the keychain is unavailable the CLI
-falls back — **loudly**, with a printed warning — to a `0600` file under
-`~/.config/openemail/credentials/`. Force the file backend with `--no-keyring` or
+falls back, with a printed warning, to a file under
+`~/.config/openemail/credentials/`. Files use `0600` permissions on Unix;
+Windows access follows filesystem ACLs. Force the file backend with `--no-keyring` or
 `OPENEMAIL_NO_KEYRING=1` (useful for CI/headless).
 
 The config file itself (`~/.config/openemail/config.toml`) never contains a
