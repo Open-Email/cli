@@ -752,4 +752,46 @@ func TestResolveConsoleURL(t *testing.T) {
 			t.Fatalf("got %q, %v — want the production console", got, err)
 		}
 	})
+
+	t.Run("does not inherit profile ConsoleURL when targeting a different APIURL", func(t *testing.T) {
+		a := newApp("https://api.other.test", config.Profile{
+			APIURL:     "https://api.staging.test",
+			ConsoleURL: "https://app.staging.test",
+		})
+		if _, err := a.resolveConsoleURL(); err == nil {
+			t.Fatal("inherited staging ConsoleURL for a different --api-url")
+		}
+	})
+}
+
+func TestConsoleClientRefusesCrossOriginRedirect(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, 200, map[string]any{"token": "oek_redirected", "key_id": "k1"})
+	}))
+	defer target.Close()
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	var out mintedKey
+	if err := postConsole(context.Background(), redirector.URL, "/api/cli/token", map[string]string{"code": "x"}, &out); err == nil {
+		t.Fatal("postConsole followed a cross-origin redirect")
+	}
+}
+
+func TestWriteCallbackPageEscapesHTMLAndSetsSecurityHeaders(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeCallbackPage(rec, http.StatusOK, "<script>alert(1)</script>", "<b>msg</b>")
+	body := rec.Body.String()
+	if strings.Contains(body, "<script>") || strings.Contains(body, "<b>msg</b>") {
+		t.Fatalf("writeCallbackPage did not HTML-escape arguments:\n%s", body)
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := rec.Header().Get("Content-Security-Policy"); got == "" {
+		t.Fatal("missing Content-Security-Policy header")
+	}
 }

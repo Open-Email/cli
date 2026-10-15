@@ -105,3 +105,46 @@ func TestSaveAndLoadFileSecure(t *testing.T) {
 		t.Errorf("expected ErrNotFound after delete, got %v", err)
 	}
 }
+
+func TestConcurrentSaveFileAtomic(t *testing.T) {
+	dir := t.TempDir()
+	profile := "concurrent-prof"
+	secretA := "oek_secret_alpha_11111111111111111111"
+	secretB := "oek_secret_bravo_22222222222222222222"
+
+	// Pre-create a credential file and then concurrently write and read to verify
+	// readers never observe a truncated empty file or interleaved secret.
+	if _, _, err := Save(dir, profile, secretA, true); err != nil {
+		t.Fatalf("initial Save: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			s := secretA
+			if i%2 == 1 {
+				s = secretB
+			}
+			if _, _, err := Save(dir, profile, s, true); err != nil {
+				t.Errorf("Save(%d): %v", i, err)
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-done:
+			return
+		default:
+			got, err := Load(dir, profile, File)
+			if err != nil {
+				t.Fatalf("concurrent Load error: %v", err)
+			}
+			if got != secretA && got != secretB {
+				t.Fatalf("concurrent Load observed corrupted/truncated secret %q", got)
+			}
+		}
+	}
+}

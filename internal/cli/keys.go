@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -18,6 +17,7 @@ func newKeysCmd(a *app) *cobra.Command {
 		Use:     "keys",
 		Aliases: []string{"key"},
 		Short:   "Manage API keys",
+		Long:    "Create, list, and revoke account or system API keys.",
 	}
 	cmd.AddCommand(newKeysCreateCmd(a), newKeysListCmd(a), newKeysRevokeCmd(a))
 	return cmd
@@ -27,8 +27,9 @@ func newKeysCreateCmd(a *app) *cobra.Command {
 	var role, account string
 	var domains []string
 	cmd := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create an API key (the token is shown exactly once)",
+		Use:     "create <name>",
+		Aliases: []string{"new"},
+		Short:   "Create an API key (the token is shown exactly once)",
 		Long: "Create an API key.\n\n" +
 			"Pass --domain (repeatable) to mint a DOMAIN-SCOPED key: it reaches only those\n" +
 			"domains' directory and the mailboxes with an address on one of them. Other\n" +
@@ -37,6 +38,8 @@ func newKeysCreateCmd(a *app) *cobra.Command {
 			"answer 403 account_credentials_required. A scope narrows and never grants — it\n" +
 			"is a delegation inside one account, not a tenancy boundary — and it is fixed for\n" +
 			"the key's life: revoke and re-mint to change it.",
+		Example: "  openemail keys create \"ci-deploy\"\n" +
+			"  openemail keys create \"billing-mailer\" --domain billing.example.com",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -67,18 +70,21 @@ func newKeysCreateCmd(a *app) *cobra.Command {
 				a.out.Emit(created, nil)
 				return nil
 			}
-			a.out.Successf("Created key %s (%s), role %s", created.Name, created.ID, created.Role)
+			a.out.Successf("Created key %s (%s), role %s", sanitizeCell(created.Name), sanitizeCell(created.ID), sanitizeCell(created.Role))
 			if len(created.Domains) > 0 {
-				a.out.Msgf("Scope: %s", strings.Join(created.Domains, ", "))
+				a.out.Msgf("Scope: %s", sanitizeCell(strings.Join(created.Domains, ", ")))
 			}
 			a.out.Warnf("This token is shown only once — store it now.")
-			fmt.Fprintln(os.Stdout, created.Token) // token to stdout so it can be piped
+			fmt.Fprintln(a.out.out, created.Token) // token to stdout so it can be piped
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&role, "role", "", "system|account (system callers only; default account)")
 	cmd.Flags().StringVar(&account, "account", "", "account id to own the key (system callers only)")
 	cmd.Flags().StringArrayVar(&domains, "domain", nil, "restrict the key to this domain (repeatable); omit for the whole account")
+	_ = cmd.RegisterFlagCompletionFunc("role", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"account", "system"}, cobra.ShellCompDirectiveNoFileComp
+	})
 	if eagerProfileRole() != coreapi.PrincipalSystem {
 		_ = cmd.Flags().MarkHidden("role")
 		_ = cmd.Flags().MarkHidden("account")
@@ -96,7 +102,9 @@ func newKeysListCmd(a *app) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List API keys (newest first)",
-		Args:    cobra.NoArgs,
+		Example: "  openemail keys list\n" +
+			"  openemail keys list --all",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -175,25 +183,29 @@ func newKeysRevokeCmd(a *app) *cobra.Command {
 		Use:     "revoke <apiKeyId>",
 		Aliases: []string{"rm", "delete"},
 		Short:   "Revoke an API key",
+		Example: "  openemail keys revoke 01J00000000000000000000KEY --yes",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			id := args[0]
 			if !yes && !confirm(fmt.Sprintf("Revoke API key %s?", id)) {
 				return usageError(fmt.Errorf("aborted (pass --yes to skip confirmation)"))
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
 			}
 			if err := client.RevokeAPIKey(cmd.Context(), id); err != nil {
 				return err
 			}
 			a.out.Emit(map[string]any{"revoked": true, "id": id}, func(w io.Writer) {
-				a.out.Successf("Revoked API key %s", id)
+				a.out.Successf("Revoked API key %s", sanitizeCell(id))
+				if a.profile.KeyID != "" && id == a.profile.KeyID {
+					a.out.Warnf("revoked the key used by profile %q — run `openemail logout` or `openemail login` to refresh local credentials", a.profileName)
+				}
 			})
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
