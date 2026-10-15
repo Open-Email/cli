@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/Open-Email/cli/internal/config"
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/Open-Email/cli/internal/secrets"
@@ -63,7 +65,9 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 		if err == nil {
 			rerr := client.RevokeAPIKey(ctx, a.profile.KeyID)
 			switch {
-			case rerr == nil, coreapi.IsNotFound(rerr):
+			// 401: the key's own secret no longer authenticates, so it is
+			// already revoked or lapsed (`keys revoke` on itself hints logout).
+			case rerr == nil, coreapi.IsNotFound(rerr), coreapi.IsUnauthorized(rerr):
 				revoked = true
 			// A restricted key cannot revoke anything, itself included — the
 			// /api-keys surface is account-tier. Not a warning: it is what the
@@ -83,6 +87,8 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	case restricted:
 		stillLive = "this key is restricted and cannot revoke itself — revoke it from the console"
 	case revoked:
+	case a.profile.Role == coreapi.PrincipalAccount && a.profile.KeyID != "" && storedToken != "":
+		stillLive = fmt.Sprintf("key %s could not be revoked, so it is still valid on the server; revoke it from the console", a.profile.KeyID)
 	case a.profile.Role == coreapi.PrincipalMailbox:
 		stillLive = "the app password is still valid — revoke it with `openemail credentials revoke <mailboxId> <credentialId>`"
 	case storedToken != "":

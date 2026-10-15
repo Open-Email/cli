@@ -17,6 +17,8 @@ import (
 
 func TestLogoutIgnoresAmbientEnvTokenWhenNotLoggedIn(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENEMAIL_PROFILE", "")
+	t.Setenv("OPENEMAIL_API_URL", "")
 	t.Setenv("OPENEMAIL_NO_KEYRING", "1")
 	t.Setenv("OPENEMAIL_API_KEY", "oek_from_env")
 
@@ -62,6 +64,8 @@ func TestLogoutUsesStoredProfileTokenAndURLAndClearsState(t *testing.T) {
 	defer foreignSrv.Close()
 
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENEMAIL_PROFILE", "")
+	t.Setenv("OPENEMAIL_API_URL", "")
 	t.Setenv("OPENEMAIL_NO_KEYRING", "1")
 	// Set an ambient env token and a foreign --api-url to prove logout uses the
 	// profile's own stored token and APIURL.
@@ -125,5 +129,67 @@ func TestLogoutUsesStoredProfileTokenAndURLAndClearsState(t *testing.T) {
 	prof, _ := reloaded.Profile("default")
 	if prof.DefaultMailbox != "" {
 		t.Fatalf("DefaultMailbox %q was not cleared on logout", prof.DefaultMailbox)
+	}
+}
+
+// logoutAgainst logs out a CLI-minted account profile whose revoke call core
+// answers with status, and returns what the user was told.
+func logoutAgainst(t *testing.T, status int) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": http.StatusText(status)})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENEMAIL_PROFILE", "")
+	t.Setenv("OPENEMAIL_API_URL", "")
+	t.Setenv("OPENEMAIL_API_KEY", "")
+	t.Setenv("OPENEMAIL_NO_KEYRING", "1")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := secrets.Save(cfg.ConfigDir(), "default", "oek_stored", true); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SetProfile("default", config.Profile{
+		APIURL: srv.URL, AccountID: "acc_1", Role: "account",
+		KeyStorage: secrets.File, KeyID: "key_self",
+	})
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{}
+	if err := a.preRun(); err != nil {
+		t.Fatal(err)
+	}
+	var errBuf bytes.Buffer
+	a.out = &Printer{out: &bytes.Buffer{}, err: &errBuf}
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	if err := a.runLogout(cmd, false); err != nil {
+		t.Fatalf("runLogout: %v", err)
+	}
+	return errBuf.String()
+}
+
+// `keys revoke` on your own key hints `openemail logout`, and the revoke
+// that follows is answered 401: the key is already dead. Neither "could not
+// revoke" nor "not minted by the CLI" is true of it.
+func TestLogoutAfterOwnKeyRevokedSaysNothingFalse(t *testing.T) {
+	got := logoutAgainst(t, http.StatusUnauthorized)
+	if strings.Contains(got, "could not revoke") || strings.Contains(got, "not minted by the CLI") {
+		t.Fatalf("logout over a dead key: %q", got)
+	}
+}
+
+// A CLI-minted key that could not be revoked (an outage) is still live, and
+// it WAS minted by the CLI: say which key to revoke and where.
+func TestLogoutWhenRevokeFailsNamesTheKey(t *testing.T) {
+	got := logoutAgainst(t, http.StatusInternalServerError)
+	if strings.Contains(got, "not minted by the CLI") || !strings.Contains(got, "key_self") || !strings.Contains(got, "console") {
+		t.Fatalf("logout after a failed revoke: %q", got)
 	}
 }

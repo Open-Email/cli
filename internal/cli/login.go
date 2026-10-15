@@ -320,9 +320,9 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 		a.out.Warnf("%v", warn)
 	}
 	if serr != nil {
-		// A store that failed may still have destroyed what was there — the file
-		// backend truncates before it writes — so this failure needs the same
-		// repair as the ones below it.
+		// A failed store is repaired like the failures below it: a keychain
+		// write may have replaced the entry before failing, so put the previous
+		// secret back rather than assume it survived.
 		restorePrevious()
 		return serr
 	}
@@ -385,7 +385,9 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 		} else if managedKeyID != "" && sameAPIOrigin(a.apiURL, oldAPIURL) {
 			rerr = client.RevokeAPIKey(ctx, oldKeyID)
 		}
-		if rerr != nil && !coreapi.IsNotFound(rerr) && !coreapi.IsAccountCredentialsRequired(rerr) {
+		// A 401 is the old key's own secret failing to authenticate: it is
+		// already revoked or idle-lapsed, which is the usual reason to re-login.
+		if rerr != nil && !coreapi.IsNotFound(rerr) && !coreapi.IsUnauthorized(rerr) && !coreapi.IsAccountCredentialsRequired(rerr) {
 			a.out.Warnf("could not revoke the previous key %s: %v", oldKeyID, rerr)
 		}
 	}

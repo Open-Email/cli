@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Open-Email/cli/internal/config"
@@ -95,8 +96,10 @@ func (a *app) preRun() error {
 			return usageError(err)
 		}
 	} else if cfg.DefaultProfile != "" {
+		// Only a hand edit puts a bad value here, and `login --profile` does
+		// not overwrite a set default, so name where it lives.
 		if err := config.ValidateProfileName(cfg.DefaultProfile); err != nil {
-			return usageError(err)
+			return usageError(fmt.Errorf("default_profile in %s: %w", filepath.Join(cfg.ConfigDir(), "config.toml"), err))
 		}
 	}
 
@@ -190,7 +193,11 @@ func (a *app) authedClient() (*coreapi.Client, error) {
 		}
 	}
 	if parsed, err := url.Parse(a.apiURL); err == nil && strings.EqualFold(parsed.Scheme, "http") && !isLoopbackHost(parsed.Hostname()) {
-		a.out.Warnf("sending a stored key over plain HTTP to %s", a.apiURL)
+		key := "an API key"
+		if a.tokenSource == "profile" {
+			key = "a stored key"
+		}
+		a.out.Warnf("sending %s over plain HTTP to %s", key, a.apiURL)
 	}
 	return a.clientWithToken(a.token)
 }

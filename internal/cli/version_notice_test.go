@@ -22,6 +22,13 @@ func TestVersionNewer(t *testing.T) {
 		{"v1.2.3", "1.2.3-rc1", true},  // stable release is newer than its own RC
 		{"v0.2.0", "0.1.0-dev", true},
 		{"garbage", "1.0.0", false},
+		// `make build` stamps git describe: a build AT or AFTER the tag, never
+		// a pre-release of it.
+		{"v0.5.0", "v0.5.0-16-g76e8231", false},
+		{"v0.5.0", "v0.5.0-dirty", false},
+		{"v0.5.0", "v0.5.0-16-g76e8231-dirty", false},
+		{"v0.5.1", "v0.5.0-16-g76e8231", true},
+		{"v0.5.0", "v0.5.0-rc1-3-gabc1234", true}, // after an RC is still before the release
 	}
 	for _, c := range cases {
 		if got := versionNewer(c.latest, c.current); got != c.want {

@@ -763,3 +763,35 @@ func TestLoginPasteReadsFromPipedStdin(t *testing.T) {
 		t.Fatalf("stored %q, want oek_piped_via_stdin", secret)
 	}
 }
+
+// Re-login is how a user recovers from a key that was revoked or idle-lapsed,
+// and the replaced key is revoked with its own secret: core answers that
+// bearer 401. The key is already dead, so there is nothing to warn about.
+func TestReLoginOverADeadKeyDoesNotWarn(t *testing.T) {
+	oldCore := newFakeCore()
+	defer oldCore.Close()
+	oldCore.failRevocations(http.StatusUnauthorized)
+	newCore := newFakeCore()
+	defer newCore.Close()
+
+	a := loginFixture(t, oldCore.URL, config.Profile{
+		APIURL: oldCore.URL, AccountID: "acc_old", Role: "account",
+		KeyStorage: secrets.File, KeyID: "key_old",
+	})
+	if _, _, err := secrets.Save(a.cfg.ConfigDir(), "default", "oek_old_secret", true); err != nil {
+		t.Fatal(err)
+	}
+	var warnings *bytes.Buffer
+	a.out, warnings = capturingPrinter()
+	a.apiURL = newCore.URL
+	a.flagAPIKey = "oek_new_unmanaged"
+	if err := runLoginWith(t, a, loginOpts{noMint: true}); err != nil {
+		t.Fatalf("runLogin: %v", err)
+	}
+	if got := oldCore.revokedKeys(); len(got) != 1 || got[0] != "key_old" {
+		t.Fatalf("oldCore saw revocations %v, want [key_old]", got)
+	}
+	if strings.Contains(warnings.String(), "could not revoke") {
+		t.Fatalf("a dead key drew a revocation warning: %q", warnings.String())
+	}
+}

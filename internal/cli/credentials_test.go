@@ -19,7 +19,7 @@ func TestCredentialsListShowsExpiredStatus(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"credentials": []map[string]any{
 				{
-					"id":        "cred_expired",
+					"id":        "cred_1",
 					"kind":      "app_password",
 					"username":  "alice@example.com",
 					"createdAt": past - 3600,
@@ -42,8 +42,15 @@ func TestCredentialsListShowsExpiredStatus(t *testing.T) {
 	if err := cmd.RunE(cmd, []string{"01J00000000000000000000MBX"}); err != nil {
 		t.Fatalf("credentials list: %v", err)
 	}
-	if !strings.Contains(outBuf.String(), "expired") {
-		t.Fatalf("expected 'expired' status in table output, got:\n%s", outBuf.String())
+	// The id is neutral so only the STATUS column can say "expired".
+	var row string
+	for _, line := range strings.Split(outBuf.String(), "\n") {
+		if strings.Contains(line, "cred_1") {
+			row = line
+		}
+	}
+	if !strings.Contains(row, "expired") {
+		t.Fatalf("expected 'expired' status in the credential's row, got:\n%s", outBuf.String())
 	}
 }
 

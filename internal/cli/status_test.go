@@ -38,6 +38,8 @@ func TestStatusRefusesCrossDeploymentProfileToken(t *testing.T) {
 	// and a stored profile token. Pointing --api-url at otherSrv must NOT leak the
 	// stored token via `status` or `authedClient()`.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENEMAIL_PROFILE", "")
+	t.Setenv("OPENEMAIL_API_URL", "")
 	t.Setenv("OPENEMAIL_NO_KEYRING", "1")
 	t.Setenv("OPENEMAIL_API_KEY", "")
 
@@ -125,6 +127,7 @@ func TestAuthedClientPlainHTTPWarning(t *testing.T) {
 
 func TestPreRunRejectsInvalidProfileName(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENEMAIL_API_URL", "")
 	t.Setenv("OPENEMAIL_PROFILE", "")
 
 	a := &app{flagProfile: "../escape"}
@@ -135,5 +138,53 @@ func TestPreRunRejectsInvalidProfileName(t *testing.T) {
 	var exitErr *ExitError
 	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
 		t.Fatalf("want ExitError code 2, got %v", err)
+	}
+}
+
+// The warning covers every key sent over plain HTTP, and only a profile's key
+// is stored: an env or flag key must not be described as one.
+func TestPlainHTTPWarningDescribesTheKeyItSends(t *testing.T) {
+	for _, source := range []string{"profile", "env", "flag"} {
+		var errBuf bytes.Buffer
+		a := &app{
+			out:         &Printer{out: &bytes.Buffer{}, err: &errBuf},
+			profileName: "default",
+			profile:     config.Profile{APIURL: "http://api.staging.test"},
+			apiURL:      "http://api.staging.test",
+			token:       "oek_test",
+			tokenSource: source,
+		}
+		if _, err := a.authedClient(); err != nil {
+			t.Fatalf("%s: %v", source, err)
+		}
+		got := errBuf.String()
+		if !strings.Contains(got, "plain HTTP") {
+			t.Fatalf("%s key over plain HTTP did not warn: %q", source, got)
+		}
+		if source != "profile" && strings.Contains(got, "stored") {
+			t.Fatalf("%s key described as stored: %q", source, got)
+		}
+	}
+}
+
+// A default_profile that fails validation can only come from a hand edit of
+// config.toml, and `login --profile` does not overwrite a set default, so the
+// error has to say where the bad value lives.
+func TestPreRunNamesAnInvalidDefaultProfileSource(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("OPENEMAIL_PROFILE", "")
+	t.Setenv("OPENEMAIL_API_URL", "")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.DefaultProfile = "x/y"
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	err = (&app{}).preRun()
+	if err == nil || !strings.Contains(err.Error(), "default_profile") || !strings.Contains(err.Error(), "config.toml") {
+		t.Fatalf("want an error naming default_profile in config.toml, got %v", err)
 	}
 }
