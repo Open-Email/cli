@@ -116,9 +116,10 @@ func newThreadGetCmd(a *app) *cobra.Command {
 		cursor string
 	)
 	cmd := &cobra.Command{
-		Use:   "get <threadId>",
-		Short: "Show a thread's messages (oldest first) and reply context",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <threadId>",
+		Aliases: []string{"show"},
+		Short:   "Show a thread's messages (oldest first) and reply context",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -170,10 +171,12 @@ func newThreadGetCmd(a *app) *cobra.Command {
 
 func newThreadReplyCmd(a *app) *cobra.Command {
 	var (
-		body                        bodyFlags
-		subject, fromName           string
-		deliveryID                  string
-		noSave, bounce, showContext bool
+		body              bodyFlags
+		subject, fromName string
+		deliveryID        string
+		save, noSave      bool
+		bounce, noBounce  bool
+		showContext       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "reply <threadId>",
@@ -192,12 +195,11 @@ func newThreadReplyCmd(a *app) *cobra.Command {
 			"recipient — pass it only when you mean that.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
+			savePtr, err := resolveToggleFlag(cmd, "save", save, "no-save", noSave)
 			if err != nil {
 				return err
 			}
-			ctx := cmd.Context()
-			mbx, err := a.resolveMailbox(ctx, client, "")
+			bouncePtr, err := resolveToggleFlag(cmd, "bounce", bounce, "no-bounce", noBounce)
 			if err != nil {
 				return err
 			}
@@ -206,6 +208,15 @@ func newThreadReplyCmd(a *app) *cobra.Command {
 				return err
 			}
 			if req.Headers, err = body.headers(); err != nil {
+				return err
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			mbx, err := a.resolveMailbox(ctx, client, "")
+			if err != nil {
 				return err
 			}
 			// --show-context prints what the server will derive, so a user can
@@ -227,12 +238,11 @@ func newThreadReplyCmd(a *app) *cobra.Command {
 			// Always carry a delivery id, as the sibling send verbs do: a
 			// post-commit timeout retried by hand must converge on the same
 			// submission rather than mailing the recipient twice.
-			opts := coreapi.SendOptions{DeliveryID: firstNonEmpty(deliveryID, newDeliveryID())}
-			if noSave {
-				no := false
-				opts.Save = &no
+			opts := coreapi.SendOptions{
+				DeliveryID: firstNonEmpty(deliveryID, newDeliveryID()),
+				Save:       savePtr,
+				Bounce:     bouncePtr,
 			}
-			opts.Bounce = boolPtrIfChanged(cmd, "bounce", bounce)
 
 			res, raw, err := client.ReplyToThread(ctx, mbx, args[0], req, opts)
 			if err != nil {
@@ -251,8 +261,10 @@ func newThreadReplyCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&subject, "subject", "", "override the derived \"Re: …\" subject (renames the thread)")
 	cmd.Flags().StringVar(&fromName, "from-name", "", "display name for the From header (the address is always this mailbox's)")
 	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID; reused on retry)")
+	cmd.Flags().BoolVar(&save, "save", true, "keep a Sent copy in this mailbox (kept by default)")
 	cmd.Flags().BoolVar(&noSave, "no-save", false, "do not keep a Sent copy (kept by default)")
 	cmd.Flags().BoolVar(&bounce, "bounce", false, "deliver a DSN into this mailbox on terminal relay failure")
+	cmd.Flags().BoolVar(&noBounce, "no-bounce", false, "do not deliver a DSN on terminal relay failure")
 	cmd.Flags().BoolVar(&showContext, "show-context", false, "print the derived recipient and subject before sending")
 	return cmd
 }

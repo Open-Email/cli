@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Open-Email/cli/internal/config"
 	"github.com/Open-Email/cli/internal/coreapi"
 )
 
@@ -37,5 +40,29 @@ func TestKeyStatusReportsWhetherAKeyStillWorks(t *testing.T) {
 				t.Fatalf("status %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestKeysRevokeWarnsWhenRevokingActiveProfileKey(t *testing.T) {
+	srv := newFakeCore()
+	defer srv.Close()
+
+	out, warnings := capturingPrinter()
+	a := &app{
+		out:         out,
+		profileName: "default",
+		profile:     config.Profile{APIURL: srv.URL, KeyID: "key_self"},
+		apiURL:      srv.URL,
+		token:       "oek_self",
+		tokenSource: "profile",
+	}
+	cmd := newKeysRevokeCmd(a)
+	cmd.SetContext(context.Background())
+	_ = cmd.Flags().Set("yes", "true")
+	if err := cmd.RunE(cmd, []string{"key_self"}); err != nil {
+		t.Fatalf("keys revoke: %v", err)
+	}
+	if !strings.Contains(warnings.String(), "default") {
+		t.Fatalf("expected warning mentioning profile 'default' when revoking own key, got:\n%s", warnings.String())
 	}
 }

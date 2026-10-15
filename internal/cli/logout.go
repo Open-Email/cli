@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/Open-Email/cli/internal/config"
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/Open-Email/cli/internal/secrets"
 	"github.com/spf13/cobra"
@@ -11,7 +12,14 @@ func newLogoutCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Remove stored credentials (revoking the CLI's own minted key)",
-		Args:  cobra.NoArgs,
+		Long: "Remove the stored credentials for the active profile.\n\n" +
+			"If the profile holds an account API key that the CLI minted during login, it\n" +
+			"is revoked on the server (DELETE /api-keys/:id) before removing the local\n" +
+			"secret unless --keep-key is passed.",
+		Example: "  openemail logout\n" +
+			"  openemail logout --profile staging\n" +
+			"  openemail logout --keep-key",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runLogout(cmd, keepKey)
 		},
@@ -22,9 +30,16 @@ func newLogoutCmd(a *app) *cobra.Command {
 
 func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	ctx := cmd.Context()
-	if a.profile.KeyStorage == "" && a.token == "" {
+	if a.profile.KeyStorage == "" && a.profile.Role == "" && a.profile.KeyID == "" {
 		a.out.Msgf("Not logged in for profile %q.", a.profileName)
 		return nil
+	}
+
+	var storedToken string
+	if a.profile.KeyStorage != "" {
+		if tok, err := secrets.Load(a.cfg.ConfigDir(), a.profileName, a.profile.KeyStorage); err == nil {
+			storedToken = tok
+		}
 	}
 
 	// Revoke the CLI's own minted key (best-effort — a already-revoked or missing
@@ -38,8 +53,13 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	// will not go and revoke it.
 	revoked := false
 	restricted := false
-	if !keepKey && a.profile.Role == coreapi.PrincipalAccount && a.profile.KeyID != "" && a.token != "" {
-		client, err := a.client()
+	if !keepKey && a.profile.Role == coreapi.PrincipalAccount && a.profile.KeyID != "" && storedToken != "" {
+		profAPIURL := firstNonEmpty(a.profile.APIURL, config.DefaultAPIURL)
+		client, err := coreapi.New(coreapi.Config{
+			BaseURL:   profAPIURL,
+			Token:     storedToken,
+			UserAgent: "openemail-cli/" + Version,
+		})
 		if err == nil {
 			rerr := client.RevokeAPIKey(ctx, a.profile.KeyID)
 			switch {
@@ -65,7 +85,7 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	case revoked:
 	case a.profile.Role == coreapi.PrincipalMailbox:
 		stillLive = "the app password is still valid — revoke it with `openemail credentials revoke <mailboxId> <credentialId>`"
-	case a.token != "":
+	case storedToken != "":
 		stillLive = "this key was not minted by the CLI, so it is still valid on the server — revoke it where it was created"
 	}
 
@@ -88,6 +108,7 @@ func (a *app) runLogout(cmd *cobra.Command, keepKey bool) error {
 	prof.KeyStorage = ""
 	prof.KeyID = ""
 	prof.KeyName = ""
+	prof.DefaultMailbox = ""
 	a.cfg.SetProfile(a.profileName, prof)
 	if err := a.cfg.Save(); err != nil {
 		return err

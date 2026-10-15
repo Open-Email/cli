@@ -103,9 +103,9 @@ func newSieveScriptGetCmd(a *app) *cobra.Command {
 				a.out.Successf("Wrote %s (active=%v)", output, s.Active)
 				return nil
 			}
-			fmt.Fprint(os.Stdout, s.Script)
+			fmt.Fprint(a.out.out, s.Script)
 			if !strings.HasSuffix(s.Script, "\n") {
-				fmt.Fprintln(os.Stdout)
+				fmt.Fprintln(a.out.out)
 			}
 			return nil
 		},
@@ -179,7 +179,7 @@ func newSieveScriptDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -369,7 +369,7 @@ func newSieveCapabilitiesCmd(a *app) *cobra.Command {
 
 // readScriptSource reads a script body from a file or stdin.
 func readScriptSource(file string) (string, error) {
-	if file != "" {
+	if file != "" && file != "-" {
 		b, err := os.ReadFile(file)
 		if err != nil {
 			return "", err

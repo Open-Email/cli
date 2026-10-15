@@ -169,6 +169,7 @@ func (o SendOptions) apply(r *request) {
 	}
 	if o.DeliveryID != "" {
 		r.headers = map[string]string{"X-Delivery-Id": o.DeliveryID}
+		r.idempotent = true
 	}
 }
 

@@ -284,7 +284,7 @@ func (c *Client) AppendMessage(ctx context.Context, mailboxID string, opts Appen
 	raw, err := c.doJSONRaw(ctx, request{
 		method: http.MethodPost, path: c.messagesPath(mailboxID), query: q,
 		getBody: getBody, bodyLen: bodyLen, contentType: "message/rfc822",
-		headers: headers, idempotent: true,
+		headers: headers, idempotent: opts.DeliveryID != "",
 	}, &out)
 	if err != nil {
 		return nil, nil, err

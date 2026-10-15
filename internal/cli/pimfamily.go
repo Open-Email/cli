@@ -141,13 +141,26 @@ func newPimColListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	}
 }
 
+func validatePimVisibility(flag, v string) error {
+	switch v {
+	case "", "private", "shared", "public":
+		return nil
+	default:
+		return usageError(fmt.Errorf("invalid %s %q: expected private, shared, or public", flag, v))
+	}
+}
+
 func newPimColCreateCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	var displayName, color, description, role, visibility string
 	cmd := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create a " + f.noun + " (name = URL slug: letters, digits, . _ ~ -)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "create <name>",
+		Aliases: []string{"new"},
+		Short:   "Create a " + f.noun + " (name = URL slug: letters, digits, . _ ~ -)",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePimVisibility("--visibility", visibility); err != nil {
+				return err
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -178,14 +191,16 @@ func newPimColCreateCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "free-text description")
 	cmd.Flags().StringVar(&role, "role", "", "collection role (e.g. default, tasks)")
 	cmd.Flags().StringVar(&visibility, "visibility", "", "private (default) | shared | public")
+	registerEnumFlagCompletion(cmd, "visibility", "private", "shared", "public")
 	return cmd
 }
 
 func newPimColGetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <" + f.noun + ">",
-		Short: "Show one " + f.noun + " (by ULID or name slug)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <" + f.noun + ">",
+		Aliases: []string{"show"},
+		Short:   "Show one " + f.noun + " (by ULID or name slug)",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -230,13 +245,21 @@ func newPimColUpdateCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			"change (409 visibility_conflict on a lost race).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
+			if cmd.Flags().Changed("visibility") {
+				if visibility == "" {
+					return usageError(errors.New("--visibility cannot be empty: expected private, shared, or public"))
+				}
+				if err := validatePimVisibility("--visibility", visibility); err != nil {
+					return err
+				}
 			}
-			s, err := scope(cmd, client)
-			if err != nil {
-				return err
+			if cmd.Flags().Changed("expected-visibility") {
+				if expectedVisibility == "" {
+					return usageError(errors.New("--expected-visibility cannot be empty: expected private, shared, or public"))
+				}
+				if err := validatePimVisibility("--expected-visibility", expectedVisibility); err != nil {
+					return err
+				}
 			}
 			patch := map[string]any{}
 			setStr := func(flag, key, val string) {
@@ -265,6 +288,14 @@ func newPimColUpdateCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			if len(patch) == 0 {
 				return usageError(errors.New("nothing to update — pass at least one field flag"))
 			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
+			}
+			s, err := scope(cmd, client)
+			if err != nil {
+				return err
+			}
 			col, err := client.UpdatePimCollection(cmd.Context(), s, f.kind, args[0], patch)
 			if err != nil {
 				return err
@@ -282,6 +313,8 @@ func newPimColUpdateCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	cmd.Flags().StringVar(&role, "role", "", "collection role (empty clears)")
 	cmd.Flags().StringVar(&visibility, "visibility", "", "private | shared | public")
 	cmd.Flags().StringVar(&expectedVisibility, "expected-visibility", "", "current visibility this change assumes (CAS guard)")
+	registerEnumFlagCompletion(cmd, "visibility", "private", "shared", "public")
+	registerEnumFlagCompletion(cmd, "expected-visibility", "private", "shared", "public")
 	return cmd
 }
 
@@ -293,12 +326,12 @@ func newPimColDeleteCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 		Short:   "Delete a " + f.noun + " and every object in it",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes && !confirm(fmt.Sprintf("Delete %s %q and ALL its objects?", f.noun, args[0])) {
+				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
-			}
-			if !yes && !confirm(fmt.Sprintf("Delete %s %q and ALL its objects?", f.noun, args[0])) {
-				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
 			}
 			s, err := scope(cmd, client)
 			if err != nil {
@@ -314,7 +347,7 @@ func newPimColDeleteCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -427,7 +460,7 @@ func newPimImportCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "read the document from a file (default: stdin)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "read the document from a file (default: stdin)")
 	return cmd
 }
 
@@ -557,11 +590,13 @@ func newPimObjListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
 	cmd.Flags().StringVar(&fields, "fields", "", "meta (omit raw content) | full (default)")
 	cmd.Flags().StringVar(&uid, "uid", "", "point lookup by iCalendar/vCard UID")
+	registerEnumFlagCompletion(cmd, "fields", "meta", "full")
 	if f.kind == coreapi.PimCalendars {
 		cmd.Flags().StringVar(&start, "start", "", "range start (RFC3339, YYYY-MM-DD, or unix seconds)")
 		cmd.Flags().StringVar(&end, "end", "", "range end, exclusive (RFC3339, YYYY-MM-DD, or unix seconds)")
 		cmd.Flags().StringVar(&component, "component", "", "restrict to one kind: event | task | journal (VEVENT | VTODO | VJOURNAL)")
 		cmd.Flags().BoolVar(&expand, "expand", false, "expand recurring objects into occurrences (requires --start and --end)")
+		registerEnumFlagCompletion(cmd, "component", "event", "task", "journal", "VEVENT", "VTODO", "VJOURNAL")
 	}
 	return cmd
 }
@@ -612,14 +647,23 @@ func printPimInstances(a *app, w io.Writer, objs []coreapi.PimObject) {
 	printTable(w, a.out, []string{"START", "END", "STATUS", "HREF", "UID"}, rows)
 }
 
+func structuredFlagName(f pimFamily) string {
+	if f.kind == coreapi.PimCalendars {
+		return "jscalendar"
+	}
+	return "jscontact"
+}
+
 func newPimObjGetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	var uid, outPath string
-	var asJSON bool
+	var asStructured bool
+	flagName := structuredFlagName(f)
 	cmd := &cobra.Command{
-		Use:   "get <" + f.noun + "> [href]",
-		Short: "Fetch one object's raw " + f.ext + " text (by href, or --uid)",
+		Use:     "get <" + f.noun + "> [href]",
+		Aliases: []string{"show"},
+		Short:   "Fetch one object's raw " + f.ext + " text (by href, or --uid)",
 		Long: "Fetch one object. By default this is the raw " + f.ext + " wire text.\n" +
-			"--json asks for the same resource as " + f.jsonName + " instead, which is the\n" +
+			"--" + flagName + " (or --json) asks for the same resource as " + f.jsonName + " instead, which is the\n" +
 			"shape to edit programmatically — it reports `writable:false` when the object\n" +
 			"can be read as JSON but never written back.",
 		Args: cobra.RangeArgs(1, 2),
@@ -636,13 +680,13 @@ func newPimObjGetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if asJSON {
+			if asStructured || a.out.JSON() {
 				obj, jerr := client.GetPimObjectJSON(cmd.Context(), s, f.kind, args[0], href, uid)
 				if jerr != nil {
 					return jerr
 				}
 				a.out.Emit(obj, func(w io.Writer) {
-					printPimObjectJSON(a, obj, f)
+					printPimObjectJSON(w, a, obj, f)
 				})
 				return nil
 			}
@@ -662,20 +706,20 @@ func newPimObjGetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&uid, "uid", "", "look up by UID instead of href")
 	cmd.Flags().StringVarP(&outPath, "output", "o", "", "write to a file instead of stdout")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "fetch as "+f.jsonName+" instead of raw "+f.ext)
+	cmd.Flags().BoolVar(&asStructured, flagName, false, "fetch as "+f.jsonName+" instead of raw "+f.ext)
 	return cmd
 }
 
 // printPimObjectJSON renders the JSON representation for a human: the data
 // document itself, with the writability caveat stated rather than implied.
-func printPimObjectJSON(a *app, obj *coreapi.PimObjectJSON, f pimFamily) {
+func printPimObjectJSON(w io.Writer, a *app, obj *coreapi.PimObjectJSON, f pimFamily) {
 	if obj.Data == nil {
 		// Narrow, and worth naming: core maps a VEVENT to an Event, a VTODO to a
 		// Task and a VCARD to a Card, so a null here means a VJOURNAL (which no
 		// JSCalendar type models) or a body core could not parse — never "this
 		// kind of object is unsupported".
 		a.out.Warnf("no %s mapping for this object (a journal entry, or a body that did not parse) — the wire text is below", f.jsonName)
-		fmt.Fprintln(os.Stdout, obj.Content)
+		fmt.Fprintln(w, obj.Content)
 		return
 	}
 	blob, err := json.MarshalIndent(obj.Data, "", "  ")
@@ -683,7 +727,7 @@ func printPimObjectJSON(a *app, obj *coreapi.PimObjectJSON, f pimFamily) {
 		a.out.Warnf("could not render the data document: %v", err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, string(blob))
+	fmt.Fprintln(w, string(blob))
 	if !obj.Writable {
 		a.out.Warnf("read-only: this object converts to %s but cannot be converted back, so an edit would be refused", f.jsonName)
 	}
@@ -691,12 +735,13 @@ func printPimObjectJSON(a *app, obj *coreapi.PimObjectJSON, f pimFamily) {
 
 func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	var file, ifMatch string
-	var createOnly, asJSON bool
+	var createOnly, asStructured bool
+	flagName := structuredFlagName(f)
 	cmd := &cobra.Command{
 		Use:   "put <" + f.noun + "> <href>",
-		Short: "Create or replace one object from raw " + f.ext + " text (or --json)",
+		Short: "Create or replace one object from raw " + f.ext + " text (or --" + flagName + " / --json)",
 		Long: "Create or replace one object from raw " + f.ext + " text (from --file or stdin).\n" +
-			"--json takes a " + f.jsonName + " document instead; core converts it to wire text\n" +
+			"--" + flagName + " (or --json) takes a " + f.jsonName + " document instead; core converts it to wire text\n" +
 			"before the ordinary write path runs, so ETags, If-Match and scheduling behave\n" +
 			"identically either way.\n\n" +
 			"--if-match guards a replace with the stored ETag (412 on mismatch);\n" +
@@ -704,6 +749,17 @@ func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			"On a calendar, an organizer's write fans out iTIP invitations to attendees.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body, err := readRawInput(file)
+			if err != nil {
+				return err
+			}
+			useJSON := asStructured || a.out.JSON() || strings.HasPrefix(strings.TrimSpace(string(body)), "{")
+			var data map[string]any
+			if useJSON {
+				if jerr := json.Unmarshal(body, &data); jerr != nil {
+					return usageError(fmt.Errorf("invalid %s JSON: %w", f.jsonName, jerr))
+				}
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -712,17 +768,9 @@ func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			body, err := readRawInput(file)
-			if err != nil {
-				return err
-			}
 			opts := coreapi.PimPutOpts{IfMatch: ifMatch, IfNoneMatchStar: createOnly}
 			var res *coreapi.PimPutResult
-			if asJSON {
-				var data map[string]any
-				if jerr := json.Unmarshal(body, &data); jerr != nil {
-					return usageError(fmt.Errorf("invalid %s JSON: %w", f.jsonName, jerr))
-				}
+			if useJSON {
 				res, err = client.PutPimObjectJSON(cmd.Context(), s, f.kind, args[0], args[1], data, opts)
 			} else {
 				res, err = client.PutPimObject(cmd.Context(), s, f.kind, args[0], args[1], body, opts)
@@ -743,10 +791,10 @@ func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "read the object from a file (default: stdin)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "read the object from a file (default: stdin)")
 	cmd.Flags().StringVar(&ifMatch, "if-match", "", "replace only if the stored ETag matches")
 	cmd.Flags().BoolVar(&createOnly, "create-only", false, "fail (412) if the href already exists")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "the input is a "+f.jsonName+" document, not raw "+f.ext)
+	cmd.Flags().BoolVar(&asStructured, flagName, false, "the input is a "+f.jsonName+" document, not raw "+f.ext)
 	return cmd
 }
 
@@ -763,16 +811,16 @@ func newPimObjDeleteCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			what := href
 			if uid != "" {
 				what = "uid " + uid
 			}
 			if !yes && !confirm(fmt.Sprintf("Delete %s from %s %q?", what, f.noun, args[0])) {
 				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
 			}
 			s, err := scope(cmd, client)
 			if err != nil {
@@ -790,7 +838,7 @@ func newPimObjDeleteCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&uid, "uid", "", "delete by UID instead of href")
 	cmd.Flags().StringVar(&ifMatch, "if-match", "", "delete only if the stored ETag matches")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -826,9 +874,10 @@ func newPimObjMoveCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 // addresses the calendars path family directly.
 func newPimRespondCmd(a *app, scope pimScopeFn) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "respond <calendar> <href> <accepted|declined|tentative|needs-action>",
-		Aliases: []string{"rsvp"},
-		Short:   "RSVP to an invitation: patch your copy and tell the organizer",
+		Use:       "respond <calendar> <href> <accepted|declined|tentative|needs-action>",
+		Aliases:   []string{"rsvp"},
+		ValidArgs: []string{"accepted", "declined", "tentative", "needs-action"},
+		Short:     "RSVP to an invitation: patch your copy and tell the organizer",
 		Long: "Record your participation status on an event in your calendar. Your copy is\n" +
 			"patched, then the organizer is told by exactly one route: a local organizer's\n" +
 			"copy is updated in place, a remote organizer is mailed a METHOD:REPLY.",
@@ -952,6 +1001,7 @@ func newPimShareSetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&permission, "permission", "read", "read | read-write")
+	registerEnumFlagCompletion(cmd, "permission", "read", "read-write")
 	return cmd
 }
 
@@ -959,16 +1009,16 @@ func newPimShareRemoveCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command 
 	var yes bool
 	cmd := &cobra.Command{
 		Use:     "remove <" + f.noun + "> <shareeMailbox>",
-		Aliases: []string{"rm", "revoke"},
+		Aliases: []string{"rm", "revoke", "delete"},
 		Short:   "Revoke a mailbox's grant",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes && !confirm(fmt.Sprintf("Revoke %s's access to %s %q?", args[1], f.noun, args[0])) {
+				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
-			}
-			if !yes && !confirm(fmt.Sprintf("Revoke %s's access to %s %q?", args[1], f.noun, args[0])) {
-				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
 			}
 			s, err := scope(cmd, client)
 			if err != nil {
@@ -987,7 +1037,7 @@ func newPimShareRemoveCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command 
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -1041,9 +1091,10 @@ func newPimTokenListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 func newPimTokenCreateCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	var label, expiresIn string
 	cmd := &cobra.Command{
-		Use:   "create <" + f.noun + ">",
-		Short: "Mint a feed token — the unauthenticated subscribe URL is shown once",
-		Args:  cobra.ExactArgs(1),
+		Use:     "create <" + f.noun + ">",
+		Aliases: []string{"new"},
+		Short:   "Mint a feed token — the unauthenticated subscribe URL is shown once",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var expiresAt int64
 			if expiresIn != "" {
@@ -1071,7 +1122,7 @@ func newPimTokenCreateCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command 
 			}
 			a.out.Successf("Created feed token %s", tk.ID)
 			a.out.Warnf("This URL embeds the token and is shown only once — store it now.")
-			fmt.Fprintln(os.Stdout, tk.URL)
+			fmt.Fprintln(a.out.out, tk.URL)
 			return nil
 		},
 	}
@@ -1088,12 +1139,12 @@ func newPimTokenRevokeCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command 
 		Short:   "Revoke a feed token (its URL stops working immediately)",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes && !confirm(fmt.Sprintf("Revoke feed token %s?", args[1])) {
+				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
-			}
-			if !yes && !confirm(fmt.Sprintf("Revoke feed token %s?", args[1])) {
-				return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
 			}
 			s, err := scope(cmd, client)
 			if err != nil {
@@ -1108,7 +1159,7 @@ func newPimTokenRevokeCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command 
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -1129,7 +1180,7 @@ func pimHrefArg(args []string, uid string) (string, error) {
 // readRawInput reads a small raw body wholesale from a file or stdin (PIM
 // objects are text; core caps single objects at 1 MiB and imports at 16 MiB).
 func readRawInput(path string) ([]byte, error) {
-	if path != "" {
+	if path != "" && path != "-" {
 		return os.ReadFile(path)
 	}
 	return io.ReadAll(os.Stdin)
@@ -1138,6 +1189,9 @@ func readRawInput(path string) ([]byte, error) {
 // writeStream copies a response stream to a file or stdout.
 func writeStream(a *app, body io.Reader, outPath string) error {
 	var dst io.Writer = os.Stdout
+	if a != nil && a.out != nil && a.out.out != nil {
+		dst = a.out.out
+	}
 	if outPath != "" {
 		f, err := os.Create(outPath)
 		if err != nil {

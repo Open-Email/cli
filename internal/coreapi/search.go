@@ -145,25 +145,65 @@ type SemanticSearchResult struct {
 // what separates them. Bounded at the 100 most relevant candidates before
 // filtering: this is "the most relevant", never "every match ranked" — deep
 // paging is Search's job.
+// SemanticSearchOptions configures a GET /mailboxes/:id/search/semantic query.
+type SemanticSearchOptions struct {
+	Query   string
+	Label   string
+	Limit   int
+	Cursor  string
+	Fuse    string
+	Snippet bool
+	Since   *int64
+	Before  *int64
+}
+
+// SemanticSearch runs a MEANING-based query over a mailbox
+// (docs/semantic-search-design.md §V). Hybrid by default — the BM25 ranking is
+// fused in by reciprocal rank, which is what keeps exact identifiers findable —
+// and fuse "none" asks for the vector ranking alone.
+//
+// Needs the mailbox opted in AND its account's plan gate: without either, core
+// answers 409 semantic_not_enabled for both causes and the CLI's error hint is
+// what separates them. Bounded at the 100 most relevant candidates before
+// filtering: this is "the most relevant", never "every match ranked" — deep
+// paging is Search's job.
 func (c *Client) SemanticSearch(ctx context.Context, mailboxID, query, label string, limit int, cursor, fuse string, snippet bool) (*SemanticSearchResult, error) {
+	return c.SemanticSearchWithOptions(ctx, mailboxID, SemanticSearchOptions{
+		Query:   query,
+		Label:   label,
+		Limit:   limit,
+		Cursor:  cursor,
+		Fuse:    fuse,
+		Snippet: snippet,
+	})
+}
+
+// SemanticSearchWithOptions runs a semantic query with optional Since/Before bounds.
+func (c *Client) SemanticSearchWithOptions(ctx context.Context, mailboxID string, opts SemanticSearchOptions) (*SemanticSearchResult, error) {
 	q := url.Values{}
-	q.Set("q", query)
-	if label != "" {
-		q.Set("label", label)
+	q.Set("q", opts.Query)
+	if opts.Label != "" {
+		q.Set("label", opts.Label)
 	}
-	if limit > 0 {
-		q.Set("limit", itoa(limit))
+	if opts.Limit > 0 {
+		q.Set("limit", itoa(opts.Limit))
 	}
-	if cursor != "" {
-		q.Set("cursor", cursor)
+	if opts.Cursor != "" {
+		q.Set("cursor", opts.Cursor)
 	}
 	// Only ever sent as "none": "lexical" IS the default, and sending it would
 	// make a future change to that default silently not reach this client.
-	if fuse == "none" {
+	if opts.Fuse == "none" {
 		q.Set("fuse", "none")
 	}
-	if snippet {
+	if opts.Snippet {
 		q.Set("snippet", "true")
+	}
+	if opts.Since != nil {
+		q.Set("since", itoa64(*opts.Since))
+	}
+	if opts.Before != nil {
+		q.Set("before", itoa64(*opts.Before))
 	}
 	var out SemanticSearchResult
 	err := c.doJSON(ctx, request{

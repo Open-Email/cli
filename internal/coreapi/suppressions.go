@@ -86,7 +86,7 @@ func (c *Client) AddSuppression(ctx context.Context, in SuppressionCreate) (*Sup
 	var out Suppression
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost, path: "/suppressions",
-		body: mustJSON(in), contentType: "application/json",
+		body: mustJSON(in), contentType: "application/json", idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err

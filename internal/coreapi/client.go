@@ -82,15 +82,32 @@ func New(cfg Config) (*Client, error) {
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Transport: &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-			ForceAttemptHTTP2:   true,
-			MaxIdleConns:        16,
-			MaxIdleConnsPerHost: 8,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-		}} // per-request timeouts via context, not http.Client.Timeout
+		hc = &http.Client{
+			Transport: &http.Transport{
+				Proxy:               http.ProxyFromEnvironment,
+				DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+				ForceAttemptHTTP2:   true,
+				MaxIdleConns:        16,
+				MaxIdleConnsPerHost: 8,
+				IdleConnTimeout:     90 * time.Second,
+				TLSHandshakeTimeout: 10 * time.Second,
+			},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return errors.New("stopped after 10 redirects")
+				}
+				if len(via) > 0 {
+					orig := via[0].URL
+					if strings.EqualFold(orig.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
+						return fmt.Errorf("coreapi: refusing redirect that downgrades https to %s", req.URL.Scheme)
+					}
+					if !strings.EqualFold(orig.Host, req.URL.Host) {
+						return fmt.Errorf("coreapi: refusing cross-host redirect from %s to %s", orig.Host, req.URL.Host)
+					}
+				}
+				return nil
+			},
+		} // per-request timeouts via context, not http.Client.Timeout
 	}
 	return &Client{
 		cfg:    cfg,
@@ -177,6 +194,9 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 		}
 		httpReq, e := http.NewRequestWithContext(reqCtx, r.method, u.String(), bodyReader)
 		if e != nil {
+			if rc, ok := bodyReader.(io.Closer); ok {
+				_ = rc.Close()
+			}
 			cancel()
 			return false, e
 		}
@@ -187,6 +207,8 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 		httpReq.Header.Set("Accept", "application/json")
 		if r.contentType != "" {
 			httpReq.Header.Set("Content-Type", r.contentType)
+		} else if r.body != nil {
+			httpReq.Header.Set("Content-Type", "application/json")
 		}
 		if r.getBody != nil {
 			httpReq.ContentLength = r.bodyLen
@@ -198,9 +220,8 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 		hr, e := c.hc.Do(httpReq)
 		if e != nil {
 			cancel()
-			// Transport error: retry for idempotent calls (and streaming uploads,
-			// idempotent via delivery id).
-			return r.idempotent || r.getBody != nil, e
+			// Transport error: retry only for idempotent calls.
+			return r.idempotent, e
 		}
 
 		if hr.StatusCode >= 200 && hr.StatusCode < 300 {
@@ -209,11 +230,14 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 			} else {
 				// Buffer while the request context is alive, then cancel — cancelling
 				// first would abort the caller's later read of a large response.
-				body, readErr := io.ReadAll(io.LimitReader(hr.Body, maxJSONBody))
+				body, readErr := io.ReadAll(io.LimitReader(hr.Body, maxJSONBody+1))
 				hr.Body.Close()
 				cancel()
 				if readErr != nil {
-					return r.idempotent || r.getBody != nil, readErr
+					return r.idempotent, readErr
+				}
+				if len(body) > maxJSONBody {
+					return false, fmt.Errorf("coreapi: response body exceeds %d bytes", maxJSONBody)
 				}
 				hr.Body = io.NopCloser(bytes.NewReader(body))
 			}
@@ -221,8 +245,9 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 			return false, nil
 		}
 
-		// Non-2xx: read (bounded) body, decode error, decide retry.
+		// Non-2xx: read (bounded) body, drain remainder for connection reuse, decode error, decide retry.
 		data, _ := io.ReadAll(io.LimitReader(hr.Body, 256<<10))
+		_, _ = io.Copy(io.Discard, io.LimitReader(hr.Body, 64<<10))
 		hr.Body.Close()
 		cancel()
 		ae := decodeAPIError(hr.StatusCode, data)
@@ -330,16 +355,14 @@ func (b *cancelBody) Close() error {
 // shouldRetryStatus implements the retry classification. 502/503/504 are all
 // temporary, but only retried for calls that are safe to replay: GETs
 // (idempotent), DELETEs made idempotent explicitly, or uploads carrying an
-// X-Delivery-Id (getBody). A non-idempotent POST create is NOT retried — a 503
+// X-Delivery-Id (idempotent). A non-idempotent POST create is NOT retried — a 503
 // injected by the edge *after* the write committed (Workers overload, "no
 // healthy origin") would otherwise mint a duplicate resource, since directory
-// creates carry no idempotency key. (Core's own delivery path answers 503
-// superseded/reaped only for calls that carry a delivery id and provably did not
-// commit; those set getBody/idempotent and do retry.)
+// creates carry no idempotency key.
 func shouldRetryStatus(status int, r request) bool {
 	switch status {
 	case 502, 503, 504:
-		return r.idempotent || r.getBody != nil
+		return r.idempotent
 	}
 	return false
 }

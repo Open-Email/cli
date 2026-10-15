@@ -126,6 +126,7 @@ func contractPairings() []pairing {
 		{val: AttachmentRef{}, comp: "AttachmentRef"},
 		{val: ContentAddress{}, comp: "ContentAddress"},
 		{val: ThreadListItem{}, comp: "ThreadListItem"},
+		{val: ThreadParticipant{}, comp: "ThreadParticipant"},
 		{val: ReplyContext{}, comp: "ReplyContext"},
 		{val: ThreadView{}, comp: "ThreadView"},
 		{val: AppendResult{}, comp: "AppendResult"},
@@ -134,6 +135,7 @@ func contractPairings() []pairing {
 		{val: RestoreResult{}, comp: "MessageRestoreResult"},
 		{val: BatchRestoreResult{}, comp: "BatchRestoreResult"},
 		{val: BatchRestoreEntry{}, comp: "BatchRestoreEntry"},
+		{val: BatchUnjunkResult{}, comp: "BatchUnjunkResult"},
 		{val: BatchUnjunkEntry{}, comp: "BatchUnjunkEntry"},
 		{val: BatchLearnResult{}, comp: "BatchLearnResult"},
 		{val: BatchLearnEntry{}, comp: "BatchLearnEntry"},
@@ -166,6 +168,8 @@ func contractPairings() []pairing {
 		{val: UploadResult{}, comp: "UploadResult"},
 		{val: SendResult{}, comp: "SendResult"},
 		{val: SendRecipientResult{}, comp: "SendRecipientResult"},
+		{val: SendUsage{}, comp: "SendUsage"},
+		{val: PickupDispatch{}, comp: "PickupDispatch"},
 		// The 202 half of submitting a stored draft: core kept the submission and
 		// is retrying it. Pinned because a client that stopped decoding `state`
 		// or `result` would report a still-running submission as a finished one.
@@ -183,13 +187,11 @@ func contractPairings() []pairing {
 		{val: DkimKey{}, comp: "DkimKey"},
 		{val: DkimCname{}, comp: "DkimCname"},
 		{val: DkimRotated{}, comp: "DkimRotated"},
-		// Structured search. EmailSearchFilter alone is free-form on the wire
-		// (additionalProperties over an open condition set, validated by core);
-		// EmailSearchRequest is NOT, and the comment that used to lump the two
-		// together is what kept `fields` — the ids-only answer mode — out of this
-		// client after core added it. A request shape is pinned for the mirror of
-		// the reason a response shape is: an option core offers and this client
-		// cannot spell is an option nobody here knows is missing.
+		// Structured search. EmailSearchFilter and EmailSearchComparator are
+		// free-form objects (`additionalProperties: {}`) on the wire in the
+		// OpenAPI snapshot (validated by core); EmailSearchRequest is NOT, and
+		// the comment that used to lump them together is what kept `fields` — the
+		// ids-only answer mode — out of this client after core added it.
 		{val: EmailSearchRequest{}, comp: "EmailSearchRequest"},
 		{val: EmailSearchResult{}, comp: "EmailSearchResult"},
 		{val: EmailSearchSnippet{}, comp: "EmailSearchSnippet"},
@@ -373,17 +375,20 @@ func resolveComponent(t *testing.T, schemas map[string]any, comp map[string]any)
 	if ref, ok := comp["$ref"].(string); ok {
 		return resolveComponent(t, schemas, derefSchema(t, schemas, ref))
 	}
+	props := map[string]any{}
+	if raw, ok := comp["properties"].(map[string]any); ok {
+		for k, v := range raw {
+			props[k] = v
+		}
+	}
 	if allOf, ok := comp["allOf"].([]any); ok {
-		props := map[string]any{}
 		for _, sub := range allOf {
 			for k, v := range resolveComponent(t, schemas, sub.(map[string]any)) {
 				props[k] = v
 			}
 		}
-		return props
 	}
 	if variants := variantList(comp); variants != nil {
-		props := map[string]any{}
 		for _, sub := range variants {
 			sm, _ := sub.(map[string]any)
 			if isNullSchema(sm) {
@@ -395,12 +400,8 @@ func resolveComponent(t *testing.T, schemas map[string]any, comp map[string]any)
 				}
 			}
 		}
-		return props
 	}
-	if raw, ok := comp["properties"].(map[string]any); ok {
-		return raw
-	}
-	return map[string]any{}
+	return props
 }
 
 // specKind returns the normalized kind + nullability of a property schema,

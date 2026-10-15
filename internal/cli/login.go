@@ -12,6 +12,7 @@ import (
 	"github.com/Open-Email/cli/internal/coreapi"
 	"github.com/Open-Email/cli/internal/secrets"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // loginOpts is how the flags reach runLogin. A struct rather than six
@@ -41,6 +42,10 @@ func newLoginCmd(a *app) *cobra.Command {
 			"key the CLI then mints a dedicated per-device key of its own and discards\n" +
 			"the one supplied. A mailbox app password (oemp_…) logs in to a single\n" +
 			"mailbox with limited scope.",
+		Example: "  openemail login\n" +
+			"  openemail login --device\n" +
+			"  openemail login --paste\n" +
+			"  OPENEMAIL_API_KEY=oek_... openemail login --profile ci",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runLogin(cmd, opts)
@@ -78,6 +83,13 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 	inputKey := strings.TrimSpace(firstNonEmpty(a.flagAPIKey, os.Getenv(envAPIKey)))
 	keyName := defaultKeyName(opts.name)
 
+	if opts.paste && (opts.device || opts.noBrowser) {
+		return usageError(errors.New("--paste cannot be combined with --device or --no-browser"))
+	}
+	if opts.noMint && inputKey == "" && !opts.paste {
+		return usageError(errors.New("--no-mint requires an existing key via --api-key, OPENEMAIL_API_KEY, or --paste"))
+	}
+
 	// How this login acquires a credential, in precedence order: a key supplied
 	// for this invocation, an explicit --paste, else the browser handshake.
 	var web *webLoginResult
@@ -111,14 +123,22 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 	}
 
 	if web == nil && inputKey == "" {
-		if !promptTTY() {
-			return usageError(fmt.Errorf("no API key provided — pass --api-key or set %s", envAPIKey))
+		if opts.paste && !term.IsTerminal(int(os.Stdin.Fd())) {
+			key, err := readLineRaw()
+			if err != nil {
+				return err
+			}
+			inputKey = strings.TrimSpace(key)
+		} else {
+			if !promptTTY() {
+				return usageError(fmt.Errorf("no API key provided — pass --api-key or set %s", envAPIKey))
+			}
+			key, err := readSecret(fmt.Sprintf("Paste your OpenEmail API key for %s: ", a.apiURL))
+			if err != nil {
+				return err
+			}
+			inputKey = strings.TrimSpace(key)
 		}
-		key, err := readSecret(fmt.Sprintf("Paste your OpenEmail API key for %s: ", a.apiURL))
-		if err != nil {
-			return err
-		}
-		inputKey = strings.TrimSpace(key)
 		if inputKey == "" {
 			return usageError(fmt.Errorf("empty API key"))
 		}
@@ -232,6 +252,8 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 	// oldBackend lets us delete a stale secret if this login lands in a different
 	// store (e.g. a keychain outage forced a file fallback last time).
 	oldKeyID, oldRole, oldBackend := a.profile.KeyID, a.profile.Role, a.profile.KeyStorage
+	oldAPIURL := firstNonEmpty(a.profile.APIURL, config.DefaultAPIURL)
+	oldAccountID := a.profile.AccountID
 
 	role := identity.Type
 	accountID := identity.AccountID
@@ -313,12 +335,20 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 	prof.KeyID = keyID
 	prof.KeyName = keyLabel
 	// Remember where this profile authorizes, so a later `login` on a custom
-	// deployment needs the flag exactly once.
+	// deployment needs the flag exactly once. If APIURL changed without an
+	// explicit --console-url, clear any stale ConsoleURL from the old deployment.
 	if consoleURL := firstNonEmpty(a.flagConsoleURL, os.Getenv(envConsoleURL)); consoleURL != "" {
 		prof.ConsoleURL = strings.TrimRight(consoleURL, "/")
+	} else if a.profile.APIURL != "" && !sameAPIOrigin(a.apiURL, a.profile.APIURL) {
+		prof.ConsoleURL = ""
 	}
-	if opts.mailbox != "" {
+	switch {
+	case opts.mailbox != "":
 		prof.DefaultMailbox = opts.mailbox
+	case identity.Type == coreapi.PrincipalMailbox && identity.MailboxID != "":
+		prof.DefaultMailbox = identity.MailboxID
+	case (oldAccountID != "" && oldAccountID != accountID) || (oldRole == coreapi.PrincipalMailbox && role != coreapi.PrincipalMailbox) || (a.profile.APIURL != "" && !sameAPIOrigin(a.apiURL, a.profile.APIURL)):
+		prof.DefaultMailbox = ""
 	}
 	if err := a.cfg.SetProfile(a.profileName, prof); err != nil {
 		restorePrevious()
@@ -343,15 +373,19 @@ func (a *app) runLogin(cmd *cobra.Command, opts loginOpts) error {
 		}
 	}
 
-	// Now that the new key is stored and recorded, revoke the device key it
-	// replaced (best-effort). Gated on managedKeyID so a --no-mint or restricted
-	// login — where we store a user-managed key and may even be storing the old
-	// key back — never revokes anything the user is managing themselves. A 404
-	// is the normal answer when the previous key belonged to another account,
-	// which happens whenever this login chose a different organization.
-	if managedKeyID != "" && oldKeyID != "" && oldKeyID != managedKeyID && oldRole == coreapi.PrincipalAccount {
-		if rerr := client.RevokeAPIKey(ctx, oldKeyID); rerr != nil &&
-			!coreapi.IsNotFound(rerr) && !coreapi.IsAccountCredentialsRequired(rerr) {
+	// Now that the new key is stored and recorded, revoke the CLI-minted device
+	// key it replaced (best-effort). Because `oldKeyID` is only ever recorded for
+	// a CLI-owned account key, revoking it with `previousSecret` against `oldAPIURL`
+	// works even when re-logging in with `--no-mint`, a system/mailbox key, or a
+	// different account/deployment (unless the user re-supplied the exact same key).
+	if oldKeyID != "" && oldKeyID != managedKeyID && oldRole == coreapi.PrincipalAccount && previousSecret != finalToken {
+		var rerr error
+		if previousSecret != "" {
+			rerr = a.revokeMintedKey(ctx, oldAPIURL, previousSecret, oldKeyID)
+		} else if managedKeyID != "" && sameAPIOrigin(a.apiURL, oldAPIURL) {
+			rerr = client.RevokeAPIKey(ctx, oldKeyID)
+		}
+		if rerr != nil && !coreapi.IsNotFound(rerr) && !coreapi.IsAccountCredentialsRequired(rerr) {
 			a.out.Warnf("could not revoke the previous key %s: %v", oldKeyID, rerr)
 		}
 	}

@@ -15,8 +15,8 @@ import (
 // filed — the draft row itself becomes the Sent copy.
 func newMessageSubmitCmd(a *app) *cobra.Command {
 	var (
-		deliveryID string
-		bounce     bool
+		deliveryID       string
+		bounce, noBounce bool
 	)
 	cmd := &cobra.Command{
 		Use:     "submit <messageId>",
@@ -34,6 +34,10 @@ func newMessageSubmitCmd(a *app) *cobra.Command {
 			"refused rather than sent out of the bin.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			bouncePtr, err := resolveToggleFlag(cmd, "bounce", bounce, "no-bounce", noBounce)
+			if err != nil {
+				return err
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -46,8 +50,10 @@ func newMessageSubmitCmd(a *app) *cobra.Command {
 			// partial failure exits non-zero, the obvious next move is to re-run,
 			// and without a key that re-run mails everyone who already succeeded a
 			// second time.
-			opts := coreapi.SubmitOptions{DeliveryID: firstNonEmpty(deliveryID, newDeliveryID())}
-			opts.Bounce = boolPtrIfChanged(cmd, "bounce", bounce)
+			opts := coreapi.SubmitOptions{
+				DeliveryID: firstNonEmpty(deliveryID, newDeliveryID()),
+				Bounce:     bouncePtr,
+			}
 
 			res, raw, err := client.SubmitDraft(cmd.Context(), mbx, args[0], opts)
 			if err != nil {
@@ -75,7 +81,8 @@ func newMessageSubmitCmd(a *app) *cobra.Command {
 	}
 	addMailboxFlag(cmd, a)
 	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "idempotency key (default: a fresh ULID; pass the same one to retry safely)")
-	cmd.Flags().BoolVar(&bounce, "bounce", true, "deliver a DSN on terminal relay failure (--bounce=false to opt out)")
+	cmd.Flags().BoolVar(&bounce, "bounce", true, "deliver a DSN on terminal relay failure (--no-bounce or --bounce=false to opt out)")
+	cmd.Flags().BoolVar(&noBounce, "no-bounce", false, "do not deliver a DSN on terminal relay failure")
 	return cmd
 }
 

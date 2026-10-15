@@ -307,7 +307,7 @@ func newAccountSuppressionAddCmd(a *app) *cobra.Command {
 		},
 	}
 	accountFlag(cmd, &account)
-	cmd.Flags().StringVar(&note, "note", "", "why — stored on the entry so `list` can show it later")
+	cmd.Flags().StringVar(&note, "note", "", "why — stored on the entry so 'list' can show it later")
 	return cmd
 }
 
@@ -383,6 +383,6 @@ func newAccountSuppressionRemoveCmd(a *app) *cobra.Command {
 		},
 	}
 	accountFlag(cmd, &account)
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }

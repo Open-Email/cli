@@ -10,7 +10,12 @@ func newStatusCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Check core reachability and authentication",
-		Args:  cobra.NoArgs,
+		Long: "Check whether the configured OpenEmail core API is reachable (/health) and,\n" +
+			"if credentials are configured for the active profile, verify that the bearer\n" +
+			"token resolves via /auth/whoami.",
+		Example: "  openemail status\n" +
+			"  openemail status --json",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			client, err := a.client()
@@ -25,7 +30,11 @@ func newStatusCmd(a *app) *cobra.Command {
 			authenticated := a.token != ""
 			var resolveErr error
 			if authenticated {
-				if id, rerr := client.Resolve(ctx); rerr == nil {
+				authed, aerr := a.authedClient()
+				if aerr != nil {
+					return aerr
+				}
+				if id, rerr := authed.Resolve(ctx); rerr == nil {
 					principal = id.Type
 				} else {
 					resolveErr = rerr

@@ -180,7 +180,7 @@ func newDkimActivateCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "skip the resolver-visibility check (signs with a key receivers may not fetch)")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 

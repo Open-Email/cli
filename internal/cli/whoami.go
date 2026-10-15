@@ -14,7 +14,12 @@ func newWhoamiCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "whoami",
 		Short: "Show the identity the current key resolves to",
-		Args:  cobra.NoArgs,
+		Long: "Resolve the active API key against core's /auth/whoami endpoint and display\n" +
+			"the principal type, account, mailbox or domain scope, key metadata, default\n" +
+			"mailbox, and account domain-verification token.",
+		Example: "  openemail whoami\n" +
+			"  openemail whoami --json",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -54,6 +59,12 @@ func newWhoamiCmd(a *app) *cobra.Command {
 				"keyName":      keyName,
 				"keyStorage":   keyStore,
 				"tokenSource":  a.tokenSource,
+				"defaultMailbox": func() any {
+					if a.profile.DefaultMailbox == "" {
+						return nil
+					}
+					return a.profile.DefaultMailbox
+				}(),
 				// Absent, not empty: core says nothing about most keys' kind, and a
 				// consumer must not have to tell "" from a kind core deliberately
 				// recorded as blank — the same reason idleExpiresAt below is null.
@@ -80,7 +91,12 @@ func newWhoamiCmd(a *app) *cobra.Command {
 				}(),
 				// Named for what it does, not for the column: this is the domain
 				// claim value, never a credential.
-				"domainVerificationToken": verifyToken,
+				"domainVerificationToken": func() any {
+					if verifyToken == "" {
+						return nil
+					}
+					return verifyToken
+				}(),
 			}, func(w io.Writer) {
 				a.printIdentity(w, id, verifyToken)
 			})
@@ -127,20 +143,27 @@ func (a *app) printIdentity(w io.Writer, id coreapi.Principal, verifyToken strin
 	// countdown: the date is what somebody acts on, the countdown is what makes
 	// them read it. Absent for every key that does not lapse, which is most.
 	if id.IdleExpiresAt > 0 {
-		when := time.Unix(id.IdleExpiresAt, 0)
-		days := int(time.Until(when).Hours() / 24)
+		now := time.Now()
+		when := time.Unix(id.IdleExpiresAt, 0).In(now.Location())
+		ny, nm, nd := now.Date()
+		wy, wm, wd := when.Date()
+		todayStart := time.Date(ny, nm, nd, 0, 0, 0, 0, time.UTC)
+		whenDayStart := time.Date(wy, wm, wd, 0, 0, 0, 0, time.UTC)
+		calDays := int(whenDayStart.Sub(todayStart) / (24 * time.Hour))
 		lapse := when.Format("2006-01-02")
 		// Whether it has lapsed comes from the instant, never from the day count:
 		// integer division truncates toward zero, so a key that died three hours
 		// ago is "0 days" out and would be announced as lapsing today — a dead
 		// key described as one that still works.
 		switch {
-		case when.Before(time.Now()):
+		case !when.After(now):
 			lapse += " (lapsed)"
-		case days == 0:
+		case calDays <= 0:
 			lapse += " (today)"
+		case calDays == 1:
+			lapse += " (tomorrow, unless used)"
 		default:
-			lapse += fmt.Sprintf(" (in %d days, unless used)", days)
+			lapse += fmt.Sprintf(" (in %d days, unless used)", calDays)
 		}
 		rows = append(rows, []string{"Lapses", lapse})
 	}

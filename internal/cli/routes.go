@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -261,6 +260,7 @@ func newRouteUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&clearWebhookSecret, "clear-webhook-secret", false, "remove the webhook signing secret (type=webhook)")
 	cmd.Flags().StringVar(&posting, "posting", "", "group posting policy: open|members (type=group)")
 	cmd.Flags().BoolVar(&paced, "paced", false, "pace deliveries through the paced queue")
+	registerEnumFlagCompletion(cmd, "posting", "open", "members")
 	return cmd
 }
 
@@ -288,7 +288,7 @@ func newRouteDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -359,9 +359,10 @@ func newMemberListCmd(a *app) *cobra.Command {
 func newMemberReplaceCmd(a *app) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "replace <address> [member...]",
-		Short: "Replace a group's member list wholesale (no members = clear)",
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "replace <address> [member...]",
+		Aliases: []string{"set"},
+		Short:   "Replace a group's member list wholesale (no members = clear)",
+		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -386,7 +387,7 @@ func newMemberReplaceCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt when clearing")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt when clearing")
 	return cmd
 }
 
@@ -406,22 +407,22 @@ func newMemberAddCmd(a *app) *cobra.Command {
 			"converges on the full list.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.authedClient()
-			if err != nil {
-				return err
-			}
 			address := args[0]
 			members := append([]string{}, args[1:]...)
 			if file != "" {
-				data, rerr := os.ReadFile(file)
+				raw, rerr := inlineOrFile("", file)
 				if rerr != nil {
 					return rerr
 				}
-				members = append(members, parseMemberList(string(data))...)
+				members = append(members, parseMemberList(raw)...)
 			}
 			members = dedupeMembers(members)
 			if len(members) == 0 {
 				return usageError(errors.New("no members given — pass member addresses and/or --file"))
+			}
+			client, err := a.authedClient()
+			if err != nil {
+				return err
 			}
 			ctx := cmd.Context()
 			// One positional member keeps the pre-batch behavior exactly.
@@ -455,7 +456,7 @@ func newMemberAddCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "newline-separated member addresses (blank lines and # comments skipped), merged with positional members")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "newline-separated member addresses (- for stdin; blank lines and # comments skipped), merged with positional members")
 	return cmd
 }
 
@@ -496,7 +497,7 @@ func dedupeMembers(members []string) []string {
 func newMemberRemoveCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:     "remove <address> <memberAddress>",
-		Aliases: []string{"rm"},
+		Aliases: []string{"rm", "delete"},
 		Short:   "Remove a member from a group route",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -521,6 +522,7 @@ func routeDestFlags(cmd *cobra.Command, typ, mailbox, webhookURL, webhookSecret,
 	cmd.Flags().StringVar(webhookURL, "webhook-url", "", "https webhook URL (type=webhook)")
 	cmd.Flags().StringVar(webhookSecret, "webhook-secret", "", "webhook signing secret (type=webhook)")
 	cmd.Flags().StringVar(remote, "remote", "", "remote address (type=remote)")
+	registerEnumFlagCompletion(cmd, "type", "mailbox", "webhook", "remote", "group")
 }
 
 func routeTarget(r *coreapi.Route) string {

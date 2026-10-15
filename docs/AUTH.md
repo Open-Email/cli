@@ -48,15 +48,11 @@ The other paths still exist and behave as they always did:
   supplied key is discarded. `--no-mint` stores it as-is instead.
 - **A system key** is stored as-is (minting another system key would itself
   require system role) and marks the profile `role = system`, unlocking `admin`.
-- **A restricted key** — one scoped to particular domains — *would* be stored as
-  provided with a warning saying so, because such a key cannot mint or revoke
-  anything (the `/api-keys` surface is account-tier); logout would then remove it
-  locally without pretending to have revoked it. **Not live yet:** domain scoping
-  is unbuilt in core, which emits `account_credentials_required` nowhere today
-  (see core's `docs/api-key-scoping-design.md`), so nothing can currently produce
-  such a key. The branches exist as a forward-tolerance — the day core starts
-  issuing scoped keys, this CLI already explains itself instead of reporting the
-  restriction as a failure.
+- **A restricted (domain-scoped) key** — one minted with `openemail keys create --domain <name>` —
+  is stored as provided with a warning saying so, because such a key cannot mint
+  or revoke keys (the `/api-keys` surface is account-tier and answers `403 account_credentials_required`).
+  `openemail logout` removes it locally and notes that it must be revoked from the
+  account or console.
 
 `whoami` shows the resolved principal, account, key, default mailbox, and where
 the key is stored; the classification comes from core's `GET /auth/whoami`,
@@ -84,9 +80,11 @@ one API that accepts the revocation, before reporting the mismatch.
 
 A mailbox principal (`oemp_…`) has limited scope: its own messages, labels,
 threads, search, sieve, pickups, events, and outbound send for its own address —
-but not the directory or `admin` commands. Because core exposes no route that
-reveals a mailbox principal's own id, mailbox mode needs the mailbox id supplied
-(`-m <ULID>`); an address can't be resolved as a mailbox principal.
+but not the directory or `admin` commands. `GET /auth/whoami` resolves the
+mailbox's own ULID (`mailboxId`), and `openemail login` automatically records it
+as the profile's `default_mailbox` (unless `--mailbox` overrides it). Note that
+mailbox principals cannot resolve email addresses via `/routes/:address`, so
+explicit `-m` overrides must pass a mailbox ULID rather than an email address.
 
 ## Secret storage
 
@@ -132,6 +130,7 @@ profile key but not an explicit `--api-key` flag.
 |---|---|
 | `OPENEMAIL_API_KEY` | bearer token for one invocation (beats the profile) |
 | `OPENEMAIL_API_URL` | deployment root |
+| `OPENEMAIL_CONSOLE_URL` | console origin for browser/device `login` |
 | `OPENEMAIL_PROFILE` | active profile name |
 | `OPENEMAIL_NO_KEYRING` | force the 0600-file secret backend |
 | `OPENEMAIL_NO_UPDATE_NOTIFIER` | silence the daily update check |

@@ -324,13 +324,36 @@ type DomainEvents struct {
 	Estimated  bool           `json:"estimated"`
 }
 
+// ListDomainsOptions filters GET /domains.
+type ListDomainsOptions struct {
+	AccountID     string
+	MailboxCounts bool
+	Usage         bool
+	Limit         int
+	Cursor        string
+}
+
 func (c *Client) ListDomains(ctx context.Context, limit int, cursor string) (Page[Domain], error) {
+	return c.ListDomainsWithOptions(ctx, ListDomainsOptions{Limit: limit, Cursor: cursor})
+}
+
+func (c *Client) ListDomainsWithOptions(ctx context.Context, opts ListDomainsOptions) (Page[Domain], error) {
+	q := pageValues(opts.Limit, opts.Cursor)
+	if opts.AccountID != "" {
+		q.Set("accountId", opts.AccountID)
+	}
+	if opts.MailboxCounts {
+		q.Set("mailboxCounts", "true")
+	}
+	if opts.Usage {
+		q.Set("usage", "true")
+	}
 	var out struct {
 		Domains    []Domain `json:"domains"`
 		NextCursor string   `json:"nextCursor"`
 	}
 	err := c.doJSON(ctx, request{
-		method: http.MethodGet, path: "/domains", query: pageValues(limit, cursor), idempotent: true,
+		method: http.MethodGet, path: "/domains", query: q, idempotent: true,
 	}, &out)
 	if err != nil {
 		return Page[Domain]{}, err
@@ -560,8 +583,9 @@ type DomainHostnameList struct {
 func (c *Client) ListDomainHostnames(ctx context.Context, domain string) (*DomainHostnameList, error) {
 	var out DomainHostnameList
 	err := c.doJSON(ctx, request{
-		method: http.MethodGet,
-		path:   "/domains/" + escapeSegment(domain) + "/hostnames",
+		method:     http.MethodGet,
+		path:       "/domains/" + escapeSegment(domain) + "/hostnames",
+		idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -576,6 +600,7 @@ func (c *Client) SetDomainHostname(ctx context.Context, domain, service, hostnam
 		path:        "/domains/" + escapeSegment(domain) + "/hostnames/" + escapeSegment(service),
 		body:        mustJSON(map[string]string{"hostname": hostname}),
 		contentType: "application/json",
+		idempotent:  true,
 	}, &out)
 	if err != nil {
 		return nil, err

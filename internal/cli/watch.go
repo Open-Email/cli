@@ -129,7 +129,7 @@ func newWatchCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.reconnect, "reconnect", true, "auto-reconnect on session expiry / transient drops")
 	cmd.Flags().StringArrayVar(&opts.until, "until", nil, "exit once a frame type matches this glob (repeatable = OR; e.g. 'message.*')")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 0, "overall deadline for the whole watch (spans reconnects)")
-	cmd.Flags().StringVar(&opts.execCmd, "exec", "", "run `sh -c <command>` per event with the frame JSON on stdin")
+	cmd.Flags().StringVar(&opts.execCmd, "exec", "", "run 'sh -c <command>' per event with the frame JSON on stdin")
 	cmd.Flags().BoolVar(&opts.fetch, "fetch", false, "hydrate message.new/imported/updated/restored frames with message metadata (one REST call each)")
 	return cmd
 }

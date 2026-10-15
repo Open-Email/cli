@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -138,8 +139,21 @@ func pkcePair() (verifier, challenge string, err error) {
 }
 
 // consoleClient is the HTTP client for the console origin. Short timeouts: every
-// call here is a small JSON round trip a human is waiting on.
-var consoleClient = &http.Client{Timeout: 30 * time.Second}
+// call here is a small JSON round trip a human is waiting on. Cross-origin or
+// scheme-downgrade redirects are refused so PKCE verifiers and device codes are
+// never forwarded to another origin.
+var consoleClient = &http.Client{
+	Timeout: 30 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if len(via) > 0 && !sameAPIOrigin(req.URL.String(), via[0].URL.String()) {
+			return fmt.Errorf("refusing cross-origin redirect from %s to %s", via[0].URL.Host, req.URL.Host)
+		}
+		return nil
+	},
+}
 
 // postConsole sends one JSON request to the console and decodes the answer.
 // A non-2xx is returned as consoleError so callers can branch on the RFC 8628
@@ -173,7 +187,7 @@ func postConsole(ctx context.Context, base, path string, body, out any) error {
 			Error string `json:"error"`
 		}
 		_ = json.Unmarshal(raw, &envelope)
-		return &consoleError{Status: res.StatusCode, Code: envelope.Error}
+		return &consoleError{Status: res.StatusCode, Code: sanitizeCell(envelope.Error)}
 	}
 	if out == nil {
 		return nil
@@ -188,7 +202,7 @@ type consoleError struct {
 
 func (e *consoleError) Error() string {
 	if e.Code != "" {
-		return fmt.Sprintf("%s (HTTP %d)", e.Code, e.Status)
+		return fmt.Sprintf("%s (HTTP %d)", sanitizeCell(e.Code), e.Status)
 	}
 	return fmt.Sprintf("console returned HTTP %d", e.Status)
 }
@@ -218,8 +232,12 @@ func writeCallbackPage(w http.ResponseWriter, status int, title, message string)
 	// This page is a local dead end; nothing may embed it or cache it.
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
 	w.WriteHeader(status)
-	fmt.Fprintf(w, callbackPage, title, title, message)
+	escTitle := html.EscapeString(title)
+	escMsg := html.EscapeString(message)
+	fmt.Fprintf(w, callbackPage, escTitle, escTitle, escMsg)
 }
 
 type callbackResult struct {
@@ -281,6 +299,10 @@ func loopbackLogin(ctx context.Context, out *Printer, consoleURL, keyName string
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		q := r.URL.Query()
 		// A mismatched state is somebody else's request arriving at our port.
 		// Refused WITHOUT completing the flow: signalling here would let any
@@ -313,7 +335,12 @@ func loopbackLogin(ctx context.Context, out *Printer, consoleURL, keyName string
 		http.Error(w, "not found", http.StatusNotFound)
 	})
 
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+	}
 	go func() { _ = server.Serve(listener) }()
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -424,7 +451,7 @@ func deviceLogin(ctx context.Context, out *Printer, consoleURL, keyName string, 
 	// type, the address they visit. Cheap depth: a console that has been taken
 	// over has better moves than repainting a line, but not free ones.
 	userCode := sanitizeCell(grant.UserCode)
-	verificationURI := sanitizeCell(grant.VerificationURI)
+	verificationURI := strings.TrimSpace(sanitizeCell(grant.VerificationURI))
 
 	out.Msgf("First copy this one-time code:")
 	out.Msgf("")
@@ -437,14 +464,16 @@ func deviceLogin(ctx context.Context, out *Printer, consoleURL, keyName string, 
 	// Opened as a convenience only: this flow exists because the browser may be
 	// on another machine entirely, so nothing depends on the launch working.
 	if openBrowser {
-		openBrowserFn(grant.VerificationURI)
+		openBrowserFn(verificationURI)
 	}
 	out.Msgf("Waiting for authorization…")
 
-	interval := time.Duration(max(grant.Interval, 1)) * time.Second
+	interval := time.Duration(min(max(grant.Interval, 1), 60)) * time.Second
 	deadline := deviceDeadline
 	if grant.ExpiresIn > 0 {
-		deadline = time.Duration(grant.ExpiresIn) * time.Second
+		if d := time.Duration(grant.ExpiresIn) * time.Second; d < deadline {
+			deadline = d
+		}
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()

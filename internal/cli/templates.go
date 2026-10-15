@@ -90,6 +90,9 @@ func (f *copyFlags) read(cmd *cobra.Command) (*coreapi.VariantCopy, error) {
 	if f.html != "" && f.htmlFile != "" {
 		return nil, usageError(errors.New("--html and --html-file are mutually exclusive"))
 	}
+	if f.textFile == "-" && f.htmlFile == "-" {
+		return nil, usageError(errors.New("cannot read both --text-file and --html-file from stdin (-)"))
+	}
 	text, err := inlineOrFile(f.text, f.textFile)
 	if err != nil {
 		return nil, err
@@ -226,9 +229,10 @@ func languagesOf(langs []string) string {
 func newTemplatesGetCmd(a *app) *cobra.Command {
 	var account string
 	cmd := &cobra.Command{
-		Use:   "get <slug>",
-		Short: "Show a template: its details, its copy per language and its variables",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <slug>",
+		Aliases: []string{"show"},
+		Short:   "Show a template: its details, its copy per language and its variables",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -309,8 +313,9 @@ func sampleText(v any) string {
 func newTemplatesCreateCmd(a *app) *cobra.Command {
 	var account, name, from, replyTo, defaultLang, variablesFile string
 	cmd := &cobra.Command{
-		Use:   "create <slug>",
-		Short: "Register a template (its copy is written next, per language)",
+		Use:     "create <slug>",
+		Aliases: []string{"new"},
+		Short:   "Register a template (its copy is written next, per language)",
 		Long: "Registers a template under a slug your code will send it by: lowercase letters,\n" +
 			"digits, - and _. --from must be an address this account may already send as.\n" +
 			"--variables-file documents the variables as JSON, name -> {description, sample};\n" +
@@ -458,7 +463,7 @@ func newTemplatesDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	accountFlag(cmd, &account)
 	return cmd
 }
@@ -478,9 +483,10 @@ func newTemplateVariantsCmd(a *app) *cobra.Command {
 func newTemplateVariantGetCmd(a *app) *cobra.Command {
 	var account string
 	cmd := &cobra.Command{
-		Use:   "get <slug> <lang>",
-		Short: "Print one language's copy as written, {{tags}} and all",
-		Args:  cobra.ExactArgs(2),
+		Use:     "get <slug> <lang>",
+		Aliases: []string{"show"},
+		Short:   "Print one language's copy as written, {{tags}} and all",
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
@@ -595,7 +601,7 @@ func newTemplateVariantDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	accountFlag(cmd, &account)
 	return cmd
 }
@@ -616,6 +622,9 @@ func newTemplatesRenderCmd(a *app) *cobra.Command {
 			"stores nothing, so a change can be seen before it is published.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if vars.file == "-" && (copyF.textFile == "-" || copyF.htmlFile == "-") {
+				return usageError(errors.New("cannot read more than one flag from stdin (-)"))
+			}
 			values, err := vars.read()
 			if err != nil {
 				return err
@@ -681,7 +690,7 @@ func renderVariableRows(vars []coreapi.MailTemplateVariable) [][]string {
 func newTemplatesSendCmd(a *app) *cobra.Command {
 	var account, lang, toFile, replyTo, deliveryID string
 	var to, headers []string
-	var save, noBounce bool
+	var save, noSave, bounce, noBounce bool
 	var vars varFlags
 	cmd := &cobra.Command{
 		Use:   "send <slug>",
@@ -694,6 +703,17 @@ func newTemplatesSendCmd(a *app) *cobra.Command {
 			"so those already sent are not sent twice.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if vars.file == "-" && toFile == "-" {
+				return usageError(errors.New("cannot read both --vars-file and --to-file from stdin (-)"))
+			}
+			savePtr, err := resolveToggleFlag(cmd, "save", save, "no-save", noSave)
+			if err != nil {
+				return err
+			}
+			bouncePtr, err := resolveToggleFlag(cmd, "bounce", bounce, "no-bounce", noBounce)
+			if err != nil {
+				return err
+			}
 			values, err := vars.read()
 			if err != nil {
 				return err
@@ -730,13 +750,8 @@ func newTemplatesSendCmd(a *app) *cobra.Command {
 					in.Headers[strings.TrimSpace(name)] = strings.TrimSpace(value)
 				}
 			}
-			if cmd.Flags().Changed("save") {
-				in.Save = &save
-			}
-			if noBounce {
-				bounce := false
-				in.Bounce = &bounce
-			}
+			in.Save = savePtr
+			in.Bounce = bouncePtr
 			if deliveryID == "" {
 				deliveryID = newDeliveryID()
 			}
@@ -784,6 +799,8 @@ func newTemplatesSendCmd(a *app) *cobra.Command {
 	cmd.Flags().StringArrayVar(&headers, "header", nil, "an extra header as \"Name: value\" (repeatable)")
 	cmd.Flags().StringVar(&deliveryID, "delivery-id", "", "the batch's idempotency key (default: a fresh ULID; reuse it to retry)")
 	cmd.Flags().BoolVar(&save, "save", false, "keep a Sent copy in the sending mailbox (off by default here)")
+	cmd.Flags().BoolVar(&noSave, "no-save", false, "do not keep a Sent copy in the sending mailbox")
+	cmd.Flags().BoolVar(&bounce, "bounce", true, "deliver a bounce notice on terminal failure")
 	cmd.Flags().BoolVar(&noBounce, "no-bounce", false, "do not deliver a bounce notice on terminal failure")
 	vars.register(cmd)
 	accountFlag(cmd, &account)

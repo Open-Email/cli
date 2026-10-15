@@ -175,6 +175,9 @@ func newPimTaskListCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 					return lerr
 				}
 				objs = append(objs, page.Objects...)
+				if all && page.NextCursor != "" && page.NextCursor == opts.Cursor {
+					return fmt.Errorf("pagination cursor did not advance (%q) — aborting", page.NextCursor)
+				}
 				next = page.NextCursor
 				if !all || next == "" {
 					break

@@ -126,7 +126,7 @@ func (c *Client) GetMailSlot(ctx context.Context, slug string) (*MailSlotDetail,
 func (c *Client) PutMailSlotVariant(ctx context.Context, slug, lang string, copy VariantCopy) (*SlotPutResult, error) {
 	var out SlotPutResult
 	path := slotPath(slug) + "/variants/" + escapeSegment(lang)
-	if err := c.doJSON(ctx, request{method: http.MethodPut, path: path, body: mustJSON(copy), idempotent: true}, &out); err != nil {
+	if err := c.doJSON(ctx, request{method: http.MethodPut, path: path, body: mustJSON(copy), contentType: "application/json", idempotent: true}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -146,7 +146,7 @@ func (c *Client) DeleteMailSlotVariant(ctx context.Context, slug, lang string) (
 // RenderMailSlot previews a slot (or a draft of it) with the registry's samples.
 func (c *Client) RenderMailSlot(ctx context.Context, slug string, in SlotRenderInput) (*MailSlotRender, error) {
 	var out MailSlotRender
-	if err := c.doJSON(ctx, request{method: http.MethodPost, path: slotPath(slug) + "/render", body: mustJSON(in), idempotent: true}, &out); err != nil {
+	if err := c.doJSON(ctx, request{method: http.MethodPost, path: slotPath(slug) + "/render", body: mustJSON(in), contentType: "application/json", idempotent: true}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -157,7 +157,7 @@ func (c *Client) RenderMailSlot(ctx context.Context, slug string, in SlotRenderI
 // the sender is a 502 naming which half refused and why.
 func (c *Client) TestMailSlot(ctx context.Context, slug string, in SlotTestInput) (*SlotTestResult, error) {
 	var out SlotTestResult
-	if err := c.doJSON(ctx, request{method: http.MethodPost, path: slotPath(slug) + "/test", body: mustJSON(in)}, &out); err != nil {
+	if err := c.doJSON(ctx, request{method: http.MethodPost, path: slotPath(slug) + "/test", body: mustJSON(in), contentType: "application/json"}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

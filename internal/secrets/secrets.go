@@ -55,9 +55,9 @@ func Save(configDir, profile, secret string, forceFile bool) (backend string, wa
 	return File, warn, nil
 }
 
-// writeFileSecure writes data to path with 0600, refusing to follow a symlink or
-// clobber a non-regular file, and enforcing 0600 even when the file already
-// exists (os.WriteFile only applies its mode on creation).
+// writeFileSecure writes data to path atomically with 0600, refusing to follow a
+// symlink or clobber a non-regular file, and enforcing 0600 even when the file
+// already exists.
 func writeFileSecure(path string, data []byte) error {
 	if fi, err := os.Lstat(path); err == nil {
 		if !fi.Mode().IsRegular() {
@@ -66,18 +66,36 @@ func writeFileSecure(path string, data []byte) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".cred-*")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmp := f.Name()
 	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return err
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // Load reads the secret for profile from the named backend.

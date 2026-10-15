@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strings"
@@ -64,11 +66,16 @@ func URL(apiURL, identityID string, kind Kind) (string, error) {
 		return "", fmt.Errorf("unsupported events URL scheme %q", u.Scheme)
 	}
 	q := u.Query()
+	basePath := strings.TrimRight(u.Path, "/")
+	escapedBase := strings.TrimRight(u.EscapedPath(), "/")
+	escapedID := url.PathEscape(identityID)
 	if kind == PIM {
-		u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/identities/" + identityID + "/pim/events"
+		u.Path = basePath + "/api/v1/identities/" + identityID + "/pim/events"
+		u.RawPath = escapedBase + "/api/v1/identities/" + escapedID + "/pim/events"
 		q.Del("pim")
 	} else {
-		u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/mailboxes/" + identityID + "/events"
+		u.Path = basePath + "/api/v1/mailboxes/" + identityID + "/events"
+		u.RawPath = escapedBase + "/api/v1/mailboxes/" + escapedID + "/events"
 		q.Set("pim", "off")
 	}
 	u.RawQuery = q.Encode()
@@ -134,14 +141,15 @@ func runSocket(ctx context.Context, cfg Config, kind Kind, address string, updat
 		if time.Since(started) >= 30*time.Second {
 			backoff = floor
 		}
+		wait := backoff/2 + time.Duration(rand.Int64N(int64(backoff/2)+1))
 		update := Update{Kind: kind, Err: failure, Terminal: !retry}
 		if retry {
-			update.RetryIn = backoff
+			update.RetryIn = wait
 		}
 		if !emit(ctx, updates, update) || !retry {
 			return
 		}
-		timer := time.NewTimer(backoff)
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -166,16 +174,20 @@ func session(ctx context.Context, token string, kind Kind, address string, updat
 			if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429 {
 				failure.Retryable = false
 			}
-			// A missing PIM store is a recoverable condition only when the
-			// server says so. A generic 404 is an authorization/not-found refusal.
-			if kind == PIM && resp.StatusCode == 404 && resp.Body != nil {
-				var body struct {
-					Error string `json:"error"`
+			if resp.Body != nil {
+				// A missing PIM store is a recoverable condition only when the
+				// server says so. A generic 404 is an authorization/not-found refusal.
+				if kind == PIM && resp.StatusCode == 404 {
+					var body struct {
+						Error string `json:"error"`
+					}
+					if json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&body) == nil && body.Error == "pim_unprovisioned" {
+						failure.Retryable = true
+						failure.Message = "store not provisioned yet"
+					}
 				}
-				if json.NewDecoder(resp.Body).Decode(&body) == nil && body.Error == "pim_unprovisioned" {
-					failure.Retryable = true
-					failure.Message = "store not provisioned yet"
-				}
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+				_ = resp.Body.Close()
 			}
 		}
 		return failure
@@ -183,6 +195,7 @@ func session(ctx context.Context, token string, kind Kind, address string, updat
 	defer conn.CloseNow()
 	conn.SetReadLimit(1 << 20)
 	if !emit(ctx, updates, Update{Kind: kind, Connected: true}) {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
 		return &Failure{Kind: kind, Message: ctx.Err().Error()}
 	}
 	readCtx, stop := context.WithCancel(ctx)
@@ -224,6 +237,7 @@ func session(ctx context.Context, token string, kind Kind, address string, updat
 			continue
 		}
 		if !emit(ctx, updates, Update{Kind: kind, Frame: []byte(line)}) {
+			_ = conn.Close(websocket.StatusNormalClosure, "")
 			return &Failure{Kind: kind, Message: ctx.Err().Error()}
 		}
 	}

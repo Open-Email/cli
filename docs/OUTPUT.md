@@ -47,17 +47,18 @@ Pagination exceptions (mirroring core):
 | `0` | success |
 | `1` | a runtime/API error (rendered on stderr) |
 | `2` | a usage error (bad flags/args; also non-TTY refusing to prompt) |
+| `3` | resource not found (`404`) |
 | `4` | authentication required / failed (`login` needed, or a 401) |
 
 A few commands use the exit code as a signal: `sieve check` exits `1` when a
 script does not compile (the report is still emitted), `deliver check` exits `1`
 on a rejected recipient, and `api` exits `1` when the response status is ≥ 400.
 
-The per-recipient send verbs — `compose` and `threads reply` — exit `1` when any
-recipient failed, even though the submission itself succeeded (core answers
-`207`). The full per-recipient report is still printed, so a script can notice
-the failure from the exit code without parsing it. `messages restore` with
-several ids does the same when any id came back `not_found`: the ones that
+The per-recipient send verbs — `compose`, `threads reply`, and `templates send` —
+exit `1` when any recipient failed, even though the submission itself succeeded
+(core answers `207`). The full per-recipient report is still printed, so a script
+can notice the failure from the exit code without parsing it. `messages restore`
+with several ids does the same when any id came back `not_found`: the ones that
 restored still did, and the table says which.
 
 ## Errors

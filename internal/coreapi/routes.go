@@ -163,7 +163,7 @@ func (c *Client) ReplaceMembers(ctx context.Context, address string, members []s
 	}
 	err := c.doJSON(ctx, request{
 		method: http.MethodPut, path: c.routeMembersPath(address),
-		body: mustJSON(map[string]any{"members": members}), contentType: "application/json",
+		body: mustJSON(map[string]any{"members": members}), contentType: "application/json", idempotent: true,
 	}, &out)
 	if err != nil {
 		return nil, err

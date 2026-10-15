@@ -204,7 +204,7 @@ func (c *Client) ListTemplates(ctx context.Context, accountID string) ([]MailTem
 // already send as (400 from_not_sendable); the copy is written afterwards.
 func (c *Client) CreateTemplate(ctx context.Context, accountID string, in TemplateCreate) (*MailTemplate, error) {
 	var out MailTemplate
-	if err := c.doJSON(ctx, request{method: http.MethodPost, path: templatesPath(accountID), body: mustJSON(in)}, &out); err != nil {
+	if err := c.doJSON(ctx, request{method: http.MethodPost, path: templatesPath(accountID), body: mustJSON(in), contentType: "application/json"}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -223,7 +223,7 @@ func (c *Client) GetTemplate(ctx context.Context, accountID, slug string) (*Mail
 // variables). A nil replyTo clears it. Core writes only what differs.
 func (c *Client) UpdateTemplate(ctx context.Context, accountID, slug string, patch map[string]any) (*MailTemplate, error) {
 	var out MailTemplate
-	if err := c.doJSON(ctx, request{method: http.MethodPatch, path: templatePath(accountID, slug), body: mustJSON(patch)}, &out); err != nil {
+	if err := c.doJSON(ctx, request{method: http.MethodPatch, path: templatePath(accountID, slug), body: mustJSON(patch), contentType: "application/json"}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -240,7 +240,7 @@ func (c *Client) DeleteTemplate(ctx context.Context, accountID, slug string) err
 func (c *Client) PutTemplateVariant(ctx context.Context, accountID, slug, lang string, copy VariantCopy) (*VariantPutResult, error) {
 	var out VariantPutResult
 	path := templatePath(accountID, slug) + "/variants/" + escapeSegment(lang)
-	if err := c.doJSON(ctx, request{method: http.MethodPut, path: path, body: mustJSON(copy), idempotent: true}, &out); err != nil {
+	if err := c.doJSON(ctx, request{method: http.MethodPut, path: path, body: mustJSON(copy), contentType: "application/json", idempotent: true}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -261,7 +261,7 @@ func (c *Client) DeleteTemplateVariant(ctx context.Context, accountID, slug, lan
 func (c *Client) RenderTemplate(ctx context.Context, accountID, slug string, in TemplateRenderInput) (*MailTemplateRender, error) {
 	var out MailTemplateRender
 	path := templatePath(accountID, slug) + "/render"
-	if err := c.doJSON(ctx, request{method: http.MethodPost, path: path, body: mustJSON(in), idempotent: true}, &out); err != nil {
+	if err := c.doJSON(ctx, request{method: http.MethodPost, path: path, body: mustJSON(in), contentType: "application/json", idempotent: true}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -276,10 +276,11 @@ func (c *Client) SendTemplate(ctx context.Context, accountID, slug string, in Te
 	var out MailTemplateSend
 	path := templatePath(accountID, slug) + "/send"
 	err := c.doJSON(ctx, request{
-		method:  http.MethodPost,
-		path:    path,
-		body:    mustJSON(in),
-		headers: map[string]string{"X-Delivery-Id": deliveryID},
+		method:      http.MethodPost,
+		path:        path,
+		body:        mustJSON(in),
+		contentType: "application/json",
+		headers:     map[string]string{"X-Delivery-Id": deliveryID},
 		// Idempotent because the delivery id makes a replay converge.
 		idempotent: true,
 	}, &out)

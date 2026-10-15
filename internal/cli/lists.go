@@ -67,14 +67,19 @@ func newListsCmd(a *app) *cobra.Command {
 // mailbox's own. `--mailbox` picks the second, which is also the only family a
 // mailbox credential can reach.
 func listFamily(ctx context.Context, a *app, client *coreapi.Client, flagAccount, flagMailbox string) (coreapi.AddressLists, error) {
+	fam, _, err := listFamilyWithAccount(ctx, a, client, flagAccount, flagMailbox)
+	return fam, err
+}
+
+func listFamilyWithAccount(ctx context.Context, a *app, client *coreapi.Client, flagAccount, flagMailbox string) (coreapi.AddressLists, string, error) {
 	if flagMailbox != "" {
-		return coreapi.MailboxLists(flagMailbox), nil
+		return coreapi.MailboxLists(flagMailbox), "", nil
 	}
 	acct, _, err := suppressionScope(ctx, a, client, flagAccount)
 	if err != nil {
-		return coreapi.AddressLists{}, err
+		return coreapi.AddressLists{}, "", err
 	}
-	return coreapi.AccountLists(acct), nil
+	return coreapi.AccountLists(acct), acct, nil
 }
 
 func listScopeFlags(cmd *cobra.Command, account, mailbox *string) {
@@ -116,6 +121,14 @@ func newListsListCmd(a *app) *cobra.Command {
 		Short:   "Show your address lists",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			f := coreapi.ListAddressListsFilter{Direction: direction, Verdict: verdict}
+			if scope != "" {
+				kind, id, ok := strings.Cut(scope, ":")
+				if !ok {
+					return usageError(errors.New("--scope takes kind:id, e.g. domain:acme.example or mailbox:01ABC…"))
+				}
+				f.ScopeKind, f.ScopeID = kind, id
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
@@ -124,14 +137,6 @@ func newListsListCmd(a *app) *cobra.Command {
 			fam, err := listFamily(ctx, a, client, account, mailbox)
 			if err != nil {
 				return err
-			}
-			f := coreapi.ListAddressListsFilter{Direction: direction, Verdict: verdict}
-			if scope != "" {
-				kind, id, ok := strings.Cut(scope, ":")
-				if !ok {
-					return usageError(errors.New("--scope takes kind:id, e.g. domain:acme.example or mailbox:01ABC…"))
-				}
-				f.ScopeKind, f.ScopeID = kind, id
 			}
 			var items []coreapi.AddressList
 			next := ""
@@ -161,6 +166,8 @@ func newListsListCmd(a *app) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "fetch every page")
 	cmd.Flags().IntVar(&limit, "limit", 0, "page size (1–200)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "pagination cursor from a previous page")
+	registerEnumFlagCompletion(cmd, "direction", "inbound", "outbound")
+	registerEnumFlagCompletion(cmd, "verdict", "allow", "block")
 	return cmd
 }
 
@@ -250,12 +257,20 @@ func newListsCreateCmd(a *app) *cobra.Command {
 			if verdict != "allow" && verdict != "block" {
 				return usageError(fmt.Errorf("--verdict must be allow or block, got %q", verdict))
 			}
+			var scopeKind, scopeID string
+			if mailbox == "" && scope != "" {
+				var ok bool
+				scopeKind, scopeID, ok = strings.Cut(scope, ":")
+				if !ok {
+					return usageError(errors.New("--scope takes kind:id, e.g. domain:acme.example or mailbox:01ABC…"))
+				}
+			}
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
 			ctx := cmd.Context()
-			fam, err := listFamily(ctx, a, client, account, mailbox)
+			fam, acct, err := listFamilyWithAccount(ctx, a, client, account, mailbox)
 			if err != nil {
 				return err
 			}
@@ -263,21 +278,11 @@ func newListsCreateCmd(a *app) *cobra.Command {
 			if mailbox == "" {
 				// The account family needs an explicit scope; default to the whole
 				// account, which is what "my company blocks them" means.
-				kind, id := "account", ""
 				if scope != "" {
-					var ok bool
-					kind, id, ok = strings.Cut(scope, ":")
-					if !ok {
-						return usageError(errors.New("--scope takes kind:id, e.g. domain:acme.example or mailbox:01ABC…"))
-					}
+					in.ScopeKind, in.ScopeID = scopeKind, scopeID
 				} else {
-					acct, _, serr := suppressionScope(ctx, a, client, account)
-					if serr != nil {
-						return serr
-					}
-					id = acct
+					in.ScopeKind, in.ScopeID = "account", acct
 				}
-				in.ScopeKind, in.ScopeID = kind, id
 			}
 			l, err := client.CreateAddressList(ctx, fam, in)
 			if err != nil {
@@ -295,6 +300,8 @@ func newListsCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&scope, "scope", "", "what it binds, as kind:id — defaults to the whole account")
 	_ = cmd.MarkFlagRequired("direction")
 	_ = cmd.MarkFlagRequired("verdict")
+	registerEnumFlagCompletion(cmd, "direction", "inbound", "outbound")
+	registerEnumFlagCompletion(cmd, "verdict", "allow", "block")
 	return cmd
 }
 
@@ -359,7 +366,7 @@ func newListsDeleteCmd(a *app) *cobra.Command {
 		},
 	}
 	listScopeFlags(cmd, &account, &mailbox)
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }
 
@@ -507,19 +514,30 @@ func newListsRemoveCmd(a *app) *cobra.Command {
 }
 
 func newListsImportCmd(a *app) *cobra.Command {
-	var account, mailbox, expires string
+	var account, mailbox, expires, file string
 	cmd := &cobra.Command{
-		Use:   "import <list-id> <pattern>...",
+		Use:   "import <list-id> [pattern...]",
 		Short: "Add many patterns at once",
 		Long: "Up to 500 per call. Anything that is not a pattern is REPORTED rather than\n" +
 			"failing the import — a suppression export from another provider routinely\n" +
 			"carries a few rows that are not addresses. --expires applies to every\n" +
 			"pattern in the call.",
-		Args: cobra.MinimumNArgs(2),
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			expiresAt, err := parseExpiresFlag(expires)
 			if err != nil {
 				return usageError(err)
+			}
+			patterns := append([]string{}, args[1:]...)
+			if file != "" {
+				raw, rerr := inlineOrFile("", file)
+				if rerr != nil {
+					return rerr
+				}
+				patterns = append(patterns, parseMemberList(raw)...)
+			}
+			if len(patterns) == 0 {
+				return usageError(errors.New("no patterns given — pass patterns as arguments and/or --file (-f)"))
 			}
 			client, err := a.authedClient()
 			if err != nil {
@@ -530,8 +548,8 @@ func newListsImportCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			entries := make([]coreapi.AddressListEntryInput, 0, len(args)-1)
-			for _, p := range args[1:] {
+			entries := make([]coreapi.AddressListEntryInput, 0, len(patterns))
+			for _, p := range patterns {
 				entries = append(entries, coreapi.AddressListEntryInput{Pattern: p, ExpiresAt: expiresAt})
 			}
 			res, err := client.AddAddressListEntries(ctx, fam, args[0], entries)
@@ -548,6 +566,7 @@ func newListsImportCmd(a *app) *cobra.Command {
 		},
 	}
 	listScopeFlags(cmd, &account, &mailbox)
+	cmd.Flags().StringVarP(&file, "file", "f", "", "newline-separated pattern file (- for stdin), merged with positional patterns")
 	cmd.Flags().StringVar(&expires, "expires", "", expiresFlagHelp)
 	return cmd
 }
@@ -608,5 +627,6 @@ func newListsCheckCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&domain, "domain", "", "include this domain's scope in the chain")
 	cmd.Flags().StringVar(&scope, "scope-mailbox", "", "include this mailbox's scope in the chain")
 	_ = cmd.MarkFlagRequired("direction")
+	registerEnumFlagCompletion(cmd, "direction", "inbound", "outbound")
 	return cmd
 }
