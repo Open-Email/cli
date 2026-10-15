@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	renameFile = os.Rename
-	readFile   = os.ReadFile
+	renameFile = renameCredentialFile
+	readFile   = readCredentialFile
 	isWindows  = runtime.GOOS == "windows"
 )
 
