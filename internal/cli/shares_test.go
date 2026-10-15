@@ -211,3 +211,21 @@ func TestMailShareSet_RefusesKeepFoldersWithFolder(t *testing.T) {
 		t.Fatalf("error should explain the conflict, got: %v", err)
 	}
 }
+
+// Core is the sole validator of a rights value (src/types.ts
+// normalizeAndValidateRights): presets trimmed and case-folded, letters from
+// lrswikte, and it names the letters it refuses. #35's local check accepted
+// only three presets and lrswitea, so core's own full grant (lrswikte) and
+// its other preset spellings were refused before any request.
+func TestValidateShareRightsDefersToCore(t *testing.T) {
+	for _, r := range []string{"lrswikte", "read-write", "read", "admin", "LRS", " full ", "lrsk"} {
+		if err := validateShareRights(r); err != nil {
+			t.Errorf("validateShareRights(%q) = %v; core accepts it", r, err)
+		}
+	}
+	for _, r := range []string{"", "   "} {
+		if err := validateShareRights(r); err == nil {
+			t.Errorf("validateShareRights(%q) = nil; want the empty refusal", r)
+		}
+	}
+}

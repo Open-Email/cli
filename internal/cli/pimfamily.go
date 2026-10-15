@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -663,9 +664,11 @@ func newPimObjGetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 		Aliases: []string{"show"},
 		Short:   "Fetch one object's raw " + f.ext + " text (by href, or --uid)",
 		Long: "Fetch one object. By default this is the raw " + f.ext + " wire text.\n" +
-			"--" + flagName + " (or --json) asks for the same resource as " + f.jsonName + " instead, which is the\n" +
-			"shape to edit programmatically — it reports `writable:false` when the object\n" +
-			"can be read as JSON but never written back.",
+			"--" + flagName + " asks for the same resource as a " + f.jsonName + " document instead, which is the\n" +
+			"shape to edit programmatically and feed back to `put --" + flagName + "`; it warns when\n" +
+			"the object can be read as JSON but never written back.\n\n" +
+			"The global --json answers the whole envelope (href, etag, writable, data);\n" +
+			"the " + f.jsonName + " document is its .data.",
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			href, err := pimHrefArg(args, uid)
@@ -684,6 +687,9 @@ func newPimObjGetCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 				obj, jerr := client.GetPimObjectJSON(cmd.Context(), s, f.kind, args[0], href, uid)
 				if jerr != nil {
 					return jerr
+				}
+				if outPath != "" {
+					return writePimObjectJSON(a, obj, f, outPath)
 				}
 				a.out.Emit(obj, func(w io.Writer) {
 					printPimObjectJSON(w, a, obj, f)
@@ -719,7 +725,7 @@ func printPimObjectJSON(w io.Writer, a *app, obj *coreapi.PimObjectJSON, f pimFa
 		// JSCalendar type models) or a body core could not parse — never "this
 		// kind of object is unsupported".
 		a.out.Warnf("no %s mapping for this object (a journal entry, or a body that did not parse) — the wire text is below", f.jsonName)
-		fmt.Fprintln(w, obj.Content)
+		fmt.Fprintln(w, sanitizeBody(obj.Content))
 		return
 	}
 	blob, err := json.MarshalIndent(obj.Data, "", "  ")
@@ -733,17 +739,54 @@ func printPimObjectJSON(w io.Writer, a *app, obj *coreapi.PimObjectJSON, f pimFa
 	}
 }
 
+// writePimObjectJSON is `get --jscalendar|--jscontact -o file`: the data
+// document goes to the file, ready for `put`, and the envelope's facts to
+// stderr (or, with --json, the envelope to stdout).
+func writePimObjectJSON(a *app, obj *coreapi.PimObjectJSON, f pimFamily, outPath string) error {
+	if obj.Data == nil {
+		return fmt.Errorf("no %s mapping for this object (a journal entry, or a body that did not parse); fetch the raw %s without --%s", f.jsonName, f.ext, structuredFlagName(f))
+	}
+	blob, err := json.MarshalIndent(obj.Data, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := writeStream(a, bytes.NewReader(append(blob, '\n')), outPath); err != nil {
+		return err
+	}
+	a.out.Emit(obj, func(io.Writer) {
+		a.out.Msgf("etag %s", obj.Etag)
+		if !obj.Writable {
+			a.out.Warnf("read-only: this object converts to %s but cannot be converted back, so an edit would be refused", f.jsonName)
+		}
+	})
+	return nil
+}
+
+// isPimObjectEnvelope recognizes the `get --json` answer: the document under
+// .data beside the object's href and etag. No JSCalendar or JSContact object
+// has a top-level "data" object, and core would read the envelope as one
+// with none of its fields (a contact stored as a bare UID).
+func isPimObjectEnvelope(doc map[string]any) bool {
+	if _, ok := doc["data"].(map[string]any); !ok {
+		return false
+	}
+	_, hasHref := doc["href"]
+	_, hasEtag := doc["etag"]
+	return hasHref || hasEtag
+}
+
 func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 	var file, ifMatch string
 	var createOnly, asStructured bool
 	flagName := structuredFlagName(f)
 	cmd := &cobra.Command{
 		Use:   "put <" + f.noun + "> <href>",
-		Short: "Create or replace one object from raw " + f.ext + " text (or --" + flagName + " / --json)",
+		Short: "Create or replace one object from raw " + f.ext + " text (or a " + f.jsonName + " document)",
 		Long: "Create or replace one object from raw " + f.ext + " text (from --file or stdin).\n" +
-			"--" + flagName + " (or --json) takes a " + f.jsonName + " document instead; core converts it to wire text\n" +
-			"before the ordinary write path runs, so ETags, If-Match and scheduling behave\n" +
-			"identically either way.\n\n" +
+			"--" + flagName + " takes a " + f.jsonName + " document instead (as does a body starting with '{');\n" +
+			"core converts it to wire text before the ordinary write path runs, so ETags,\n" +
+			"If-Match and scheduling behave identically either way. The envelope that\n" +
+			"`get --json` prints is refused: pass its .data, or fetch with `get --" + flagName + "`.\n\n" +
 			"--if-match guards a replace with the stored ETag (412 on mismatch);\n" +
 			"--create-only (If-None-Match: *) refuses to overwrite an existing href.\n" +
 			"On a calendar, an organizer's write fans out iTIP invitations to attendees.",
@@ -758,6 +801,11 @@ func newPimObjPutCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 			if useJSON {
 				if jerr := json.Unmarshal(body, &data); jerr != nil {
 					return usageError(fmt.Errorf("invalid %s JSON: %w", f.jsonName, jerr))
+				}
+				if isPimObjectEnvelope(data) {
+					return usageError(fmt.Errorf(
+						"this is the envelope `objects get --json` prints, not a %s document: pass its .data (jq .data), or fetch with `objects get --%s`",
+						f.jsonName, flagName))
 				}
 			}
 			client, err := a.authedClient()
@@ -874,10 +922,16 @@ func newPimObjMoveCmd(a *app, f pimFamily, scope pimScopeFn) *cobra.Command {
 // addresses the calendars path family directly.
 func newPimRespondCmd(a *app, scope pimScopeFn) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:       "respond <calendar> <href> <accepted|declined|tentative|needs-action>",
-		Aliases:   []string{"rsvp"},
-		ValidArgs: []string{"accepted", "declined", "tentative", "needs-action"},
-		Short:     "RSVP to an invitation: patch your copy and tell the organizer",
+		Use:     "respond <calendar> <href> <accepted|declined|tentative|needs-action>",
+		Aliases: []string{"rsvp"},
+		// The partstat is the third argument; ValidArgs would complete the first.
+		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 2 {
+				return []string{"accepted", "declined", "tentative", "needs-action"}, cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveDefault
+		},
+		Short: "RSVP to an invitation: patch your copy and tell the organizer",
 		Long: "Record your participation status on an event in your calendar. Your copy is\n" +
 			"patched, then the organizer is told by exactly one route: a local organizer's\n" +
 			"copy is updated in place, a remote organizer is mailed a METHOD:REPLY.",

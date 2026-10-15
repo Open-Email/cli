@@ -322,10 +322,9 @@ func newRulesAddCmd(a *app) *cobra.Command {
 func newRulesRemoveCmd(a *app) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:     "remove <position>",
-		Aliases: []string{"rm", "delete"},
-		Short:   "Remove the rule at a 1-based position (see `rules list`)",
-		Args:    cobra.ExactArgs(1),
+		Use:   "remove <position>",
+		Short: "Remove the rule at a 1-based position (see `rules list`)",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
