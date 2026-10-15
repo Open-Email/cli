@@ -17,7 +17,9 @@ func TestVersionNewer(t *testing.T) {
 		{"v2.0.0", "1.9.9", true},
 		{"v1.0.0", "1.0.1", false},
 		{"v1.2.0", "1.1.9", true},
-		{"v1.2.3-rc1", "1.2.3", false}, // prerelease suffix dropped → equal
+		{"v1.2.3-rc1", "1.2.3", false},
+		{"v1.2.4-rc1", "1.2.3", false}, // prerelease latest never nags a stable install
+		{"v1.2.3", "1.2.3-rc1", true},  // stable release is newer than its own RC
 		{"v0.2.0", "0.1.0-dev", true},
 		{"garbage", "1.0.0", false},
 	}

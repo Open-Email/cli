@@ -640,3 +640,126 @@ func TestFlowSelection(t *testing.T) {
 		}
 	})
 }
+
+func TestReLoginWithNoMintRevokesPreviousManagedKey(t *testing.T) {
+	oldCore := newFakeCore()
+	defer oldCore.Close()
+
+	newCore := newFakeCore()
+	defer newCore.Close()
+
+	a := loginFixture(t, oldCore.URL, config.Profile{
+		APIURL:         oldCore.URL,
+		ConsoleURL:     "https://console.old.test",
+		AccountID:      "acc_old",
+		Role:           "account",
+		KeyStorage:     secrets.File,
+		KeyID:          "key_old_managed",
+		DefaultMailbox: "mbx_old",
+	})
+	if _, _, err := secrets.Save(a.cfg.ConfigDir(), "default", "oek_old_secret", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now re-login to newCore with --no-mint and a new key.
+	a.apiURL = newCore.URL
+	a.flagAPIKey = "oek_new_unmanaged"
+	if err := runLoginWith(t, a, loginOpts{noMint: true}); err != nil {
+		t.Fatalf("runLogin: %v", err)
+	}
+
+	// The old CLI-minted key on oldCore must have been revoked using the old secret.
+	if got := oldCore.revokedKeys(); len(got) != 1 || got[0] != "key_old_managed" {
+		t.Fatalf("oldCore revoked %v, want [key_old_managed]", got)
+	}
+	stored, _ := a.cfg.Profile("default")
+	if stored.DefaultMailbox != "" {
+		t.Fatalf("expected DefaultMailbox cleared on account switch, got %q", stored.DefaultMailbox)
+	}
+	if stored.ConsoleURL != "" {
+		t.Fatalf("expected ConsoleURL cleared when APIURL changed without --console-url, got %q", stored.ConsoleURL)
+	}
+}
+
+func TestLoginMailboxAppPasswordSetsDefaultMailbox(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"type":         "mailbox",
+			"accountId":    "acc_1",
+			"mailboxId":    "01J00000000000000000000MBX",
+			"credentialId": "01J0000000000000000000CRED",
+		})
+	}))
+	defer srv.Close()
+
+	a := loginFixture(t, srv.URL, config.Profile{})
+	a.flagAPIKey = "oemp_app_pass"
+	if err := runLoginWith(t, a, loginOpts{}); err != nil {
+		t.Fatalf("runLogin: %v", err)
+	}
+
+	stored, _ := a.cfg.Profile("default")
+	if stored.DefaultMailbox != "01J00000000000000000000MBX" {
+		t.Fatalf("DefaultMailbox = %q, want 01J00000000000000000000MBX", stored.DefaultMailbox)
+	}
+}
+
+func TestLoginRejectsMutuallyExclusiveFlags(t *testing.T) {
+	core := newFakeCore()
+	defer core.Close()
+
+	cases := []struct {
+		name string
+		opts loginOpts
+	}{
+		{"paste with device", loginOpts{paste: true, device: true}},
+		{"paste with no-browser", loginOpts{paste: true, noBrowser: true}},
+		{"no-mint with browser login", loginOpts{noMint: true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := loginFixture(t, core.URL, config.Profile{ConsoleURL: "https://console.test"})
+			err := runLoginWith(t, a, tc.opts)
+			if err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+			var exitErr *ExitError
+			if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+				t.Fatalf("expected ExitError code 2, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoginPasteReadsFromPipedStdin(t *testing.T) {
+	core := newFakeCore()
+	defer core.Close()
+
+	a := loginFixture(t, core.URL, config.Profile{})
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.WriteString("oek_piped_via_stdin\n")
+	_ = w.Close()
+
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = origStdin
+		_ = r.Close()
+	})
+
+	if err := runLoginWith(t, a, loginOpts{paste: true, noMint: true}); err != nil {
+		t.Fatalf("login --paste from piped stdin failed: %v", err)
+	}
+	secret, err := secrets.Load(a.cfg.ConfigDir(), "default", secrets.File)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secret != "oek_piped_via_stdin" {
+		t.Fatalf("stored %q, want oek_piped_via_stdin", secret)
+	}
+}
