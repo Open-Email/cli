@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -159,3 +160,173 @@ func TestPreviewLoadingViewHasNoSpinnerError(t *testing.T) {
 		t.Fatalf("loading preview renders a broken spinner: %q", v)
 	}
 }
+
+func TestRootRoutesPaneScopedMsgToUnderlyingPane(t *testing.T) {
+	m := newRoot(t.Context(), Options{Role: "account"})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	// Base pane is a screenPane (Mailboxes). Push a child notePane on top.
+	base, ok := m.stack[0].(*screenPane)
+	if !ok {
+		t.Fatalf("expected base *screenPane, got %T", m.stack[0])
+	}
+	base.loading = true
+	base.seq = 1
+
+	m.Update(pushPaneMsg{p: newNotePane("Child", []string{"body"})})
+	if len(m.stack) != 2 {
+		t.Fatalf("expected 2 panes on stack, got %d", len(m.stack))
+	}
+
+	// Deliver pageMsg for the underlying screenPane while child notePane is on top.
+	m.Update(pageMsg{
+		paneID:  base.id,
+		seq:     1,
+		rows:    []rowData{{cells: []string{"01M", "alice@example.test", "∞", "2026-01-01"}}},
+		replace: true,
+	})
+
+	baseAfter := m.stack[0].(*screenPane)
+	if baseAfter.loading {
+		t.Fatalf("underlying screenPane remained stuck in loading=true when pageMsg arrived while child pane was on top")
+	}
+	if len(baseAfter.all) != 1 {
+		t.Fatalf("expected 1 row in underlying screenPane, got %d", len(baseAfter.all))
+	}
+}
+
+func TestMessagesPaneLiveEventRoutedUnderChildAndSkipsPIM(t *testing.T) {
+	m := newRoot(t.Context(), Options{Role: "account"})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	mp := newMessagesPane(t.Context(), &m.ui, coreapi.Mailbox{ID: "01M"})
+	mp.setSize(80, 24)
+	mp.loading = false
+	m.stack = []pane{mp}
+
+	// Push a previewPane on top of messagesPane.
+	sub := "hello"
+	prev := newPreviewPane(t.Context(), &m.ui, "01M", coreapi.MessageMeta{ID: "01X", Subject: &sub})
+	m.Update(pushPaneMsg{p: prev})
+
+	// Deliver a mail liveEvent targeted at mp while previewPane is on top.
+	m.Update(liveEvent{paneID: mp.id, typ: "message.created"})
+	mpAfter := m.stack[0].(*messagesPane)
+	if !mpAfter.loading {
+		t.Fatalf("expected underlying messagesPane to start refreshing on message.created liveEvent even while previewPane is on top")
+	}
+
+	// Deliver msgsPageMsg targeted at mp while previewPane is still on top.
+	mpAfter.loading = true
+	m.Update(msgsPageMsg{
+		paneID:  mpAfter.id,
+		seq:     mpAfter.seq,
+		items:   []coreapi.MessageMeta{{ID: "01X", Subject: &sub}},
+		replace: true,
+	})
+	mpAfter = m.stack[0].(*messagesPane)
+	if mpAfter.loading || len(mpAfter.all) != 1 {
+		t.Fatalf("expected underlying messagesPane to process msgsPageMsg while child pane is on top: loading=%v len=%d", mpAfter.loading, len(mpAfter.all))
+	}
+
+	// A pim.* event should NOT trigger a mail message list refresh.
+	prevSeq := mpAfter.seq
+	m.Update(liveEvent{paneID: mpAfter.id, typ: "pim.calendar.updated"})
+	mpAfter = m.stack[0].(*messagesPane)
+	if mpAfter.loading || mpAfter.seq != prevSeq {
+		t.Fatalf("pim.* liveEvent should not trigger messagesPane refresh: loading=%v seq=%d (was %d)", mpAfter.loading, mpAfter.seq, prevSeq)
+	}
+}
+
+func TestRulesScreenStateConcurrentAccess(t *testing.T) {
+	st := &rulesScreenState{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			st.set(&coreapi.FilterRulesState{
+				State: "active",
+				Rules: []coreapi.FilterRule{{Name: "Rule 1"}},
+			})
+		}
+	}()
+	for i := 0; i < 200; i++ {
+		_ = st.summaryLines(80)
+	}
+	<-done
+}
+
+func TestCursorClampedOnRowDeletion(t *testing.T) {
+	s := newScreenPane(t.Context(), &Options{}, resourceDesc{
+		name:    "Things",
+		columns: []column{{title: "NAME", flex: true}},
+	})
+	s.setSize(80, 20)
+	s.all = []rowData{
+		{cells: []string{"a"}},
+		{cells: []string{"b"}},
+		{cells: []string{"c"}},
+	}
+	s.applyFilter()
+	s.tbl.SetCursor(2) // last row ("c")
+
+	// Simulate refetch after deleting the last row ("c"): 2 rows remain.
+	s.all = []rowData{
+		{cells: []string{"a"}},
+		{cells: []string{"b"}},
+	}
+	s.applyFilter()
+	if got := s.tbl.Cursor(); got != 1 {
+		t.Fatalf("cursor after deleting last row = %d; want 1 (clamped to last remaining row, not 0)", got)
+	}
+}
+
+func TestConfirmPaneIgnoresEnterKey(t *testing.T) {
+	ran := false
+	p := newConfirmPane(t.Context(), &Options{}, confirmSpec{
+		title: "Delete thing",
+		body:  "gone",
+		verb:  "delete",
+		submit: func(tCtx context.Context, c *coreapi.Client) (string, error) {
+			ran = true
+			return "deleted", nil
+		},
+	})
+	p.setSize(80, 20)
+	_, cmd := p.update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || ran {
+		t.Fatalf("enter must not trigger destructive confirmPane action (require explicit 'y')")
+	}
+}
+
+func TestWideHeaderErrorNotSwallowed(t *testing.T) {
+	s := newScreenPane(t.Context(), &Options{}, resourceDesc{
+		name:    strings.Repeat("VeryLongScreenTitle", 4),
+		columns: []column{{title: "NAME", flex: true}},
+	})
+	s.setSize(40, 20)
+	s.loading = false
+	s.errMsg = "network timeout talking to core"
+	v := s.view()
+	if !strings.Contains(v, "network") {
+		t.Fatalf("expected error message to remain visible even when header is wider than pane, got:\n%s", v)
+	}
+}
+
+func TestDetailAndSourceTitles(t *testing.T) {
+	dp := newDetailPane(t.Context(), &Options{}, resourceDesc{
+		detail: func(any) []kv { return nil },
+	}, rowData{
+		cells: []string{"1", "Newsletter filter", "on"},
+		item:  "r1",
+	})
+	if got := dp.title(); got != "Newsletter filter" {
+		t.Fatalf("detailPane.title() on numbered row = %q; want %q", got, "Newsletter filter")
+	}
+
+	sp := newSourcePane(t.Context(), &Options{}, "01M", coreapi.MessageMeta{ID: "01MSG"})
+	if got := sp.title(); got != "Source" {
+		t.Fatalf("sourcePane.title() = %q; want %q", got, "Source")
+	}
+}
+
