@@ -243,6 +243,9 @@ type Mailbox struct {
 	QuotaBytes     *int64  `json:"quotaBytes"`
 	AccountID      *string `json:"accountId"`
 	CreatedAt      int64   `json:"createdAt"`
+	// Ephemeral: created disposable (core #483), and immutable after: its DELETE
+	// destroys it at once, with no undo window. False for every ordinary mailbox.
+	Ephemeral bool `json:"ephemeral"`
 	// Per-mailbox send policy. The caps are POINTERS because core distinguishes
 	// three states and a plain int64 can only carry two: null = no override, so
 	// the platform default applies; 0 = explicitly unlimited; n = that cap.

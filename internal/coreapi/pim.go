@@ -44,8 +44,13 @@ type PimCollection struct {
 	DisplayName *string `json:"displayName"`
 	Color       *string `json:"color"`
 	Description *string `json:"description"`
-	Visibility  string  `json:"visibility"` // private | shared | public
-	Role        *string `json:"role"`       // default | tasks | nil
+	// DescriptionLang: the description's BCP 47 tag (xml:lang), or nil.
+	DescriptionLang *string `json:"descriptionLang"`
+	// Components: the calendar's supported primary components, VEVENT then
+	// VTODO; nil for an addressbook.
+	Components []string `json:"components"`
+	Visibility string   `json:"visibility"` // private | shared | public
+	Role       *string  `json:"role"`       // default | tasks | nil
 	// ScheduleTransp is RFC 6638 §9.1's CALDAV:schedule-calendar-transp:
 	// whether this calendar's objects count toward the OWNER's free/busy time.
 	// Never empty — §9.1 says an absent property "MUST be assumed" to be
@@ -288,16 +293,18 @@ type PimSharedWithMe struct {
 	OwnerIdentityID string `json:"ownerIdentityId"`
 	// OwnerAddress is the owner's primary address, or null when they have none.
 	// Carried so a listing names a person rather than a ULID.
-	OwnerAddress *string `json:"ownerAddress"`
-	CollectionID string  `json:"collectionId"`
-	Permission   string  `json:"permission"`
-	Kind         string  `json:"kind"`
-	Name         string  `json:"name"`
-	DisplayName  *string `json:"displayName"`
-	Color        *string `json:"color"`
-	Description  *string `json:"description"`
-	SyncToken    string  `json:"syncToken"`
-	CreatedAt    int64   `json:"createdAt"`
+	OwnerAddress    *string  `json:"ownerAddress"`
+	CollectionID    string   `json:"collectionId"`
+	Permission      string   `json:"permission"`
+	Kind            string   `json:"kind"`
+	Name            string   `json:"name"`
+	DisplayName     *string  `json:"displayName"`
+	Color           *string  `json:"color"`
+	Description     *string  `json:"description"`
+	DescriptionLang *string  `json:"descriptionLang"` // BCP 47 tag of Description, or nil
+	Components      []string `json:"components"`      // VEVENT / VTODO; nil for an addressbook
+	SyncToken       string   `json:"syncToken"`
+	CreatedAt       int64    `json:"createdAt"`
 	// The same census the owner's listing carries, so a shared task list can be
 	// badged without listing it.
 	ObjectCount int64         `json:"objectCount"`
@@ -311,14 +318,15 @@ type PimSharedWithMe struct {
 // PimPublicCollection is one entry of the account-scoped public directory. ID
 // is the directory-entry handle subscribe takes (not the collection id).
 type PimPublicCollection struct {
-	ID              string  `json:"id"`
-	OwnerIdentityID string  `json:"ownerIdentityId"`
-	CollectionID    string  `json:"collectionId"`
-	Kind            string  `json:"kind"`
-	DisplayName     *string `json:"displayName"`
-	Description     *string `json:"description"`
-	Category        *string `json:"category"`
-	CreatedAt       int64   `json:"createdAt"`
+	ID              string   `json:"id"`
+	OwnerIdentityID string   `json:"ownerIdentityId"`
+	CollectionID    string   `json:"collectionId"`
+	Kind            string   `json:"kind"`
+	DisplayName     *string  `json:"displayName"`
+	Description     *string  `json:"description"`
+	Category        *string  `json:"category"`
+	Components      []string `json:"components"` // VEVENT / VTODO; nil for an addressbook
+	CreatedAt       int64    `json:"createdAt"`
 }
 
 // PimToken is one feed token (hash-stored; the plaintext appears only at mint).
