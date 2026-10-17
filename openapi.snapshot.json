@@ -7038,6 +7038,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "ephemeral": {
+            "description": "Whether the mailbox was created DISPOSABLE (ephemeral: true at creation, immutable afterwards): its DELETE destroys it at once — no undo record, no 7-day window, the address free again immediately. False for every ordinary mailbox, whose DELETE keeps the window",
+            "type": "boolean"
+          },
           "groupAddress": {
             "description": "When this identity is a GROUP PERSONA, the group address whose archive it keeps and which it may send as; null for every other identity. A persona has no primaryAddress, cannot be a route target, refuses its own DELETE (delete the group route instead) and its Sieve/rules writes, and is exempt from max_mailboxes",
             "type": [
@@ -7177,7 +7181,8 @@
           "sendRcptsPerHour",
           "retentionDays",
           "groupAddress",
-          "semantic"
+          "semantic",
+          "ephemeral"
         ],
         "type": "object"
       },
@@ -8945,6 +8950,14 @@
       },
       "PickupSource": {
         "properties": {
+          "completedAt": {
+            "description": "When an import completed, epoch seconds; null while it runs, and always in sync mode. A completed source is disabled and holds no password: re-enabling it needs the password again",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "consecutiveFailures": {
             "description": "Number of consecutive failed polling attempts",
             "format": "int64",
@@ -8974,6 +8987,11 @@
             "description": "Pickup source ULID",
             "type": "string"
           },
+          "importedTotal": {
+            "description": "Messages this source has stored (replays excluded), counted as they arrive. ABSENT on the operator listing",
+            "format": "int64",
+            "type": "integer"
+          },
           "intervalMinutes": {
             "description": "Polling interval in minutes",
             "format": "int64",
@@ -8995,6 +9013,14 @@
           },
           "lastImportedCount": {
             "description": "Messages the fetcher uploaded on the most recent completed run (its report's uploadedCount). Null until a run has reported; 0 is a run that found nothing waiting",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lastOversizeCount": {
+            "description": "Messages the fetcher left on the remote server on its most recent run because they are over the platform's message size limit; they are never imported and do not hold an import open. Null until a run has reported it",
             "format": "int64",
             "type": [
               "integer",
@@ -9030,6 +9056,14 @@
             "description": "True if every imported message lands read. False (the default): messages dated before the source was added — the backlog — land read, newer ones unread; POP3 itself carries no read state",
             "type": "boolean"
           },
+          "mode": {
+            "description": "sync = keep collecting from this account for as long as the source exists. import = move off this account: the source completes itself once a run finds the remote mailbox drained and no new message has been stored for quietDays, then switches off and forgets the remote password",
+            "enum": [
+              "sync",
+              "import"
+            ],
+            "type": "string"
+          },
           "name": {
             "description": "User-assigned label for this remote account (e.g. 'Old Gmail'), or null",
             "type": [
@@ -9041,6 +9075,19 @@
             "description": "Remote POP3 server port (e.g. 995 for TLS, 110 for STARTTLS)",
             "format": "int64",
             "type": "integer"
+          },
+          "quietDays": {
+            "description": "Days without a newly stored message, after a drained run, that complete an import (1 to 90). Ignored in sync mode",
+            "format": "int64",
+            "type": "integer"
+          },
+          "quietSince": {
+            "description": "When the quiet window last restarted (a message was stored, the source was re-enabled or switched to import), epoch seconds; null = since createdAt. ABSENT on the operator listing",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "tls": {
             "description": "Transport security mode ('tls' or 'starttls')",
@@ -9073,7 +9120,11 @@
           "lastError",
           "consecutiveFailures",
           "lastImportedCount",
-          "createdAt"
+          "createdAt",
+          "mode",
+          "quietDays",
+          "completedAt",
+          "lastOversizeCount"
         ],
         "type": "object"
       },
@@ -9169,6 +9220,22 @@
               "null"
             ]
           },
+          "components": {
+            "description": "Supported primary components, in VEVENT then VTODO order; null for addressbooks. Legacy mixed calendars may also retain journals or unparsed resources. Narrowing refuses with components_conflict and a count of incompatible live and restorable trashed objects.",
+            "items": {
+              "enum": [
+                "VEVENT",
+                "VTODO"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "createdAt": {
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
@@ -9176,6 +9243,13 @@
           },
           "description": {
             "description": "Collection description, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "descriptionLang": {
+            "description": "BCP 47 language tag (xml:lang) of the collection description, or null",
             "type": [
               "string",
               "null"
@@ -9281,10 +9355,12 @@
         "required": [
           "id",
           "kind",
+          "components",
           "name",
           "displayName",
           "color",
           "description",
+          "descriptionLang",
           "visibility",
           "role",
           "scheduleTransp",
@@ -9883,6 +9959,22 @@
             "description": "Public collection ULID",
             "type": "string"
           },
+          "components": {
+            "description": "Supported primary components, in VEVENT then VTODO order; null for addressbooks. Legacy mixed calendars may also retain journals or unparsed resources. Narrowing refuses with components_conflict and a count of incompatible live and restorable trashed objects.",
+            "items": {
+              "enum": [
+                "VEVENT",
+                "VTODO"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "createdAt": {
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
@@ -9924,6 +10016,7 @@
           "ownerIdentityId",
           "collectionId",
           "kind",
+          "components",
           "displayName",
           "description",
           "category",
@@ -10083,6 +10176,22 @@
               "null"
             ]
           },
+          "components": {
+            "description": "Supported primary components, in VEVENT then VTODO order; null for addressbooks. Legacy mixed calendars may also retain journals or unparsed resources. Narrowing refuses with components_conflict and a count of incompatible live and restorable trashed objects.",
+            "items": {
+              "enum": [
+                "VEVENT",
+                "VTODO"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "createdAt": {
             "description": "Timestamp when share was created in epoch seconds",
             "format": "int64",
@@ -10090,6 +10199,13 @@
           },
           "description": {
             "description": "Collection description, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "descriptionLang": {
+            "description": "BCP 47 language tag (xml:lang) of the collection description, or null",
             "type": [
               "string",
               "null"
@@ -10177,10 +10293,12 @@
           "collectionId",
           "permission",
           "kind",
+          "components",
           "name",
           "displayName",
           "color",
           "description",
+          "descriptionLang",
           "scheduleTransp",
           "syncToken",
           "createdAt",
@@ -10305,6 +10423,22 @@
               "null"
             ]
           },
+          "components": {
+            "description": "Supported primary components, in VEVENT then VTODO order; null for addressbooks. Legacy mixed calendars may also retain journals or unparsed resources. Narrowing refuses with components_conflict and a count of incompatible live and restorable trashed objects.",
+            "items": {
+              "enum": [
+                "VEVENT",
+                "VTODO"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "createdAt": {
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
@@ -10364,6 +10498,7 @@
         "required": [
           "id",
           "kind",
+          "components",
           "name",
           "displayName",
           "color",
@@ -13119,6 +13254,28 @@
         "required": [
           "deliveryId",
           "recipients"
+        ],
+        "type": "object"
+      },
+      "SendState": {
+        "properties": {
+          "canSend": {
+            "description": "True if this mailbox may send from its primary address now: the answer `/auth/verify` gives a login typed as that address",
+            "type": "boolean"
+          },
+          "sendHold": {
+            "description": "Why canSend is false, present only then, with `/auth/verify`'s values: 'unverified' = the domain's send records were never published (publish DNS), 'receive_only' = the domain is configured to receive here and send through another provider, 'paused' = a reversible hold at some scope (mailbox, account or domain), 'disabled' = a permanent stop, or a mailbox that cannot send at all. Unlike `/send-usage`'s `sendHold`, which is the mailbox's own switch only, this is the fold across every scope. Advisory; the submission gate is the authority. Treat an unrecognized value as permanent",
+            "enum": [
+              "disabled",
+              "paused",
+              "unverified",
+              "receive_only"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "canSend"
         ],
         "type": "object"
       },
@@ -16900,7 +17057,7 @@
                 }
               }
             },
-            "description": "semantic_mailboxes_opted_in — `semantic: false` while `optedIn` mailboxes are opted in: paid with vectors does not become free; the tenant opts out (which deletes the embeddings) or the account is deleted (which wipes them)"
+            "description": "account_deleted — the account is inside its deletion window or purged; restore it first; or semantic_mailboxes_opted_in — `semantic: false` while `optedIn` mailboxes are opted in: paid with vectors does not become free; the tenant opts out (which deletes the embeddings) or the account is deleted (which wipes them)"
           }
         },
         "summary": "Update account settings",
@@ -17510,6 +17667,16 @@
               }
             },
             "description": "Account not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_deleted — the account is inside its deletion window or purged; restore it first"
           }
         },
         "summary": "Set the account's mailbox recovery policy",
@@ -17595,6 +17762,16 @@
               }
             },
             "description": "Account not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_deleted — the account is inside its deletion window or purged; restore it first"
           }
         },
         "summary": "Set account default retention window",
@@ -17741,6 +17918,16 @@
               }
             },
             "description": "Account not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_deleted — the account is inside its deletion window or purged; restore it first"
           }
         },
         "summary": "Clear account default retention window",
@@ -18524,7 +18711,7 @@
     },
     "/api/v1/accounts/{accountId}/audit": {
       "get": {
-        "description": "Returns a paginated list of security and directory audit events for an account.",
+        "description": "Returns a paginated list of security and directory audit events for an account. Events older than 180 days are excluded. An account keeps at most its newest 1,000,000 events: past that, the oldest are pruned as new ones are written, so a high-churn account's trail can be shorter than 180 days.",
         "operationId": "get_AccountAuditList",
         "parameters": [
           {
@@ -19340,7 +19527,7 @@
         ]
       },
       "get": {
-        "description": "Returns a paginated list of API keys without secrets. A key that finished (revoked, or lapsed past its idle window) more than 180 days ago may be omitted: finished keys are retained as long as audit events are.",
+        "description": "Returns a paginated list of API keys without secrets. A key that finished (revoked, or lapsed past its idle window) more than 180 days ago may be omitted: finished keys are retained for the audit trail's 180-day window.",
         "operationId": "get_ApiKeyList",
         "parameters": [
           {
@@ -24657,6 +24844,10 @@
                     "description": "Owning account (system callers only; account callers always own their mailboxes)",
                     "type": "string"
                   },
+                  "ephemeral": {
+                    "description": "Create the mailbox DISPOSABLE (#483): its DELETE destroys it at once — no undo record, no 7-day window, its object gone, the address free again immediately — the shape for a mailbox per support case, agent session or transaction. Fixed at creation and reported on every read; a PATCH naming it is refused 400 ephemeral_immutable in either direction, so a key cannot make a long-lived mailbox disposable after the fact. Omitted or false creates an ordinary mailbox. Refused 400 ephemeral_requires_account on a platform identity, which has no account home to destroy through",
+                    "type": "boolean"
+                  },
                   "permittedRecipients": {
                     "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
                     "items": {
@@ -24787,7 +24978,7 @@
                 }
               }
             },
-            "description": "validation_failed, unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), without_address_has_address (withoutAddress: true with a primaryAddress), no_mail_store (semantic: true with withoutAddress: true: no mail to index), or not_holdable (receiveHold on a platform identity, which belongs to no account)"
+            "description": "validation_failed, ephemeral_requires_account (ephemeral: true on a platform identity), unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), without_address_has_address (withoutAddress: true with a primaryAddress), no_mail_store (semantic: true with withoutAddress: true: no mail to index), or not_holdable (receiveHold on a platform identity, which belongs to no account)"
           },
           "401": {
             "content": {
@@ -25160,6 +25351,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "ephemeral": {
+                    "description": "Create the mailbox DISPOSABLE (#483): its DELETE destroys it at once — no undo record, no 7-day window, its object gone, the address free again immediately — the shape for a mailbox per support case, agent session or transaction. Fixed at creation and reported on every read; a PATCH naming it is refused 400 ephemeral_immutable in either direction, so a key cannot make a long-lived mailbox disposable after the fact. Omitted or false creates an ordinary mailbox. Refused 400 ephemeral_requires_account on a platform identity, which has no account home to destroy through",
+                    "type": "boolean"
+                  },
                   "permittedRecipients": {
                     "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
                     "items": {
@@ -25296,7 +25491,7 @@
                 }
               }
             },
-            "description": "validation_failed, invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request); control_exclusive (suspended or receiveHold alongside any other field, or both together); not_suspendable (suspended on a platform identity, which belongs to no account); not_holdable (receiveHold on one); idempotency_key_invalid (empty or over 128 characters); idempotency_key_unsupported (an Idempotency-Key on a settings PATCH)"
+            "description": "validation_failed, ephemeral_immutable (ephemeral named in a PATCH: it is fixed at creation), invalid_address, unknown_domain, domain_is_alias, address_not_routed, or semantic_floor_with_opt_out (semantic: false and semanticFloor in one request); control_exclusive (suspended or receiveHold alongside any other field, or both together); not_suspendable (suspended on a platform identity, which belongs to no account); not_holdable (receiveHold on one); idempotency_key_invalid (empty or over 128 characters); idempotency_key_unsupported (an Idempotency-Key on a settings PATCH)"
           },
           "401": {
             "content": {
@@ -25369,12 +25564,12 @@
             }
           },
           {
-            "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window",
+            "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window. A system key's, or redundant on a mailbox created ephemeral (#483); from an account key on any other mailbox it is refused 403 system_credentials_required — the window is the undo a leaked key must not be able to waive",
             "in": "query",
             "name": "purge",
             "required": false,
             "schema": {
-              "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window",
+              "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window. A system key's, or redundant on a mailbox created ephemeral (#483); from an account key on any other mailbox it is refused 403 system_credentials_required — the window is the undo a leaked key must not be able to waive",
               "enum": [
                 "true",
                 "false"
@@ -25422,7 +25617,7 @@
                 }
               }
             },
-            "description": "account_credentials_required — a DOMAIN-SCOPED api key named a mailbox that is also routed on a domain outside its scope. Restore rebinds the mailbox's primary address, so deleting one primaried elsewhere could not be undone without writing a route on a domain this key does not hold; the account's own key may delete it"
+            "description": "system_credentials_required (purge=true from an account key on a mailbox not created ephemeral, #483) | account_credentials_required — a DOMAIN-SCOPED api key named a mailbox that is also routed on a domain outside its scope. Restore rebinds the mailbox's primary address, so deleting one primaried elsewhere could not be undone without writing a route on a domain this key does not hold; the account's own key may delete it"
           },
           "404": {
             "content": {
@@ -26651,6 +26846,60 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/send-state": {
+      "get": {
+        "description": "Returns `canSend` and, when it is false, `sendHold`: the answer `/auth/verify` gives a login typed as the mailbox's primary address, from the same function, for a mailbox credential and without the password. `sendHold` is the fold across the mailbox, its account and its domain ('unverified' = publish DNS, 'receive_only' = the domain sends through another provider, 'paused' = a reversible hold, 'disabled' = a stop), unlike `/send-usage`'s `sendHold`, which is the mailbox's own switch. Advisory; the submission gate is the authority.",
+        "operationId": "get_MailboxSendState",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendState"
+                }
+              }
+            },
+            "description": "Whether the mailbox may send, and why not"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "Get whether a mailbox may send",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/system/mailboxes/{mailboxId}/send-usage/reset": {
       "post": {
         "description": "Resets the active 24-hour send counter for a mailbox (system callers only).",
@@ -26868,6 +27117,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required: the tombstone door to the fast wipe is a system key's (#483); an account key keeps the undo window. Answered before any lookup, so it says nothing about the id"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -26899,7 +27158,7 @@
             "description": "temporary_failure (with Retry-After): under the object directory, one of the mailbox's stores did not answer in time when told to start its permanent cleanup. The purge is recorded (a restore answers 410 gone) and the stores are told again on their own; retry the same request after the Retry-After window, which answers success once they answer"
           }
         },
-        "summary": "Permanently purge a deleted mailbox",
+        "summary": "Permanently purge a deleted mailbox (system only)",
         "tags": [
           "Mailboxes"
         ]
@@ -32465,7 +32724,7 @@
                 }
               }
             },
-            "description": "validation_failed; or destination_is_self / destination_loops / destination_chain_too_long when the destination now routes back to this mailbox; or destination_not_permitted when the account's allowlist no longer permits it; or destination_fans_out when its address now resolves to something we host that reaches more than one party. All five are re-checked here because this is the write that arms the forward, and a route proved as a single mailbox may have been retargeted to a group since; or destination_unverified (carrying the address as `target`) when the destination has not proved a code, or its proof was revoked"
+            "description": "validation_failed; or destination_is_self / destination_loops / destination_chain_too_long when the destination now routes back to this mailbox; or destination_not_permitted when the account's allowlist no longer permits it; or destination_fans_out when its address now resolves to something we host that reaches more than one party. All five are re-checked here because this is the write that arms the forward, and a route proved as a single mailbox may have been retargeted to a group since; or destination_unverified (carrying the address as `target`) when the destination has not proved a code, or its proof was revoked. A destination_loops found only while the forward is published (a loop closed after the check above) also carries `forwardAll`, the setting as it now stands: the refused write cleared the forward it replaced, so it reads off"
           },
           "401": {
             "content": {
@@ -32486,6 +32745,16 @@
               }
             },
             "description": "Mailbox or destination not found, or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "inbound_edge_cap — the destination already receives the most forwards an address may. Carries `forwardAll`, the setting as it now stands: the refused write cleared the forward it replaced, so it reads off"
           }
         },
         "summary": "Forward all mail to a destination",
@@ -34646,6 +34915,14 @@
                   "markRead": {
                     "type": "boolean"
                   },
+                  "mode": {
+                    "description": "sync = keep collecting; import = complete once the remote mailbox is drained and quiet for quietDays, then switch off and forget the password",
+                    "enum": [
+                      "sync",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
                   "name": {
                     "maxLength": 128,
                     "type": "string"
@@ -34657,6 +34934,12 @@
                   },
                   "port": {
                     "maximum": 65535,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "quietDays": {
+                    "description": "Days without a newly stored message, after a drained run, that complete an import (default 7)",
+                    "maximum": 90,
                     "minimum": 1,
                     "type": "integer"
                   },
@@ -34940,7 +35223,7 @@
                     "type": "boolean"
                   },
                   "enabled": {
-                    "description": "Whether this pickup source is active",
+                    "description": "Whether this pickup source is active. Re-enabling a completed import needs `password` in the same request (400 password_required): completion forgot it",
                     "type": "boolean"
                   },
                   "host": {
@@ -34968,6 +35251,14 @@
                     "description": "Whether every imported message lands read; false = the backlog heuristic (older than the source → read, newer → unread)",
                     "type": "boolean"
                   },
+                  "mode": {
+                    "description": "sync = keep collecting; import = complete once the remote mailbox is drained and quiet for quietDays, then switch off and forget the password",
+                    "enum": [
+                      "sync",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
                   "name": {
                     "description": "Optional display name for this pickup source",
                     "maxLength": 128,
@@ -34985,6 +35276,12 @@
                   "port": {
                     "description": "POP3 server port number",
                     "maximum": 65535,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "quietDays": {
+                    "description": "Days without a newly stored message, after a drained run, that complete an import (default 7)",
+                    "maximum": 90,
                     "minimum": 1,
                     "type": "integer"
                   },
@@ -35028,7 +35325,7 @@
                 }
               }
             },
-            "description": "validation_failed; or source_is_self when the resulting host+username would open the very mailbox this source delivers into"
+            "description": "validation_failed; source_is_self when the resulting host+username would open the very mailbox this source delivers into; or password_required when re-enabling a completed import without a password"
           },
           "401": {
             "content": {
@@ -35581,8 +35878,20 @@
                   "failedCount": {
                     "type": "integer"
                   },
+                  "filteredCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "jobId": {
                     "type": "string"
+                  },
+                  "oversizeCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "remainingCount": {
+                    "minimum": 0,
+                    "type": "integer"
                   },
                   "status": {
                     "enum": [
@@ -35592,6 +35901,10 @@
                       "error"
                     ],
                     "type": "string"
+                  },
+                  "storedCount": {
+                    "minimum": 0,
+                    "type": "integer"
                   },
                   "uploadedCount": {
                     "type": "integer"
@@ -38938,7 +39251,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/events": {
       "get": {
-        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.updated / label.deleted, trash.emptied, thread.merged (an arrival joined two conversations — re-list thread views, since thread ids are convergent rather than stable), and state.changed. A subscriber holding a system or account key also receives identity.suspension_changed when the account owner suspends or resumes this mailbox (`{ identityId, suspended, generation, revision }`; a lower (generation, revision) never overrides a higher one). Each frame is `{ v, type, ts, data }` with identifiers only — never message content. The vocabulary is additive: treat an unrecognized `type` as a generic 'something changed' nudge rather than an error.\n\nSignals are not a journal: there is no replay or backlog, so on every (re)connect re-sync and treat each event as 'this changed, re-fetch it'. A `state.changed` frame carries the current state token for each type (`{ Email, Mailbox, Thread, EmailDelivery }`); its `Email` value is exactly what `GET /mailboxes/{mailboxId}/messages/changes` accepts as `since`, so a client can re-sync incrementally instead of re-listing. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
+        "description": "Upgrades to a WebSocket that streams best-effort change signals for this mailbox: message.new (delivery), message.updated / message.expunged / message.restored / message.purged, label.expunged (IMAP EXPUNGE), label.created / label.renamed / label.updated / label.deleted, trash.emptied, thread.merged (an arrival joined two conversations — re-list thread views, since thread ids are convergent rather than stable), shares.changed, forwarding.changed (owner-only: forwarding destinations or forward-everything changed, including via the recipient's disable link), pickup.failed / pickup.completed (owner-only), and state.changed. A subscriber holding a system or account key also receives identity.suspension_changed when the account owner suspends or resumes this mailbox (`{ identityId, suspended, generation, revision }`; a lower (generation, revision) never overrides a higher one). Each frame is `{ v, type, ts, data }` with identifiers only — never message content. The vocabulary is additive: treat an unrecognized `type` as a generic 'something changed' nudge rather than an error.\n\nSignals are not a journal: there is no replay or backlog, so on every (re)connect re-sync and treat each event as 'this changed, re-fetch it'. A `state.changed` frame carries the current state token for each type (`{ Email, Mailbox, Thread, EmailDelivery }`); its `Email` value is exactly what `GET /mailboxes/{mailboxId}/messages/changes` accepts as `since`, so a client can re-sync incrementally instead of re-listing. A `ready` frame with the session deadline is sent on connect; the session is closed with code 4401 (session_expired — reconnect with a fresh bearer) after 12h, 4403 (credential_revoked — the app password was revoked; do not reconnect with it) or 4410 (mailbox_gone — stop reconnecting). Keepalive: send a `ping` text frame, receive `pong`.",
         "operationId": "get_MailboxEvents",
         "parameters": [
           {
@@ -40736,6 +41049,17 @@
                     "maxItems": 50,
                     "type": "array"
                   },
+                  "autoSubmitted": {
+                    "description": "RFC 3834 marker for mail an automaton sends: auto-generated (a notification) or auto-replied (an answer to a message). Written as the Auto-Submitted header so a receiver's loop guards recognise it; refused alongside a free-form Auto-Submitted in headers (auto_submitted_conflict)",
+                    "enum": [
+                      "auto-generated",
+                      "auto-replied"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "bcc": {
                     "description": "Blind carbon copy recipient email addresses (hidden from message headers)",
                     "items": {
@@ -40911,7 +41235,7 @@
                 }
               }
             },
-            "description": "validation_failed, no_recipients, too_many_recipients, a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), a bad attachment reference (unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`), or a refused schedule: send_at_too_far, send_at_requires_save, recipient_not_permitted"
+            "description": "validation_failed, no_recipients, too_many_recipients, auto_submitted_conflict (autoSubmitted alongside a free-form Auto-Submitted header), a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), a bad attachment reference (unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`), or a refused schedule: send_at_too_far, send_at_requires_save, recipient_not_permitted"
           },
           "401": {
             "content": {
@@ -41153,6 +41477,17 @@
                     "maxItems": 50,
                     "type": "array"
                   },
+                  "autoSubmitted": {
+                    "description": "RFC 3834 marker for mail an automaton sends: auto-generated (a notification) or auto-replied (an answer to a message). Written as the Auto-Submitted header so a receiver's loop guards recognise it; refused alongside a free-form Auto-Submitted in headers (auto_submitted_conflict)",
+                    "enum": [
+                      "auto-generated",
+                      "auto-replied"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "fromAddress": {
                     "description": "Address to send the reply as; must be one this mailbox may send as (else 403 sender_not_owned). Defaults to the address the conversation reached this mailbox at, while it still routes here, else the primary address",
                     "format": "email",
@@ -41250,7 +41585,7 @@
                 }
               }
             },
-            "description": "validation_failed, no_reply_target (the thread has no answerable address, e.g. a null-sender DSN), no_primary_address (no fromAddress was given, the conversation's own address does not route here, and the mailbox has no primary address to fall back on), delivery_id_too_long, reserved_delivery_id, or a refused build"
+            "description": "validation_failed, no_reply_target (the thread has no answerable address, e.g. a null-sender DSN), auto_submitted_conflict (autoSubmitted alongside a free-form Auto-Submitted header), no_primary_address (no fromAddress was given, the conversation's own address does not route here, and the mailbox has no primary address to fall back on), delivery_id_too_long, reserved_delivery_id, or a refused build"
           },
           "401": {
             "content": {
@@ -44091,9 +44426,29 @@
                     "maxLength": 32,
                     "type": "string"
                   },
+                  "components": {
+                    "description": "Nonempty set of supported calendar primary components. Omitted on create means both VEVENT and VTODO; omitted on patch leaves the set unchanged.",
+                    "items": {
+                      "enum": [
+                        "VEVENT",
+                        "VTODO"
+                      ],
+                      "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "description": {
                     "maxLength": 1024,
                     "type": "string"
+                  },
+                  "descriptionLang": {
+                    "maxLength": 64,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "displayName": {
                     "maxLength": 256,
@@ -44150,7 +44505,7 @@
                 }
               }
             },
-            "description": "validation_failed, or invalid_name"
+            "description": "validation_failed, invalid_name, or invalid_components"
           },
           "401": {
             "content": {
@@ -44352,8 +44707,28 @@
                       "null"
                     ]
                   },
+                  "components": {
+                    "description": "Nonempty set of supported calendar primary components. Omitted on create means both VEVENT and VTODO; omitted on patch leaves the set unchanged.",
+                    "items": {
+                      "enum": [
+                        "VEVENT",
+                        "VTODO"
+                      ],
+                      "type": "string"
+                    },
+                    "maxItems": 2,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "description": {
                     "maxLength": 1024,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "descriptionLang": {
+                    "maxLength": 64,
                     "type": [
                       "string",
                       "null"
@@ -44432,7 +44807,7 @@
                 }
               }
             },
-            "description": "validation_failed, or invalid_name"
+            "description": "validation_failed, invalid_name, or invalid_components"
           },
           "401": {
             "content": {
@@ -44462,7 +44837,7 @@
                 }
               }
             },
-            "description": "name_taken, or visibility_conflict (CAS lost)"
+            "description": "name_taken; visibility_conflict (CAS lost); or components_conflict with count of incompatible live and restorable trashed objects. No properties change on refusal."
           }
         },
         "summary": "Update calendar",
@@ -45048,7 +45423,7 @@
                 }
               }
             },
-            "description": "uid_conflict: the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
+            "description": "uid_conflict: the href holds a different UID, or the UID already lives at another href (conflictHref names it); unsupported_component: the calendar does not accept the object's component"
           },
           "412": {
             "content": {
@@ -45370,7 +45745,7 @@
     },
     "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}/move": {
       "post": {
-        "description": "Moves a calendar object to another collection, renames its href slug, or both.",
+        "description": "Moves a calendar object to another collection, renames its href slug, or both. Optional overwrite validates the destination and replaces an unscheduled occupant atomically; the replaced object remains recoverable in trash.",
         "operationId": "post_CalendarObjectMove",
         "parameters": [
           {
@@ -45431,6 +45806,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "overwrite": {
+                    "description": "Replace an existing destination atomically (default false); scheduled calendar occupants cannot be replaced",
+                    "type": "boolean"
+                  },
                   "to": {
                     "description": "New resource href slug",
                     "maxLength": 512,
@@ -45464,6 +45843,10 @@
                     "id": {
                       "type": "string"
                     },
+                    "overwritten": {
+                      "description": "Whether an existing destination object was replaced",
+                      "type": "boolean"
+                    },
                     "scheduleTag": {
                       "description": "RFC 6638 schedule-tag of the object at its new href",
                       "type": "string"
@@ -45477,7 +45860,8 @@
                     "etag",
                     "scheduleTag",
                     "syncToken",
-                    "collectionId"
+                    "collectionId",
+                    "overwritten"
                   ],
                   "type": "object"
                 }
@@ -45533,7 +45917,7 @@
                 }
               }
             },
-            "description": "href_taken — destination href already exists"
+            "description": "href_taken, uid_conflict, wrong_kind, unsupported_component, or scheduled_overwrite: a scheduled calendar destination cannot be replaced"
           },
           "412": {
             "content": {
@@ -46041,7 +46425,7 @@
                 }
               }
             },
-            "description": "href_taken: a live object now holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it)"
+            "description": "href_taken: a live object holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it); unsupported_component: the calendar no longer accepts the deleted object's component"
           },
           "503": {
             "content": {
@@ -47484,6 +47868,13 @@
                     "maxLength": 1024,
                     "type": "string"
                   },
+                  "descriptionLang": {
+                    "maxLength": 64,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "displayName": {
                     "maxLength": 256,
                     "type": "string"
@@ -47539,7 +47930,7 @@
                 }
               }
             },
-            "description": "validation_failed, or invalid_name"
+            "description": "validation_failed, invalid_name, or invalid_components"
           },
           "401": {
             "content": {
@@ -47748,6 +48139,13 @@
                       "null"
                     ]
                   },
+                  "descriptionLang": {
+                    "maxLength": 64,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "displayName": {
                     "maxLength": 256,
                     "type": [
@@ -47811,7 +48209,7 @@
                 }
               }
             },
-            "description": "validation_failed, or invalid_name"
+            "description": "validation_failed, invalid_name, or invalid_components"
           },
           "401": {
             "content": {
@@ -47841,7 +48239,7 @@
                 }
               }
             },
-            "description": "name_taken, or visibility_conflict (CAS lost)"
+            "description": "name_taken; visibility_conflict (CAS lost); or components_conflict with count of incompatible live and restorable trashed objects. No properties change on refusal."
           }
         },
         "summary": "Update addressbook",
@@ -48334,7 +48732,7 @@
                 }
               }
             },
-            "description": "uid_conflict: the href holds a different UID, or the UID already lives at another href (conflictHref names it)"
+            "description": "uid_conflict: the href holds a different UID, or the UID already lives at another href (conflictHref names it); unsupported_component: the calendar does not accept the object's component"
           },
           "412": {
             "content": {
@@ -48642,7 +49040,7 @@
     },
     "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/objects/{href}/move": {
       "post": {
-        "description": "Moves a addressbook object to another collection, renames its href slug, or both.",
+        "description": "Moves a addressbook object to another collection, renames its href slug, or both. Optional overwrite validates the destination and replaces an unscheduled occupant atomically; the replaced object remains recoverable in trash.",
         "operationId": "post_AddressbookObjectMove",
         "parameters": [
           {
@@ -48703,6 +49101,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "overwrite": {
+                    "description": "Replace an existing destination atomically (default false); scheduled calendar occupants cannot be replaced",
+                    "type": "boolean"
+                  },
                   "to": {
                     "description": "New resource href slug",
                     "maxLength": 512,
@@ -48736,6 +49138,10 @@
                     "id": {
                       "type": "string"
                     },
+                    "overwritten": {
+                      "description": "Whether an existing destination object was replaced",
+                      "type": "boolean"
+                    },
                     "scheduleTag": {
                       "description": "RFC 6638 schedule-tag of the object at its new href",
                       "type": "string"
@@ -48749,7 +49155,8 @@
                     "etag",
                     "scheduleTag",
                     "syncToken",
-                    "collectionId"
+                    "collectionId",
+                    "overwritten"
                   ],
                   "type": "object"
                 }
@@ -48805,7 +49212,7 @@
                 }
               }
             },
-            "description": "href_taken — destination href already exists"
+            "description": "href_taken, uid_conflict, wrong_kind, unsupported_component, or scheduled_overwrite: a scheduled calendar destination cannot be replaced"
           },
           "412": {
             "content": {
@@ -49057,7 +49464,7 @@
                 }
               }
             },
-            "description": "href_taken: a live object now holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it)"
+            "description": "href_taken: a live object holds the deleted one's href; uid_conflict: a live object holds its UID (conflictHref names it); unsupported_component: the calendar no longer accepts the deleted object's component"
           },
           "503": {
             "content": {
@@ -56621,7 +57028,7 @@
     },
     "/api/v1/system/audit": {
       "get": {
-        "description": "Returns deployment-wide directory audit records, including platform-scoped actions. Events older than 180 days are excluded.",
+        "description": "Returns deployment-wide directory audit records, including platform-scoped actions. Events older than 180 days are excluded. Each account keeps at most its newest 1,000,000 events: past that, the oldest are pruned as new ones are written, so a high-churn account's trail can be shorter than 180 days.",
         "operationId": "get_SystemAuditGet",
         "parameters": [
           {

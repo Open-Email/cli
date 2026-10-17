@@ -9,25 +9,38 @@ import (
 // write-only and never appears in any response. deleteAfterFetch and enabled are
 // real JSON booleans.
 type PickupSource struct {
-	ID                  string          `json:"id"`
-	MailboxID           string          `json:"mailboxId"`
-	Name                *string         `json:"name"`
-	Host                string          `json:"host"`
-	Port                int64           `json:"port"`
-	TLS                 string          `json:"tls"` // tls | starttls
-	Username            string          `json:"username"`
-	IntervalMinutes     int64           `json:"intervalMinutes"`
-	DeleteAfterFetch    bool            `json:"deleteAfterFetch"`
-	LabelName           *string         `json:"labelName"` // destination folder; nil = INBOX
-	MarkRead            bool            `json:"markRead"`  // every import lands read; off = backlog read, new mail unread
-	Enabled             bool            `json:"enabled"`
-	LastRunAt           *int64          `json:"lastRunAt"`
-	LastStatus          *string         `json:"lastStatus"` // ok | partial | auth_failed | error
-	LastError           *string         `json:"lastError"`
-	ConsecutiveFailures int64           `json:"consecutiveFailures"`
-	LastImportedCount   *int64          `json:"lastImportedCount"` // last completed run's uploadedCount; nil = none reported
-	CreatedAt           int64           `json:"createdAt"`
-	Dispatch            *PickupDispatch `json:"dispatch,omitempty"`
+	ID                  string  `json:"id"`
+	MailboxID           string  `json:"mailboxId"`
+	Name                *string `json:"name"`
+	Host                string  `json:"host"`
+	Port                int64   `json:"port"`
+	TLS                 string  `json:"tls"` // tls | starttls
+	Username            string  `json:"username"`
+	IntervalMinutes     int64   `json:"intervalMinutes"`
+	DeleteAfterFetch    bool    `json:"deleteAfterFetch"`
+	LabelName           *string `json:"labelName"` // destination folder; nil = INBOX
+	MarkRead            bool    `json:"markRead"`  // every import lands read; off = backlog read, new mail unread
+	Enabled             bool    `json:"enabled"`
+	LastRunAt           *int64  `json:"lastRunAt"`
+	LastStatus          *string `json:"lastStatus"` // ok | partial | auth_failed | error
+	LastError           *string `json:"lastError"`
+	ConsecutiveFailures int64   `json:"consecutiveFailures"`
+	LastImportedCount   *int64  `json:"lastImportedCount"` // last completed run's uploadedCount; nil = none reported
+	// LastOversizeCount: messages the last run left on the remote server for
+	// being over the platform's size limit; never imported. Nil until reported.
+	LastOversizeCount *int64 `json:"lastOversizeCount"`
+	// Mode is sync (keep collecting) or import (move off the account: the
+	// source completes itself once a drained run is followed by QuietDays with
+	// no newly stored message).
+	Mode        string `json:"mode"`
+	QuietDays   int64  `json:"quietDays"`            // 1 to 90; ignored in sync mode
+	QuietSince  *int64 `json:"quietSince,omitempty"` // nil = since CreatedAt; absent on the operator listing
+	CompletedAt *int64 `json:"completedAt"`          // import completed (then disabled, no password); nil while running
+	// ImportedTotal: messages this source has stored (replays excluded).
+	// Absent on the operator listing.
+	ImportedTotal int64           `json:"importedTotal,omitempty"`
+	CreatedAt     int64           `json:"createdAt"`
+	Dispatch      *PickupDispatch `json:"dispatch,omitempty"`
 }
 
 // PickupDispatch is the scheduler's own record of its last hand-off to the

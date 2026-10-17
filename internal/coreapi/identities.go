@@ -17,6 +17,9 @@ type Identity struct {
 	QuotaBytes     *int64  `json:"quotaBytes"`
 	AccountID      *string `json:"accountId"`
 	CreatedAt      int64   `json:"createdAt"`
+	// Ephemeral: created disposable (core #483), and immutable after: its DELETE
+	// destroys it at once, with no undo window. False for every ordinary mailbox.
+	Ephemeral bool `json:"ephemeral"`
 	// Per-mailbox send policy (always present; the Identity component composes
 	// the Mailbox schema).
 	// Pointers for the reason Mailbox's copies are: null = the platform default
