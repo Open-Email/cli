@@ -568,3 +568,22 @@ func TestDoNotSendLoadMoreOnReplacedListAsksForReload(t *testing.T) {
 		t.Fatalf("reload after the list was replaced: rows=%d err=%v pages=%d", len(rows), err, newListPages)
 	}
 }
+
+// The Do-Not-Send screen repeated the CLI help's pre-item-14 story (cli#49):
+// enforced "at the last hop", binding only what the account submits.
+func TestDoNotSendScreenSaysWhereCoreEnforces(t *testing.T) {
+	desc := doNotSendDesc("acc")
+	if strings.Contains(desc.caption, "last hop") {
+		t.Errorf("caption still says the last hop: %q", desc.caption)
+	}
+	var detail []string
+	for _, line := range desc.detail(coreapi.AddressListEntry{Pattern: "a@x.example"}) {
+		detail = append(detail, line.v)
+	}
+	text := strings.ToLower(strings.Join(strings.Fields(strings.Join(detail, " ")), " "))
+	for _, want := range []string{"refused at submission", "forwards"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("detail lacks %q: %s", want, text)
+		}
+	}
+}

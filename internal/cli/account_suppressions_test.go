@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
+	"github.com/spf13/cobra"
 )
 
 func dnsTestClient(t *testing.T, baseURL string) *coreapi.Client {
@@ -80,5 +82,43 @@ func TestDoNotSendList_RefusesPurposeCollision(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "different purpose") {
 		t.Fatalf("error should explain the collision, got: %v", err)
+	}
+}
+
+// helpText renders a command's --help with whitespace folded, so a phrase
+// survives the line wrapping of the Long text.
+func helpText(t *testing.T, cmd *cobra.Command, args ...string) string {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs(append(args, "--help"))
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(strings.Fields(out.String()), " ")
+}
+
+// Core judges an account's outbound lists at SUBMISSION and on every forward
+// the account configures (core b19bdfd1, address-lists item 14); the relay is
+// only the backstop for mail queued before the address was listed. The help
+// predated that and told users the opposite on both counts (cli#49).
+func TestDoNotSendHelpSaysWhereCoreEnforces(t *testing.T) {
+	help := helpText(t, newSuppressionsCmd(&app{}))
+	for _, want := range []string{
+		"refused at submission", "recipient_not_permitted", "relay_suppressed",
+		"forward-all", "Sieve redirects", "relaying routes", "external group members",
+	} {
+		if !strings.Contains(help, want) {
+			t.Errorf("do-not-send help lacks %q:\n%s", want, help)
+		}
+	}
+	for _, stale := range []string{"does not judge forwarding", "accepted at submission", "last hop"} {
+		if strings.Contains(help, stale) {
+			t.Errorf("do-not-send help still says %q:\n%s", stale, help)
+		}
+	}
+	check := helpText(t, newSuppressionsCmd(&app{}), "check")
+	if !strings.Contains(check, "submission and the relay") {
+		t.Errorf("do-not-send check help does not say the evaluator also runs at submission:\n%s", check)
 	}
 }
