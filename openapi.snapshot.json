@@ -7276,6 +7276,62 @@
         ],
         "type": "object"
       },
+      "MailboxRouting": {
+        "properties": {
+          "addresses": {
+            "description": "Primary address first, then routes and their alias-domain spellings, catch-alls, patterns, and groups; at most 200 eligible, distinct entries. An address that neither receives nor sends is left out. Not recognised as membership: a member only a pattern or catch-all brings here, a nested group, and a group on another account's domain",
+            "items": {
+              "properties": {
+                "address": {
+                  "description": "Lowercased. An exact address, or `<pattern>@domain` for a wildcard: `*@domain` for a catch-all, `sales-*@domain` for a narrower pattern",
+                  "type": "string"
+                },
+                "canSend": {
+                  "description": "Whether this mailbox may send as it: its domain may send, and for a group, this mailbox is the persona. Mailbox-wide holds are reported by send-state, not here",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "`primary`: the mailbox's own address. `address`: another route to it, or an alias domain's spelling of one. `catch_all`: a bare `*` pattern. `pattern`: a narrower wildcard. `group`: a group this mailbox is a member of or the persona of. A member counts when routing would bring it here through one of the mailbox's own addresses: written exactly, on an alias domain, or as a `+tag` form where the domain splits tags",
+                  "enum": [
+                    "primary",
+                    "address",
+                    "catch_all",
+                    "pattern",
+                    "group"
+                  ],
+                  "type": "string"
+                },
+                "receives": {
+                  "description": "Whether mail to this address arrives here: its domain is enabled and receives here (not send-only), and for a group, this mailbox is a member or its persona archive. An alias spelling also requires its canonical domain to receive",
+                  "type": "boolean"
+                },
+                "subaddressing": {
+                  "description": "Whether `local+tag@domain` forms reach it too. Follows the canonical domain for an alias spelling. Always false on a wildcard, which already covers every local part",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "address",
+                "kind",
+                "receives",
+                "canSend",
+                "subaddressing"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "description": "True when the caller can see more than 200 eligible, distinct entries",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "addresses",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "MailboxWithStats": {
         "allOf": [
           {
@@ -13471,6 +13527,20 @@
           "relayed",
           "failed",
           "bytes"
+        ],
+        "type": "object"
+      },
+      "SenderCheck": {
+        "properties": {
+          "allowed": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allowed"
         ],
         "type": "object"
       },
@@ -26738,6 +26808,60 @@
         ]
       }
     },
+    "/api/v1/mailboxes/{mailboxId}/routing": {
+      "get": {
+        "description": "Returns the addresses that deliver mail to this mailbox, and whether it may send as each: its primary address, its other routes and their alias-domain spellings, the wildcard patterns aimed at it (`catch_all` for a bare `*`), and the groups it is a member of or the persona of. `receives` includes a group's persona archive as well as its members; `canSend` requires the domain to permit sending and, for a group, this mailbox to be its persona. An alias spelling receives only when both its alias and canonical domains receive, and its subaddressing follows the canonical domain. Unlike send-as, this keeps addresses that cannot send and patterns a From picker cannot offer. At most 200 eligible, distinct entries; `truncated` says when there were more. A domain-scoped key sees only its own domains.",
+        "operationId": "get_MailboxRoutingGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxRouting"
+                }
+              }
+            },
+            "description": "The entries, primary first"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          }
+        },
+        "summary": "List what delivers to a mailbox",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
     "/api/v1/mailboxes/{mailboxId}/send-as": {
       "get": {
         "description": "Returns the addresses this mailbox may use as From, primary first: its routed addresses on domains that may send, then `*@domain` wherever a catch-all on a sending domain lands in it (RFC 8621 §6's wildcard, any address on that domain). The same list JMAP Identity/get reports. `subaddressing` says whether an address's `+tag` forms are sendable too. A domain-scoped key sees only its own domains. Suggestions for a From picker, not an authorization list: an address a narrower catch-all pattern routes here is sendable without being listed, and the list stops at 100 addresses, so submission decides.",
@@ -26787,6 +26911,117 @@
           }
         },
         "summary": "List the addresses a mailbox may send as",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/send-as/check": {
+      "post": {
+        "description": "Checks one From address through the same routing, ownership, credential scope and sending-state authorization as submission, including aliases, subaddresses and catch-all patterns. Requires submission access to the named mailbox; folder grants do not confer sending rights. For non-system callers, unknown or foreign addresses return 403 sender_not_owned without revealing their owner. Does not create mail, reserve quota or send anything. A successful check is advisory: submission always checks again. Responses are not cacheable.",
+        "operationId": "post_MailboxSenderCheck",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "address": {
+                    "description": "One bare From address, without a display name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "address"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderCheck"
+                }
+              }
+            },
+            "description": "This caller may currently send from this address through this mailbox"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "Malformed address (invalid_address) or request body"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Address not owned by this mailbox (sender_not_owned), no local sender for a system caller (sender_not_local), sending disabled (sending_disabled), or insufficient credential scope (credential_scope)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Sending paused (sending_paused); Retry-After and retryAfterSeconds indicate when to retry",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Check whether a mailbox may send from an address",
         "tags": [
           "Mailboxes"
         ]
