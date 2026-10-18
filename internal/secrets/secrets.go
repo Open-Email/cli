@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -135,6 +136,45 @@ func retryCredentialAccess(operation func() error) error {
 	}
 }
 
+// On Windows, a concurrent open can also briefly observe ERROR_FILE_NOT_FOUND
+// while Save swaps the destination link. Retry not-found up to twice when the
+// credential directory shows an active (.cred-*) or just-completed replacement,
+// while still returning ErrNotFound immediately when no credential exists.
+func retryCredentialRead(path string, read func(string) ([]byte, error)) ([]byte, error) {
+	const sharingViolation = syscall.Errno(32)
+	for attempt := 0; ; attempt++ {
+		data, err := read(path)
+		if err == nil {
+			return data, nil
+		}
+		if !isWindows || attempt == 4 {
+			return nil, err
+		}
+		switch {
+		case errors.Is(err, os.ErrPermission), errors.Is(err, sharingViolation):
+		case os.IsNotExist(err) && attempt < 2 && credentialReplaceInFlight(path):
+		default:
+			return nil, err
+		}
+		time.Sleep((25 * time.Millisecond) << attempt)
+	}
+}
+
+func credentialReplaceInFlight(path string) bool {
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		return false
+	}
+	target := filepath.Base(path)
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == target || strings.HasPrefix(name, ".cred-") {
+			return true
+		}
+	}
+	return false
+}
+
 // Load reads the secret for profile from the named backend.
 func Load(configDir, profile, backend string) (string, error) {
 	if err := ValidateProfileName(profile); err != nil {
@@ -155,12 +195,7 @@ func Load(configDir, profile, backend string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		var data []byte
-		err = retryCredentialAccess(func() error {
-			var readErr error
-			data, readErr = readFile(path)
-			return readErr
-		})
+		data, err := retryCredentialRead(path, readFile)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return "", ErrNotFound

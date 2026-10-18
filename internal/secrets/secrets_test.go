@@ -226,21 +226,38 @@ func TestLoadRetriesWindowsSharingErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		windows   bool
+		stored    bool
+		tempFile  bool
 		err       error
 		failures  int
 		wantCalls int
 	}{
-		{"transient sharing violation", true, syscall.Errno(32), 2, 3},
-		{"transient access denied", true, os.ErrPermission, 2, 3},
-		{"persistent sharing violation", true, syscall.Errno(32), 10, 5},
-		{"missing credential", true, os.ErrNotExist, 10, 1},
-		{"other error", true, errors.New("read failure"), 10, 1},
-		{"non-Windows sharing error", false, syscall.Errno(32), 10, 1},
+		{"transient sharing violation", true, true, false, syscall.Errno(32), 2, 3},
+		{"transient access denied", true, true, false, os.ErrPermission, 2, 3},
+		{"persistent sharing violation", true, true, false, syscall.Errno(32), 10, 5},
+		{"missing credential", true, false, false, os.ErrNotExist, 10, 1},
+		{"transient not-found with temp file", true, false, true, os.ErrNotExist, 2, 3},
+		{"transient not-found after replacement landed", true, true, false, os.ErrNotExist, 2, 3},
+		{"missing credential with orphaned temp file", true, false, true, os.ErrNotExist, 10, 3},
+		{"other error", true, true, false, errors.New("read failure"), 10, 1},
+		{"non-Windows sharing error", false, true, false, syscall.Errno(32), 10, 1},
+		{"non-Windows not-found with temp file", false, false, true, os.ErrNotExist, 10, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			if _, _, err := Save(dir, "read-test", "oek_complete", true); err != nil {
-				t.Fatal(err)
+			if tc.stored {
+				if _, _, err := Save(dir, "read-test", "oek_complete", true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.tempFile {
+				credDir := filepath.Join(dir, "credentials")
+				if err := os.MkdirAll(credDir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(credDir, ".cred-inflight"), []byte("oek_complete"), 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			originalRead, originalWindows := readFile, isWindows
 			t.Cleanup(func() { readFile, isWindows = originalRead, originalWindows })
@@ -250,6 +267,9 @@ func TestLoadRetriesWindowsSharingErrors(t *testing.T) {
 				calls++
 				if calls <= tc.failures {
 					return []byte("partial"), &os.PathError{Op: "open", Path: path, Err: tc.err}
+				}
+				if !tc.stored {
+					return []byte("oek_complete"), nil
 				}
 				return originalRead(path)
 			}
@@ -271,5 +291,80 @@ func TestLoadRetriesWindowsSharingErrors(t *testing.T) {
 				t.Errorf("read attempts = %d, want %d", calls, tc.wantCalls)
 			}
 		})
+	}
+}
+
+// Simulate the Windows rename visibility gap through the renameFile seam: the
+// old destination disappears briefly while the sibling .cred-* temp file is
+// still present before moving into place.
+func TestLoadSurvivesWindowsRenameVisibilityGap(t *testing.T) {
+	dir := t.TempDir()
+	const profile = "gap-prof"
+	if _, _, err := Save(dir, profile, "oek_before", true); err != nil {
+		t.Fatal(err)
+	}
+
+	origRename, origRead, origWin := renameFile, readFile, isWindows
+	t.Cleanup(func() { renameFile, readFile, isWindows = origRename, origRead, origWin })
+	isWindows = true
+
+	inGap := make(chan struct{})
+	sawMissing := make(chan struct{})
+	finishRename := make(chan struct{})
+
+	renameFile = func(old, new string) error {
+		if err := os.Remove(new); err != nil {
+			return err
+		}
+		close(inGap)
+		<-finishRename
+		return origRename(old, new)
+	}
+
+	readAttempts := 0
+	readFile = func(path string) ([]byte, error) {
+		readAttempts++
+		data, err := origRead(path)
+		if readAttempts == 1 {
+			if !os.IsNotExist(err) {
+				t.Errorf("first read attempt error = %v; want not-exist", err)
+			}
+			close(sawMissing)
+		}
+		return data, err
+	}
+
+	saveDone := make(chan error, 1)
+	go func() {
+		_, _, err := Save(dir, profile, "oek_after", true)
+		saveDone <- err
+	}()
+
+	<-inGap
+	loadDone := make(chan struct {
+		secret string
+		err    error
+	}, 1)
+	go func() {
+		s, err := Load(dir, profile, File)
+		loadDone <- struct {
+			secret string
+			err    error
+		}{s, err}
+	}()
+
+	// Wait until Load has observed the missing target, then let the rename finish.
+	<-sawMissing
+	close(finishRename)
+
+	if err := <-saveDone; err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	res := <-loadDone
+	if res.err != nil || res.secret != "oek_after" {
+		t.Fatalf("Load across rename gap = %q, %v; want %q, nil", res.secret, res.err, "oek_after")
+	}
+	if readAttempts < 2 {
+		t.Fatalf("read attempts = %d; want at least 2", readAttempts)
 	}
 }
