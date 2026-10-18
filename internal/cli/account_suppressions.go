@@ -30,17 +30,18 @@ func newSuppressionsCmd(a *app) *cobra.Command {
 		Short:   "Addresses this account will never mail",
 		Long: "Addresses this account will never mail, from any of its domains and\n" +
 			"mailboxes — an unsubscribe, a legal request, an import from a previous\n" +
-			"provider. Enforced at the last hop before mail leaves the platform, so a\n" +
-			"listed recipient is accepted at submission and then refused terminally\n" +
-			"(the delivery log shows `relay_suppressed`).\n\n" +
+			"provider. A listed recipient is refused at submission — a 550 over SMTP,\n" +
+			"`recipient_not_permitted` from the API — so the sender learns at once.\n" +
+			"Mail already queued when the address was added is refused at the relay\n" +
+			"instead (the delivery log shows `relay_suppressed`).\n\n" +
 			"This is one ADDRESS LIST — account scope, outbound, block — kept as its own\n" +
 			"command because it is the combination people want most. `openemail lists`\n" +
 			"has the rest: refusing INCOMING senders, exempting a sender from the spam\n" +
 			"filter, and narrowing any of it to one domain or one mailbox.\n\n" +
-			"This list binds mail the account SUBMITS (API sends, SMTP/JMAP submission,\n" +
-			"auto-replies, calendar invitations). It does not judge forwarding rules or\n" +
-			"external group members; the platform's own bounce/complaint list covers\n" +
-			"those legs too. That platform list is separate and operator-managed\n" +
+			"It binds everything the account sends: API sends, SMTP/JMAP submission,\n" +
+			"auto-replies, calendar invitations, and the forwarding it sets up —\n" +
+			"forward-all, Sieve redirects, relaying routes, external group members.\n" +
+			"The platform's own bounce/complaint list is separate and operator-managed\n" +
 			"(`admin suppressions`); its refusals appear per message in `domains events`.",
 	}
 	cmd.AddCommand(
@@ -220,9 +221,9 @@ func newAccountSuppressionCheckCmd(a *app) *cobra.Command {
 		Use:     "check <address>",
 		Aliases: []string{"get"},
 		Short:   "Check whether this account would refuse to mail an address",
-		Long: "Runs the SAME evaluator the relay runs, so it answers for EVERY outbound\n" +
-			"list this account has — not only the do-not-send one — and names the\n" +
-			"pattern that decided.\n\n" +
+		Long: "Runs the SAME evaluator submission and the relay run, so it answers for\n" +
+			"EVERY outbound list this account has — not only the do-not-send one — and\n" +
+			"names the pattern that decided.\n\n" +
 			"An address can still be refused by the platform's own bounce/complaint\n" +
 			"list, which an account key cannot read; those refusals show per message in\n" +
 			"`domains events` as `relay_suppressed`.",

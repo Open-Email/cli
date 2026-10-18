@@ -45,7 +45,11 @@ func newListsCmd(a *app) *cobra.Command {
 			"union, so a new list can never reorder the ones you already have.\n\n" +
 			"Patterns: `jo@acme.example`, `@acme.example` (any local part — stored\n" +
 			"`*@acme.example`), `sales-*@acme.example`, and `@.acme.example` for the\n" +
-			"domain AND its subdomains.\n\n" +
+			"domain AND its subdomains. `*@*` is everyone, on block lists only: the\n" +
+			"floor of \"block all, allow some\", consulted only when no named entry at\n" +
+			"any scope matched, so an allow anywhere beats it. \"Mail only our own\n" +
+			"domain\" is a block list holding `*@*` plus an allow list holding\n" +
+			"`@acme.example`, both at that domain's scope.\n\n" +
 			"`openemail do-not-send` is a shortcut for the account-wide outbound block\n" +
 			"list; use it unless you need the other three combinations.",
 	}
@@ -380,8 +384,9 @@ func newListsAddCmd(a *app) *cobra.Command {
 		Short: "Add one pattern to a list",
 		Long: "Patterns: an address (`jo@acme.example`), a whole domain\n" +
 			"(`@acme.example`), a domain and its subdomains (`@.acme.example`), or a\n" +
-			"local-part glob (`sales-*@acme.example`). Repeat adds converge on one\n" +
-			"entry — the note refreshes, the expiry is REPLACED (so a repeat add\n" +
+			"local-part glob (`sales-*@acme.example`). On block lists only, `*@*`\n" +
+			"matches everyone (see `openemail lists --help`). Repeat adds converge on\n" +
+			"one entry — the note refreshes, the expiry is REPLACED (so a repeat add\n" +
 			"without --expires makes a temporary entry permanent), and the original\n" +
 			"added-at stays.",
 		Args: cobra.ExactArgs(2),

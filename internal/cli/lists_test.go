@@ -81,3 +81,16 @@ func TestEntryCells(t *testing.T) {
 		t.Fatalf("a permanent, never-matched entry should read — / 0 / —, got %v", bare[2:5])
 	}
 }
+
+// `*@*` is how a tenant says "block all, allow some" (core item 14), the one
+// pattern that recipe cannot do without, and neither help named it.
+func TestListsHelpNamesTheCatchAll(t *testing.T) {
+	for _, args := range [][]string{nil, {"add"}} {
+		help := helpText(t, newListsCmd(&app{}), args...)
+		for _, want := range []string{"`*@*`", "block lists only"} {
+			if !strings.Contains(help, want) {
+				t.Errorf("lists %v help lacks %q:\n%s", args, want, help)
+			}
+		}
+	}
+}

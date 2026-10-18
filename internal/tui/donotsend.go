@@ -52,7 +52,7 @@ func doNotSendDesc(accountID string) resourceDesc {
 	return resourceDesc{
 		key:     "do-not-send",
 		name:    "Do-Not-Send",
-		caption: "addresses this account never mails · enforced on outbound at the last hop",
+		caption: "addresses this account never mails · refused at submission, forwards included",
 		columns: []column{
 			{title: "ADDRESS", flex: true},
 			{title: "ADDED", width: 16},
@@ -127,9 +127,10 @@ func doNotSendDesc(accountID string) resourceDesc {
 				{v: "Note"},
 				{v: strOr(e.Note, "(none)")},
 				{},
-				{v: "Binds mail this account submits, from any of its domains. The"},
-				{v: "platform's own bounce/complaint suppressions are separate and"},
-				{v: "surface per message in the delivery log as relay_suppressed."},
+				{v: "Refused at submission from any of this account's domains, and"},
+				{v: "judged on the forwards it sets up too. The platform's own"},
+				{v: "bounce/complaint suppressions are separate and surface per"},
+				{v: "message in the delivery log as relay_suppressed."},
 			}
 		},
 		actions: []action{
