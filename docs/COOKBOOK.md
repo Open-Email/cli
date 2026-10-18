@@ -218,10 +218,15 @@ openemail ui
 A mailbox row on the Mailboxes screen drills into its sub-resources: `C`
 credentials, `F` filter rules (and `s` from there for the Sieve scripts behind
 them), `c` calendars, `b` addressbooks, `p` POP3 pickups, `P` preferences, `V`
-the out-of-office auto-reply. With a
-system key the sidebar also carries **Suppressions** (the do-not-send list, `u`
-lifts an entry) and **DKIM** (key generations, `n` stages a rotation, `A`
-activates a staged key).
+the out-of-office auto-reply. With an account key the sidebar also carries the
+account's own lists, the same two screens the web console has: **Do-Not-Send**
+(addresses the account never mails; `a` adds, `u` allows again) and
+**Senders** (blocked and allowed senders for inbound mail, one table with the
+verdict on each row; `a` adds, `f` flips block ↔ allow, `d` removes). Every
+other list (per-domain, per-mailbox, or more named lists) is `openemail lists`.
+With a system key the sidebar carries **Suppressions** instead (the
+platform-wide do-not-send list, `u` lifts an entry) and **DKIM** (key
+generations, `n` stages a rotation, `A` activates a staged key).
 
 Two screens deliberately state a verdict rather than just listing rows, because
 the row set alone does not answer the question people open them for: Filters and
