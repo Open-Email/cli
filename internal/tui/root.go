@@ -39,11 +39,15 @@ func newRoot(ctx context.Context, opts Options) *rootModel {
 		{key: "patterns", label: "Patterns"},
 		{key: "keys", label: "API Keys"},
 	}
-	// The account's own do-not-send list needs an account to be scoped to, so
-	// it is offered exactly when the key HAS one — a system key browses the
-	// deployment-global Suppressions screen instead.
+	// The account's own lists — do-not-send (outbound) and blocked & allowed
+	// senders (inbound) — need an account to be scoped to, so they are offered
+	// exactly when the key HAS one; a system key browses the deployment-global
+	// Suppressions screen instead.
 	if opts.Role == coreapi.PrincipalAccount && opts.AccountID != "" {
-		items = append(items, sideItem{key: "do-not-send", label: "Do-Not-Send"})
+		items = append(items,
+			sideItem{key: "do-not-send", label: "Do-Not-Send"},
+			sideItem{key: "senders", label: "Senders"},
+		)
 	}
 	// System-only screens. Suppressions and DKIM are refused with
 	// system_credentials_required for anyone else, so offering them would be a
