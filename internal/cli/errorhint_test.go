@@ -130,7 +130,7 @@ func TestErrorHint(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := errorHint(tc.ae)
+			got := errorHint(tc.ae, false)
 			if tc.want == "" {
 				if got != "" {
 					t.Fatalf("expected no hint, got %q", got)
@@ -141,5 +141,39 @@ func TestErrorHint(t *testing.T) {
 				t.Fatalf("hint %q does not contain %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// account_credentials_required names the credential CLASS a surface wants,
+// and core sends it to two different callers (cli#53): a domain-restricted
+// account key on an account-wide surface, and, since core#533, a mailbox app
+// password changing an outbound address list. The remedies differ, so the
+// hint follows the bearer.
+func TestAccountCredentialsRequiredHintFollowsTheBearer(t *testing.T) {
+	ae := &coreapi.APIError{Status: 403, Code: "account_credentials_required"}
+	if got := errorHint(ae, false); !strings.Contains(got, "restricted to specific domains") {
+		t.Errorf("account-key hint = %q, want the domain-restriction remedy", got)
+	}
+	got := errorHint(ae, true)
+	if strings.Contains(got, "specific domains") {
+		t.Errorf("mailbox hint blames a domain restriction it does not have: %q", got)
+	}
+	for _, want := range []string{"app password", "account key", "administrator"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("mailbox hint %q lacks %q", got, want)
+		}
+	}
+}
+
+func TestIsMailboxBearer(t *testing.T) {
+	for token, want := range map[string]bool{
+		"oemp_abc": true,
+		"oek_abc":  false,
+		"":         false,
+		"oemp":     false,
+	} {
+		if got := isMailboxBearer(token); got != want {
+			t.Errorf("isMailboxBearer(%q) = %v, want %v", token, got, want)
+		}
 	}
 }

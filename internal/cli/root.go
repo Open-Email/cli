@@ -242,7 +242,9 @@ func newVersionCmd(a *app) *cobra.Command {
 
 // errorHint returns a one-line remedy for the errors whose bare name doesn't
 // tell a user what to do next. Empty when the code speaks for itself.
-func errorHint(ae *coreapi.APIError) string {
+// mailboxBearer is whether the request carried a mailbox app password, for the
+// one code whose remedy depends on who is asking.
+func errorHint(ae *coreapi.APIError, mailboxBearer bool) string {
 	// The one hint keyed on the STATUS rather than the code: a 401 is the end of
 	// a credential's life whatever core called it, and one of the ways it ends is
 	// a CLI key lapsing from disuse — a death the platform schedules by itself,
@@ -301,6 +303,14 @@ func errorHint(ae *coreapi.APIError) string {
 		// hiding behind the anti-enumeration 409. There is no self-service move.
 		return "you control this domain's DNS, but another account holds it here — contact support to have it transferred"
 	case "account_credentials_required":
+		// The code names the credential the surface wants, and two callers get
+		// it. A mailbox app password does on the account-only writes inside its
+		// own mailbox's surface: outbound address lists (core#533), a login
+		// password. Core's message already says which; the remedy is a
+		// different key, held by whoever runs the account.
+		if mailboxBearer {
+			return "a mailbox app password cannot make this change — it needs an account key; ask the account's administrator, or sign in with one (openemail login)"
+		}
 		// A domain-restricted key on an account-tier surface. Most directory
 		// commands work with one, which is exactly why the few that do not read
 		// as a bug rather than as the restriction doing its job.
@@ -435,7 +445,7 @@ func (a *app) printError(err error) {
 		for _, h := range hints {
 			fmt.Fprintln(os.Stderr, p.Dim("  "+sanitizeCell(h)))
 		}
-		if h := errorHint(ae); h != "" {
+		if h := errorHint(ae, isMailboxBearer(a.token)); h != "" {
 			fmt.Fprintln(os.Stderr, p.Dim("  "+sanitizeCell(h)))
 		}
 		if a.flagDebug && len(ae.Body) > 0 {
@@ -444,4 +454,12 @@ func (a *app) printError(err error) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "%s %s\n", p.paint(colRed, "error:"), sanitizeBody(err.Error()))
+}
+
+// isMailboxBearer reports a mailbox app password (`oemp_…`, the prefix core
+// mints them under) as opposed to an account or system API key (`oek_…`). Read
+// off the token itself, so it holds however the key was supplied — a stored
+// profile, --api-key or OPENEMAIL_API_KEY — and costs no request.
+func isMailboxBearer(token string) bool {
+	return strings.HasPrefix(token, "oemp_") && len(token) > len("oemp_")
 }

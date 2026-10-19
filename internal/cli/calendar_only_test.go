@@ -87,7 +87,7 @@ func TestCalendarOnlyDefaultMailboxRules(t *testing.T) {
 func TestCalendarOnlyErrorHints(t *testing.T) {
 	for _, code := range []string{"no_mail_store", "grantee_has_no_mail_store", "notice_mailbox_no_mail_store"} {
 		t.Run(code, func(t *testing.T) {
-			if hint := errorHint(&coreapi.APIError{Code: code}); !strings.Contains(hint, "mail store") {
+			if hint := errorHint(&coreapi.APIError{Code: code}, false); !strings.Contains(hint, "mail store") {
 				t.Fatalf("missing actionable mail-store hint for %s: %q", code, hint)
 			}
 		})

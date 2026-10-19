@@ -191,7 +191,7 @@ func TestOnboardingErrorHints(t *testing.T) {
 		{"verification_unavailable", "try again"},
 	}
 	for _, tc := range cases {
-		got := errorHint(&coreapi.APIError{Code: tc.code})
+		got := errorHint(&coreapi.APIError{Code: tc.code}, false)
 		if got == "" {
 			t.Fatalf("%s has no hint", tc.code)
 		}
