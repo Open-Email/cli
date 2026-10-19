@@ -191,7 +191,9 @@ func TestEphemeralMailboxDeleteResult(t *testing.T) {
 
 func TestEphemeralMailboxPurgeRequiresSystemKey(t *testing.T) {
 	p := mailboxPurgeConfirm(t.Context(), &Options{}, coreapi.DeletedMailbox{ID: "temp"}).(*confirmPane)
-	if !strings.Contains(p.spec.body, "requires a system key, including for ephemeral mailboxes") {
-		t.Fatalf("purge must explain the system-key requirement has no ephemeral exception: %s", p.spec.body)
+	for _, want := range []string{"requires a system key in every case", "Ephemeral mailboxes are destroyed at deletion and have no tombstone to purge"} {
+		if !strings.Contains(p.spec.body, want) {
+			t.Errorf("purge confirmation missing %q: %s", want, p.spec.body)
+		}
 	}
 }

@@ -304,7 +304,8 @@ func mailboxPurgeConfirm(ctx context.Context, ui *Options, m coreapi.DeletedMail
 		title: "Purge deleted mailbox " + label,
 		body: "Waive the rest of the undo window and wipe this mailbox now (at the ~25 min " +
 			"straggler floor). It becomes non-restorable immediately — restore will fail. " +
-			"This is irreversible and requires a system key, including for ephemeral mailboxes.",
+			"This is irreversible and requires a system key in every case. " +
+			"Ephemeral mailboxes are destroyed at deletion and have no tombstone to purge.",
 		verb: "purge mailbox",
 		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
 			if _, err := c.PurgeMailbox(sctx, m.ID); err != nil {
