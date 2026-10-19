@@ -14,6 +14,35 @@ func TestErrorHint(t *testing.T) {
 		want string // substring the hint must contain ("" = no hint)
 	}{
 		{
+			name: "account key cannot waive ordinary mailbox undo",
+			ae:   &coreapi.APIError{Status: 403, Code: "system_credentials_required", Method: "DELETE", Path: "/identities/MB1"},
+			want: "omit --purge to keep its 7-day undo window",
+		},
+		{
+			name: "deleted mailbox purge always needs a system key",
+			ae:   &coreapi.APIError{Status: 403, Code: "system_credentials_required", Method: "POST", Path: "/identities/MB1/purge"},
+			want: "always needs a system key",
+		},
+		{
+			name: "purge restriction under a full API path",
+			ae:   &coreapi.APIError{Status: 403, Code: "system_credentials_required", Method: "DELETE", Path: "/api/v1/identities/MB1"},
+			want: "created with --ephemeral",
+		},
+		{
+			name: "other system-only operations do not get mailbox advice",
+			ae:   &coreapi.APIError{Status: 403, Code: "system_credentials_required", Method: "DELETE", Path: "/accounts/ACC1"},
+		},
+		{
+			name: "ephemeral cannot be changed after creation",
+			ae:   &coreapi.APIError{Status: 400, Code: "ephemeral_immutable"},
+			want: "fixed at creation",
+		},
+		{
+			name: "platform identities cannot be ephemeral",
+			ae:   &coreapi.APIError{Status: 400, Code: "ephemeral_requires_account"},
+			want: "--account <id>",
+		},
+		{
 			name: "address_taken with address",
 			ae:   &coreapi.APIError{Status: 409, Code: "address_taken", Extra: map[string]any{"address": "dejan@weauth.org"}},
 			want: "dejan@weauth.org is already routed",

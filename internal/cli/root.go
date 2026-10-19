@@ -302,6 +302,20 @@ func errorHint(ae *coreapi.APIError, mailboxBearer bool) string {
 		// The caller proved control, so core told them the truth rather than
 		// hiding behind the anti-enumeration 409. There is no self-service move.
 		return "you control this domain's DNS, but another account holds it here — contact support to have it transferred"
+	case "system_credentials_required":
+		path := strings.Split(strings.Trim(strings.TrimPrefix(ae.Path, "/api/v1"), "/"), "/")
+		if len(path) >= 2 && path[0] == "identities" {
+			if ae.Method == "DELETE" && len(path) == 2 {
+				return "immediate deletion needs a system key unless this mailbox was created with --ephemeral; omit --purge to keep its 7-day undo window"
+			}
+			if ae.Method == "POST" && len(path) == 3 && path[2] == "purge" {
+				return "purging an already-deleted mailbox always needs a system key; an account key can restore it while its undo window is open"
+			}
+		}
+	case "ephemeral_immutable":
+		return "ephemeral is fixed at creation — choose --ephemeral when creating a new mailbox; an existing mailbox cannot be made disposable"
+	case "ephemeral_requires_account":
+		return "an ephemeral mailbox must belong to an account — with a system key, pass --account <id> when creating it"
 	case "account_credentials_required":
 		// The code names the credential the surface wants, and two callers get
 		// it. A mailbox app password does on the account-only writes inside its

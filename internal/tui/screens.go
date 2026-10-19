@@ -208,6 +208,9 @@ func mailboxesDesc() resourceDesc {
 				// two modes are named apart: DISABLED bounces queued mail, PAUSED
 				// holds it.
 				address := strOr(m.PrimaryAddress, "—")
+				if m.Ephemeral {
+					address += " [EPHEMERAL]"
+				}
 				switch sendHoldOf(m.SendHold) {
 				case "disabled":
 					address += " [DISABLED]"

@@ -364,9 +364,11 @@ type MailboxCreateInput struct {
 	// and contacts; no login until a credential names a username). Core takes
 	// exactly one of the two: neither is 400 primary_address_required, both
 	// is 400 without_address_has_address. Spelled pimOnly before core #140.
-	WithoutAddress *bool   `json:"withoutAddress,omitempty"`
-	QuotaBytes     *int64  `json:"quotaBytes,omitempty"`
-	AccountID      *string `json:"accountId,omitempty"`
+	WithoutAddress *bool `json:"withoutAddress,omitempty"`
+	// Ephemeral is fixed at creation: deleting this identity has no undo window.
+	Ephemeral  bool    `json:"ephemeral,omitempty"`
+	QuotaBytes *int64  `json:"quotaBytes,omitempty"`
+	AccountID  *string `json:"accountId,omitempty"`
 }
 
 // MailboxDeleteResult is the DELETE /identities/:id body.

@@ -41,8 +41,47 @@ openemail routes create sales@example.com --type mailbox --mailbox <mailboxId>
 openemail mailboxes update <mailboxId> --address sales@example.com   # relabel to a routed address
 ```
 
-Omit `--address` on create for a bare store (POP3 pickup target, APPEND-only
-archive) that receives nothing until you bind a route.
+Use `--without-address` instead of `--address` for an identity that receives
+nothing until you bind a route.
+
+## A disposable mailbox for a support case
+
+Create an ephemeral mailbox when its whole identity should disappear at the end
+of a short-lived workflow:
+
+```sh
+openemail mailboxes create --address case-123@example.com --ephemeral
+openemail mailboxes get <mailboxId>     # shows that the mailbox is ephemeral
+openemail mailboxes list               # marks it [EPHEMERAL]
+
+# When the case is finished, delete the mailbox and type its id to confirm.
+openemail mailboxes delete <mailboxId>
+```
+
+`--ephemeral` is chosen at creation and cannot be changed later. It does not set
+an expiry time: delete the mailbox when the workflow is done. JSON responses
+include the `ephemeral` boolean.
+
+Deleting an ephemeral mailbox is permanent, even without `--purge`: there is no
+7-day undo window and no tombstone to restore. Its identity and addresses are
+released immediately; storage cleanup runs asynchronously. The interactive
+confirmation warns that there is no undo and requires the mailbox id. Pass
+`--yes` only when a script is meant to bypass that confirmation.
+
+Account credentials can delete their own ephemeral mailboxes this way. For an
+ordinary mailbox, account credentials can delete it with a 7-day undo window:
+
+```sh
+openemail mailboxes delete <mailboxId>
+openemail mailboxes list --deleted
+openemail mailboxes restore <mailboxId>
+```
+
+Waiving an ordinary mailbox's undo window requires a system key, either with
+`mailboxes delete <mailboxId> --purge` or, after deletion, with
+`mailboxes purge <mailboxId>`. The latter command always requires a system key;
+an ephemeral mailbox has already been removed by deletion. Purge makes the
+mailbox non-restorable immediately; physical storage cleanup is asynchronous.
 
 
 ## Send-only domain — mailboxes stay with another provider
@@ -686,7 +725,7 @@ openemail addressbooks objects get default --uid <uid> -o one.vcf
 ## A calendar-only identity (no email at all)
 
 ```sh
-openemail mailboxes create                                  # no --address: a bare store
+openemail mailboxes create --without-address                # no email address
 openemail credentials create <id> --kind password --username roomcal --password …
 openemail identities get <id>                               # pim facet bound, mail facet absent
 ```

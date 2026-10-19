@@ -69,11 +69,16 @@ func newMailboxUseCmd(a *app) *cobra.Command {
 
 func newMailboxCreateCmd(a *app) *cobra.Command {
 	var address, quota, account string
-	var withoutAddress bool
+	var withoutAddress, ephemeral bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an identity: with an address (a mailbox), or --without-address (calendars and contacts)",
-		Args:  cobra.NoArgs,
+		Long: "Create a mailbox with --address, or an identity with calendars and contacts\n" +
+			"using --without-address.\n\n" +
+			"--ephemeral makes it disposable: deleting it is permanent, with no 7-day\n" +
+			"undo window. This choice is fixed at creation. System keys must name an\n" +
+			"owning account with --account when creating an ephemeral mailbox.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Core takes exactly one of the two, so say which before asking it.
 			hasAddress := strings.TrimSpace(address) != ""
@@ -87,7 +92,7 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			in := coreapi.MailboxCreateInput{}
+			in := coreapi.MailboxCreateInput{Ephemeral: ephemeral}
 			if hasAddress {
 				in.PrimaryAddress = &address
 			}
@@ -128,6 +133,7 @@ func newMailboxCreateCmd(a *app) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&address, "address", "", "claim this address: the route is created atomically with the mailbox, which receives mail immediately (address_taken if already routed); required unless --without-address")
 	cmd.Flags().BoolVar(&withoutAddress, "without-address", false, "create an identity with calendars and contacts and no email address (takes no --address); it has no login until 'credentials create --username' names one, and routing an address to it later makes it receive mail")
+	cmd.Flags().BoolVar(&ephemeral, "ephemeral", false, "create disposable: deletion is permanent with no undo window (fixed at creation)")
 	cmd.Flags().StringVar(&quota, "quota", "", "quota in bytes, or 'unlimited'")
 	cmd.Flags().StringVar(&account, "account", "", "owning account id (system callers only)")
 	return cmd
@@ -191,6 +197,9 @@ func newMailboxListCmd(a *app) *cobra.Command {
 				rows := make([][]string, 0, len(items))
 				for _, m := range items {
 					address := strOr(m.PrimaryAddress, "—")
+					if m.Ephemeral {
+						address += "  [EPHEMERAL]"
+					}
 					// A disabled mailbox is marked in the LIST, not just in `get`.
 					// The question an operator brings to this table during an
 					// incident is "which of these did I stop?", and answering it
@@ -344,6 +353,7 @@ func newMailboxGetCmd(a *app) *cobra.Command {
 						{"Address", strOr(identity.PrimaryAddress, "—")},
 						{"Account", strOr(identity.AccountID, "—")},
 						{"Created", fmtEpoch(identity.CreatedAt)},
+						{"Ephemeral", fmtEphemeral(identity.Ephemeral)},
 						{"Mail store", "No mail store (calendar and contacts identity)"},
 					})
 				})
@@ -532,21 +542,37 @@ func newMailboxDeleteCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete <mailboxId>",
 		Aliases: []string{"rm"},
-		Short:   "Delete a mailbox (soft, 7-day undo; --purge to waive it)",
-		Args:    cobra.ExactArgs(1),
+		Short:   "Delete a mailbox (7-day undo, except ephemeral mailboxes)",
+		Long: "Ordinary mailboxes remain restorable for 7 days after deletion. A mailbox\n" +
+			"created with --ephemeral is deleted permanently, even without --purge.\n" +
+			"Its confirmation requires typing the mailbox id. --yes skips confirmation.\n\n" +
+			"--purge waives an ordinary mailbox's undo window and needs a system key.\n" +
+			"An account key may pass it only on an already-ephemeral mailbox, where\n" +
+			"it is redundant. Storage cleanup runs asynchronously.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
 			id := args[0]
-			if purge {
-				if !yes && !confirmTyped(
-					fmt.Sprintf("PURGE mailbox %s — this waives the 7-day undo entirely and is irreversible.", id), id) {
-					return usageError(errors.New("aborted (type the mailbox id to confirm, or pass --yes)"))
+			if !yes {
+				mailbox := coreapi.Mailbox{ID: id}
+				if !purge {
+					// Ephemeral is immutable, so this read can safely choose the
+					// confirmation. Never promise undo when the read fails.
+					info, err := client.GetIdentity(cmd.Context(), id)
+					if err != nil {
+						return fmt.Errorf("check mailbox deletion policy: %w", err)
+					}
+					mailbox.Ephemeral = info.Ephemeral
 				}
-			} else {
-				if !yes && !confirm(fmt.Sprintf("Delete mailbox %s? (undoable for 7 days)", id)) {
+				prompt, typed := mailboxDeleteConfirmation(mailbox, purge)
+				if typed {
+					if !confirmTyped(prompt, id) {
+						return usageError(errors.New("aborted (type the mailbox id to confirm, or pass --yes)"))
+					}
+				} else if !confirm(prompt) {
 					return usageError(errors.New("aborted (pass --yes to skip confirmation)"))
 				}
 			}
@@ -567,9 +593,20 @@ func newMailboxDeleteCmd(a *app) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&purge, "purge", false, "permanently purge: waive the 7-day undo window (irreversible)")
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVar(&purge, "purge", false, "waive the undo window (system key required unless already ephemeral; irreversible)")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation, including permanent ephemeral deletion")
 	return cmd
+}
+
+func mailboxDeleteConfirmation(m coreapi.Mailbox, purge bool) (string, bool) {
+	id := sanitizeCell(m.ID)
+	if m.Ephemeral {
+		return fmt.Sprintf("DELETE ephemeral mailbox %s — permanent. There is no undo window; it cannot be restored.", id), true
+	}
+	if purge {
+		return fmt.Sprintf("PURGE mailbox %s — this waives the 7-day undo entirely and is irreversible.", id), true
+	}
+	return fmt.Sprintf("Delete mailbox %s? (undoable for 7 days)", id), false
 }
 
 func newMailboxRestoreCmd(a *app) *cobra.Command {
@@ -607,10 +644,12 @@ func newMailboxPurgeCmd(a *app) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "purge <mailboxId>",
-		Short: "Purge an already-soft-deleted mailbox now (waive the rest of the undo window)",
+		Short: "Purge an already-soft-deleted mailbox (system key required)",
 		Long: "Expedite a mailbox that was already soft-deleted: waive the rest of its 7-day undo " +
 			"window and wipe it at the ~25 min straggler floor. The tombstone becomes non-restorable — " +
-			"restore then fails. Irreversible. To purge at delete time instead, use `delete --purge`.",
+			"restore then fails. Irreversible. Requires a system key in every case.\n" +
+			"Ephemeral mailboxes are destroyed at deletion and have no tombstone to purge.\n" +
+			"To purge at delete time instead, use `delete --purge`.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -657,6 +696,7 @@ func printMailbox(w io.Writer, p *Printer, m *coreapi.Mailbox) {
 		{"Quota", fmtQuota(m.QuotaBytes)},
 		{"Account", strOr(m.AccountID, "—")},
 		{"Created", fmtEpoch(m.CreatedAt)},
+		{"Ephemeral", fmtEphemeral(m.Ephemeral)},
 		{"Sending", fmtSendState(m.SendHold)},
 	}
 	// Shown only when there is something to say, like the caps below: a
@@ -690,6 +730,13 @@ func printMailbox(w io.Writer, p *Printer, m *coreapi.Mailbox) {
 		rows = append(rows, []string{"In trash", fmt.Sprintf("%s (%s)", int64Or(m.ExpungedCount, "0"), fmtBytes(deref(m.ExpungedBytes)))})
 	}
 	printTable(w, p, []string{"FIELD", "VALUE"}, rows)
+}
+
+func fmtEphemeral(ephemeral bool) string {
+	if ephemeral {
+		return "yes (delete is permanent; no undo)"
+	}
+	return "no"
 }
 
 func deref(p *int64) int64 {
