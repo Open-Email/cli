@@ -5903,6 +5903,13 @@
               "null"
             ]
           },
+          "credentialActive": {
+            "description": "Whether the credential would still be accepted now: true while it exists, is not revoked and is not past its expiry; false once revoked, expired or purged; null when unattributed. Each webmail sign-in mints its own credential, so a `webmail` row whose value is false is a session that has ended",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "credentialId": {
             "description": "The credential the client presented — the thing to revoke — or null when the reporting surface could not attribute one. Never render null as 'your password'",
             "type": [
@@ -5997,6 +6004,7 @@
           "credentialId",
           "credentialName",
           "credentialKind",
+          "credentialActive",
           "client",
           "country",
           "city",
@@ -29001,6 +29009,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -29331,6 +29349,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -29422,6 +29450,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -29530,6 +29568,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -29757,6 +29805,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -29851,6 +29909,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -30032,6 +30100,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -30292,6 +30370,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -30623,6 +30711,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -30714,6 +30812,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -30822,6 +30930,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -31049,6 +31167,16 @@
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -31143,6 +31271,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
@@ -31324,6 +31462,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_credentials_required — a mailbox credential may mutate inbound lists only; outbound lists are administrator-managed"
           },
           "404": {
             "content": {
