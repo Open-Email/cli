@@ -80,7 +80,10 @@ one API that accepts the revocation, before reporting the mismatch.
 
 A mailbox principal (`oemp_…`) has limited scope: its own messages, labels,
 threads, search, sieve, pickups, events, and outbound send for its own address —
-but not the directory or `admin` commands. `GET /auth/whoami` resolves the
+but not the directory or `admin` commands. Of its mailbox's address lists
+(`openemail lists -m`) it may change the inbound ones only; outbound lists are
+the account's sending policy, which it can read and check but not change (core
+answers `403 account_credentials_required`). `GET /auth/whoami` resolves the
 mailbox's own ULID (`mailboxId`), and `openemail login` automatically records it
 as the profile's `default_mailbox` (unless `--mailbox` overrides it). Note that
 mailbox principals cannot resolve email addresses via `/routes/:address`, so

@@ -50,6 +50,9 @@ func newListsCmd(a *app) *cobra.Command {
 			"any scope matched, so an allow anywhere beats it. \"Mail only our own\n" +
 			"domain\" is a block list holding `*@*` plus an allow list holding\n" +
 			"`@acme.example`, both at that domain's scope.\n\n" +
+			"Signed in with a mailbox app password (`-m`), you can change that\n" +
+			"mailbox's inbound lists; outbound lists are the account's to change, so\n" +
+			"a mailbox can read and check them but not lift or remove them.\n\n" +
 			"`openemail do-not-send` is a shortcut for the account-wide outbound block\n" +
 			"list; use it unless you need the other three combinations.",
 	}

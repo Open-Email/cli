@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +94,59 @@ func TestListsHelpNamesTheCatchAll(t *testing.T) {
 			if !strings.Contains(help, want) {
 				t.Errorf("lists %v help lacks %q:\n%s", args, want, help)
 			}
+		}
+	}
+}
+
+// End to end (cli#53): an app password refused on an outbound list sees core's
+// own sentence and a remedy it can act on, never the domain-key explanation.
+func TestListsCreateOutboundWithAppPasswordExplainsTheRefusal(t *testing.T) {
+	const mbx = "01KXRS3SHN1N35G4YETVADSN0R"
+	const coreMessage = "outbound address lists are managed by the account; this credential can change inbound lists only"
+	var posted bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/mailboxes/"+mbx+"/lists" {
+			posted = true
+			if got := r.Header.Get("Authorization"); got != "Bearer oemp_test" {
+				t.Errorf("Authorization = %q, want the app password", got)
+			}
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"error":"account_credentials_required","message":"`+coreMessage+`"}`)
+			return
+		}
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":"not_found"}`)
+	}))
+	defer srv.Close()
+
+	_, stderr, code := runCLI(t, srv.URL, "--api-key", "oemp_test",
+		"lists", "create", "mine", "-m", mbx, "--direction", "outbound", "--verdict", "allow")
+	if !posted {
+		t.Fatalf("the create never reached core; stderr:\n%s", stderr)
+	}
+	if code == 0 {
+		t.Fatalf("exit 0 on a refused create; stderr:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, coreMessage) {
+		t.Errorf("stderr lacks core's message:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "specific domains") {
+		t.Errorf("stderr blames a domain restriction:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "account key") {
+		t.Errorf("stderr gives no remedy:\n%s", stderr)
+	}
+}
+
+// Since core#533 an app password changes its mailbox's inbound lists only;
+// the help says so before anyone meets the 403.
+func TestListsHelpSaysAppPasswordsChangeInboundOnly(t *testing.T) {
+	help := helpText(t, newListsCmd(&app{}))
+	for _, want := range []string{"app password", "inbound lists", "outbound lists are the account's"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("lists help lacks %q:\n%s", want, help)
 		}
 	}
 }
