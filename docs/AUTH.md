@@ -89,6 +89,13 @@ as the profile's `default_mailbox` (unless `--mailbox` overrides it). Note that
 mailbox principals cannot resolve email addresses via `/routes/:address`, so
 explicit `-m` overrides must pass a mailbox ULID rather than an email address.
 
+Account credentials can delete their own mailboxes: ordinary mailboxes have a
+7-day undo window, while ephemeral mailboxes are deleted permanently. Purging an
+ordinary mailbox with `mailboxes delete --purge` requires a system key.
+`mailboxes purge` always requires a system key; ephemeral mailboxes have no
+deleted tombstone to purge or restore. See the [disposable mailbox
+workflow](COOKBOOK.md#a-disposable-mailbox-for-a-support-case).
+
 ## Secret storage
 
 By default the key lives in the OS keychain (macOS Keychain, Windows Credential

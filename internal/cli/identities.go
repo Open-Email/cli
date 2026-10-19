@@ -89,6 +89,7 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 					{"Account", strOr(id.AccountID, "—")},
 					{"Quota", fmtQuota(id.QuotaBytes)},
 					{"Created", fmtEpoch(id.CreatedAt)},
+					{"Ephemeral", fmtEphemeral(id.Ephemeral)},
 					{"Last activity", fmtIdentityActivity(id, shared)},
 					{"Sending", fmtSendState(id.SendHold)},
 				}

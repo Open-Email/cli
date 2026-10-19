@@ -28,6 +28,9 @@ func (c *Client) CreateMailbox(ctx context.Context, in MailboxCreateInput) (*Mai
 	if err != nil {
 		return nil, err
 	}
+	if in.Ephemeral && !out.Ephemeral {
+		return nil, fmt.Errorf("mailbox %s was created, but the server did not confirm ephemeral mode; it may have a 7-day undo window on deletion (check server support before using it for disposable data)", out.ID)
+	}
 	return &out, nil
 }
 
@@ -122,8 +125,9 @@ func (c *Client) UpdateMailbox(ctx context.Context, mailboxID string, patch map[
 	return &out, nil
 }
 
-// DeleteMailbox soft-deletes a mailbox (7-day undo) unless purge=true, which
-// waives the undo window and refuses restore.
+// DeleteMailbox normally soft-deletes a mailbox with a 7-day undo window.
+// Ephemeral mailboxes are always deleted permanently. On an ordinary mailbox,
+// purge=true waives the window and requires a system key (403 otherwise).
 func (c *Client) DeleteMailbox(ctx context.Context, mailboxID string, purge bool) (*MailboxDeleteResult, error) {
 	q := url.Values{}
 	if purge {
@@ -157,6 +161,8 @@ func (c *Client) RestoreMailbox(ctx context.Context, mailboxID string) (*Mailbox
 
 // PurgeMailbox expedites an already-soft-deleted mailbox: it waives the rest of
 // the undo window (tombstone → non-restorable, wipe at the ~25 min floor).
+// System credentials are required, even for a mailbox created ephemeral (which
+// has no tombstone after deletion); account keys receive 403 before lookup.
 // Idempotent. 404 no accessible tombstone, 409 not_deleted (the mailbox is live).
 func (c *Client) PurgeMailbox(ctx context.Context, mailboxID string) (*MailboxPurgeResult, error) {
 	var out MailboxPurgeResult

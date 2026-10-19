@@ -175,7 +175,7 @@ func mailboxLabel(m *coreapi.Mailbox) string {
 
 func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox) pane {
 	var address, quota string
-	var withoutAddress bool
+	var withoutAddress, ephemeral bool
 	origAddress, origQuota := "", ""
 	title := "New mailbox"
 	addrDesc := "required unless Without address — claims the address: route + primary label are created atomically (409 address_taken if routed elsewhere)"
@@ -197,9 +197,14 @@ func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox
 				Value(&quota).Validate(validBytesOrEmpty),
 		}
 		if existing == nil {
-			fields = append(fields, boolField("Without address",
-				"calendars and contacts, no email address (leave the address empty); give it a login with credentials create --username",
-				&withoutAddress))
+			fields = append(fields,
+				boolField("Without address",
+					"calendars and contacts, no email address (leave the address empty); give it a login with credentials create --username",
+					&withoutAddress),
+				boolField("Ephemeral",
+					"permanent deletion with no undo window; this choice cannot be changed later",
+					&ephemeral),
+			)
 		}
 		return huh.NewForm(huh.NewGroup(fields...))
 	}
@@ -214,7 +219,7 @@ func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox
 			case !withoutAddress && addr == "":
 				return "", nil, errors.New("a mailbox needs a primary address (or turn Without address on for calendars and contacts)")
 			}
-			in := coreapi.MailboxCreateInput{}
+			in := coreapi.MailboxCreateInput{Ephemeral: ephemeral}
 			if addr != "" {
 				in.PrimaryAddress = &addr
 			}
@@ -262,16 +267,27 @@ func mailboxFormPane(ctx context.Context, ui *Options, existing *coreapi.Mailbox
 }
 
 func mailboxDeleteConfirm(ctx context.Context, ui *Options, m coreapi.Mailbox) pane {
+	body := "Soft-delete this mailbox. Delivery admission closes immediately; the mailbox " +
+		"stays restorable for 7 days (openemail mailboxes restore " + m.ID + "), then is wiped. " +
+		"A purge delete (no undo) is CLI-only: openemail mailboxes delete --purge and requires a system key."
+	if m.Ephemeral {
+		body = "Permanently delete this ephemeral mailbox. Delivery admission closes immediately. " +
+			"There is no undo window; the mailbox cannot be restored."
+	}
 	return newConfirmPane(ctx, ui, confirmSpec{
 		title: "Delete mailbox " + mailboxLabel(&m),
-		body: "Soft-delete this mailbox. Delivery admission closes immediately; the mailbox " +
-			"stays restorable for 7 days (openemail mailboxes restore " + m.ID + "), then is wiped. " +
-			"A purge delete (no undo) is CLI-only: openemail mailboxes delete --purge.",
-		verb: "delete mailbox",
+		body:  body,
+		verb:  "delete mailbox",
 		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
 			res, err := c.DeleteMailbox(sctx, m.ID, false)
 			if err != nil {
 				return "", err
+			}
+			if res.Purged {
+				return "mailbox permanently deleted — no undo", nil
+			}
+			if !res.Restorable {
+				return "mailbox deleted — no longer restorable", nil
 			}
 			return "mailbox deleted — restorable until " + fmtEpochPtr(res.RestorableUntil), nil
 		},
@@ -288,7 +304,8 @@ func mailboxPurgeConfirm(ctx context.Context, ui *Options, m coreapi.DeletedMail
 		title: "Purge deleted mailbox " + label,
 		body: "Waive the rest of the undo window and wipe this mailbox now (at the ~25 min " +
 			"straggler floor). It becomes non-restorable immediately — restore will fail. " +
-			"This is irreversible.",
+			"This is irreversible and requires a system key in every case. " +
+			"Ephemeral mailboxes are destroyed at deletion and have no tombstone to purge.",
 		verb: "purge mailbox",
 		submit: func(sctx context.Context, c *coreapi.Client) (string, error) {
 			if _, err := c.PurgeMailbox(sctx, m.ID); err != nil {

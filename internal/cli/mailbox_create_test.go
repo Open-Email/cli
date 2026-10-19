@@ -38,7 +38,7 @@ func newCreateCore(t *testing.T) *createCore {
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		addr, _ := body["primaryAddress"].(string)
-		out := map[string]any{"id": "MB1", "accountId": "ACC1", "primaryAddress": nil}
+		out := map[string]any{"id": "MB1", "accountId": "ACC1", "primaryAddress": nil, "ephemeral": body["ephemeral"] == true}
 		if addr != "" {
 			out["primaryAddress"] = addr
 		}
@@ -57,8 +57,8 @@ func TestMailboxCreateSendsTheAddress(t *testing.T) {
 	if len(core.bodies) != 1 {
 		t.Fatalf("want one create, got %v", core.paths)
 	}
-	if got := core.bodies[0]; got["primaryAddress"] != "alice@acme.test" || got["withoutAddress"] != nil || got["pimOnly"] != nil {
-		t.Fatalf("body = %v, want primaryAddress and no withoutAddress", got)
+	if got := core.bodies[0]; got["primaryAddress"] != "alice@acme.test" || got["withoutAddress"] != nil || got["pimOnly"] != nil || got["ephemeral"] != nil {
+		t.Fatalf("body = %v, want primaryAddress and no withoutAddress or ephemeral", got)
 	}
 }
 
@@ -71,13 +71,94 @@ func TestMailboxCreateWithoutAddressSendsNoAddress(t *testing.T) {
 	if len(core.bodies) != 1 {
 		t.Fatalf("want one create, got %v", core.paths)
 	}
-	if got := core.bodies[0]; got["withoutAddress"] != true || got["primaryAddress"] != nil || got["pimOnly"] != nil {
-		t.Fatalf("body = %v, want withoutAddress true, no primaryAddress, and not the pre-#140 pimOnly", got)
+	if got := core.bodies[0]; got["withoutAddress"] != true || got["primaryAddress"] != nil || got["pimOnly"] != nil || got["ephemeral"] != nil {
+		t.Fatalf("body = %v, want withoutAddress true, no primaryAddress or ephemeral, and not the pre-#140 pimOnly", got)
 	}
 	// The create is not the whole job for this shape: nothing can sign in until
 	// a credential names a username, so the CLI says how.
 	if !strings.Contains(errOut, "openemail credentials create MB1 --username") {
 		t.Fatalf("stderr %q does not point at the credential mint", errOut)
+	}
+}
+
+func TestMailboxCreateEphemeralReachesCore(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"with address", []string{"--address", "disposable@acme.test"}},
+		{"without address", []string{"--without-address"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			core := newCreateCore(t)
+			args := append([]string{"mailboxes", "create", "--ephemeral"}, tc.args...)
+			_, errOut, code := runCLI(t, core.srv.URL, args...)
+			if code != 0 {
+				t.Fatalf("exit %d: %s", code, errOut)
+			}
+			if len(core.bodies) != 1 || core.bodies[0]["ephemeral"] != true {
+				t.Fatalf("create bodies = %v, want exactly one create with ephemeral true", core.bodies)
+			}
+		})
+	}
+}
+
+func TestMailboxCreateExplicitFalseOmitsEphemeral(t *testing.T) {
+	core := newCreateCore(t)
+	_, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "create", "--address", "alice@acme.test", "--ephemeral=false")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if len(core.bodies) != 1 {
+		t.Fatalf("want one create, got %v", core.paths)
+	}
+	if got := core.bodies[0]; got["ephemeral"] != nil {
+		t.Fatalf("body = %v, want ordinary creation to omit ephemeral", got)
+	}
+}
+
+// Older Core versions may accept the create body but ignore an unknown flag.
+// The resulting ordinary mailbox exists, so name it and refuse to claim the
+// requested permanent-delete policy was established.
+func TestMailboxCreateRequiresEphemeralAcknowledgment(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		response string
+		accepted bool
+	}{
+		{"omitted", `{"id":"MB_CREATED","primaryAddress":"disposable@acme.test"}`, false},
+		{"false", `{"id":"MB_CREATED","primaryAddress":"disposable@acme.test","ephemeral":false}`, false},
+		{"true", `{"id":"MB_CREATED","primaryAddress":"disposable@acme.test","ephemeral":true}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			core := newMailCore(t, accountWhoami, func(r *http.Request) (int, string) {
+				if r.Method == http.MethodPost && r.URL.Path == "/api/v1/identities" {
+					return 200, tc.response
+				}
+				return 404, `{"error":"not_found"}`
+			})
+			out, errOut, code := runCLI(t, core.srv.URL, "mailboxes", "create", "--address", "disposable@acme.test", "--ephemeral", "--json")
+			calls := core.callsTo()
+			if len(calls) != 1 || calls[0].Method != http.MethodPost || calls[0].Body["ephemeral"] != true {
+				t.Fatalf("calls = %v, want one create requesting ephemeral true", calls)
+			}
+			if tc.accepted {
+				var got map[string]any
+				if code != 0 {
+					t.Fatalf("exit %d: %s", code, errOut)
+				}
+				if err := json.Unmarshal([]byte(out), &got); err != nil || got["id"] != "MB_CREATED" || got["ephemeral"] != true {
+					t.Fatalf("stdout = %q (%v), want acknowledged ephemeral mailbox", out, err)
+				}
+				return
+			}
+			if code == 0 || !strings.Contains(errOut, "MB_CREATED") || !strings.Contains(strings.ToLower(errOut), "ephemeral") {
+				t.Fatalf("exit %d, stderr %q; want an ephemeral policy error naming the created identity", code, errOut)
+			}
+			if out != "" {
+				t.Fatalf("stdout = %q, unacknowledged ephemeral creation must not emit success data", out)
+			}
+		})
 	}
 }
 
