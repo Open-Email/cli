@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
@@ -115,9 +114,9 @@ func replaceCredentialFile(tmp, path string) error {
 	return retryCredentialAccess(func() error { return renameFile(tmp, path) })
 }
 
-// Reads can also meet a sharing violation while another process replaces the
-// credential. Use the same bounded retry policy for both operations, preserving
-// permanent errors and the missing-credential result without a delay.
+// Retry replacement only for Windows sharing and permission errors. A missing
+// source or destination is not retried here; transient missing reads have their
+// own policy below.
 func retryCredentialAccess(operation func() error) error {
 	// ERROR_SHARING_VIOLATION is 32 on Windows. The numeric value keeps the
 	// retry path testable on other platforms; it is only interpreted on Windows.
@@ -136,12 +135,14 @@ func retryCredentialAccess(operation func() error) error {
 	}
 }
 
-// On Windows, a concurrent open can also briefly observe ERROR_FILE_NOT_FOUND
-// while Save swaps the destination link. Retry not-found up to twice when the
-// credential directory shows an active (.cred-*) or just-completed replacement,
-// while still returning ErrNotFound immediately when no credential exists.
+// Windows credential reads have reported transient not-found errors during
+// replacement. Retry those twice, with 75 ms total backoff for a missing file.
+// A directory scan cannot reliably distinguish this from genuine absence.
+// Sharing and permission failures retain the five-attempt, 375 ms ceiling;
+// mixed errors also share that overall limit.
 func retryCredentialRead(path string, read func(string) ([]byte, error)) ([]byte, error) {
 	const sharingViolation = syscall.Errno(32)
+	missingRetries := 0
 	for attempt := 0; ; attempt++ {
 		data, err := read(path)
 		if err == nil {
@@ -150,29 +151,20 @@ func retryCredentialRead(path string, read func(string) ([]byte, error)) ([]byte
 		if !isWindows || attempt == 4 {
 			return nil, err
 		}
+		delay := (25 * time.Millisecond) << attempt
 		switch {
 		case errors.Is(err, os.ErrPermission), errors.Is(err, sharingViolation):
-		case os.IsNotExist(err) && attempt < 2 && credentialReplaceInFlight(path):
+		case os.IsNotExist(err):
+			if missingRetries == 2 {
+				return nil, err
+			}
+			delay = (25 * time.Millisecond) << missingRetries
+			missingRetries++
 		default:
 			return nil, err
 		}
-		time.Sleep((25 * time.Millisecond) << attempt)
+		time.Sleep(delay)
 	}
-}
-
-func credentialReplaceInFlight(path string) bool {
-	entries, err := os.ReadDir(filepath.Dir(path))
-	if err != nil {
-		return false
-	}
-	target := filepath.Base(path)
-	for _, entry := range entries {
-		name := entry.Name()
-		if name == target || strings.HasPrefix(name, ".cred-") {
-			return true
-		}
-	}
-	return false
 }
 
 // Load reads the secret for profile from the named backend.
