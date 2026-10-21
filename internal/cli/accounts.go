@@ -291,6 +291,16 @@ func printAccount(w io.Writer, p *Printer, acc *coreapi.Account) {
 		{"Sending", fmtAccountSendState(acc.SendHold)},
 		{"Messages/day", fmtSendCap(acc.SendMsgsPerDay)},
 		{"Recipients/day", fmtSendCap(acc.SendRcptsPerDay)},
+		{"Messages/hour", fmtSendCap(acc.SendMsgsPerHour)},
+		{"Recipients/hour", fmtSendCap(acc.SendRcptsPerHour)},
+		// What each mailbox gets when it has no override of its own (core #555).
+		{"Mailbox default msgs/day", fmtSendCap(acc.MailboxSendMsgsPerDay)},
+		{"Mailbox default rcpts/day", fmtSendCap(acc.MailboxSendRcptsPerDay)},
+		{"Mailbox default msgs/hour", fmtSendCap(acc.MailboxSendMsgsPerHour)},
+		{"Mailbox default rcpts/hour", fmtSendCap(acc.MailboxSendRcptsPerHour)},
+		{"Receives/day", fmtSendCap(acc.RecvMsgsPerDay)},
+		{"Receive bytes/day", fmtByteCap(acc.RecvBytesPerDay)},
+		{"Forwards/day (per domain)", fmtSendCap(acc.ForwardMsgsPerDay)},
 		{"Max mailboxes", int64Or(acc.MaxMailboxes, "platform default")},
 		// Velocity, not holdings: how fast the account may walk toward the
 		// ceiling above. Core refuses past them with a 429 that drains.
@@ -364,14 +374,23 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 		name                string
 		maxMailboxes        string
 		sendMsgs, sendRcpts string
-		mailboxCreates      string
-		addressCreates      string
-		domainCreates       string
-		vanityHosts         string
-		storageLimit        string
-		semantic            string
-		maxTemplates        string
-		noticeLanguage      string
+		sendMsgsHour        string
+		sendRcptsHour       string
+		recvMsgs, recvBytes string
+		forwardMsgs         string
+		// The account's DEFAULTS for its mailboxes' own send caps (core #555):
+		// what a mailbox with no override of its own gets, in front of the
+		// platform number. Same three states.
+		mboxSendMsgs, mboxSendRcpts         string
+		mboxSendMsgsHour, mboxSendRcptsHour string
+		mailboxCreates                      string
+		addressCreates                      string
+		domainCreates                       string
+		vanityHosts                         string
+		storageLimit                        string
+		semantic                            string
+		maxTemplates                        string
+		noticeLanguage                      string
 	)
 	cmd := &cobra.Command{
 		Use:     "update <accountId>",
@@ -408,6 +427,19 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 			}{
 				{"send-msgs-per-day", "sendMsgsPerDay", &sendMsgs},
 				{"send-rcpts-per-day", "sendRcptsPerDay", &sendRcpts},
+				// The BURST window: the same two axes over one hour.
+				{"send-msgs-per-hour", "sendMsgsPerHour", &sendMsgsHour},
+				{"send-rcpts-per-hour", "sendRcptsPerHour", &sendRcptsHour},
+				// The inbound RECEIVE allowance (messages; bytes take a size,
+				// below) and the inbound-driven FORWARD cap, per domain.
+				{"recv-msgs-per-day", "recvMsgsPerDay", &recvMsgs},
+				{"forward-msgs-per-day", "forwardMsgsPerDay", &forwardMsgs},
+				// The account's defaults for its MAILBOXES' send caps (core #555):
+				// a mailbox's own override, then these, then the platform number.
+				{"mailbox-send-msgs-per-day", "mailboxSendMsgsPerDay", &mboxSendMsgs},
+				{"mailbox-send-rcpts-per-day", "mailboxSendRcptsPerDay", &mboxSendRcpts},
+				{"mailbox-send-msgs-per-hour", "mailboxSendMsgsPerHour", &mboxSendMsgsHour},
+				{"mailbox-send-rcpts-per-hour", "mailboxSendRcptsPerHour", &mboxSendRcptsHour},
 				// The create VELOCITY bounds: how many of each the account may
 				// mint per rolling 24h, never how many it may hold
 				// (--max-mailboxes is the ceiling). Same three states, and the
@@ -425,6 +457,14 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 					return usageError(fmt.Errorf("--%s: %w", f.flag, perr))
 				}
 				patch[f.field] = v // nil marshals as JSON null = drop the override
+			}
+			// The receive allowance's BYTES axis: a human size, like the pool.
+			if cmd.Flags().Changed("recv-bytes-per-day") {
+				v, perr := parseByteCapFlag("--recv-bytes-per-day", recvBytes)
+				if perr != nil {
+					return usageError(perr)
+				}
+				patch["recvBytesPerDay"] = v
 			}
 			// The account storage POOL. Same three states as the send caps, but a
 			// separate parser because it takes a human size — nobody should have
@@ -505,6 +545,15 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&maxMailboxes, "max-mailboxes", "", "cap on mailboxes the account may HOLD: a positive number, or 'default' for the platform number (MAX_MAILBOXES_DEFAULT). Core has no unlimited value")
 	cmd.Flags().StringVar(&sendMsgs, "send-msgs-per-day", "", "distinct messages this ACCOUNT may send per rolling 24h, across every mailbox on every domain it owns: a number, 'unlimited', or 'default' to drop the override")
 	cmd.Flags().StringVar(&sendRcpts, "send-rcpts-per-day", "", "envelope recipients per rolling 24h for the whole account: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&sendMsgsHour, "send-msgs-per-hour", "", "the account's BURST cap: distinct messages per rolling hour across every mailbox: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&sendRcptsHour, "send-rcpts-per-hour", "", "envelope recipients per rolling hour for the whole account: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&recvMsgs, "recv-msgs-per-day", "", "inbound RECEIVE allowance: messages the account's addresses may receive per rolling 24h (over it inbound is deferred, never bounced): a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&recvBytes, "recv-bytes-per-day", "", "inbound RECEIVE allowance in bytes per rolling 24h: a size like 100G, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&forwardMsgs, "forward-msgs-per-day", "", "messages each of the account's DOMAINS may forward per rolling 24h (routes, taps, Sieve redirects): a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&mboxSendMsgs, "mailbox-send-msgs-per-day", "", "DEFAULT daily message cap for every mailbox this account owns that has no override of its own (core #555): a number, 'unlimited', or 'default' for the platform number")
+	cmd.Flags().StringVar(&mboxSendRcpts, "mailbox-send-rcpts-per-day", "", "default daily recipient cap for the account's mailboxes: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&mboxSendMsgsHour, "mailbox-send-msgs-per-hour", "", "default hourly (burst) message cap for the account's mailboxes: a number, 'unlimited', or 'default'")
+	cmd.Flags().StringVar(&mboxSendRcptsHour, "mailbox-send-rcpts-per-hour", "", "default hourly recipient cap for the account's mailboxes: a number, 'unlimited', or 'default'")
 	cmd.Flags().StringVar(&mailboxCreates, "mailbox-creates-per-day", "", "mailboxes this account may CREATE per rolling 24h (velocity, not the --max-mailboxes ceiling): a number, 'unlimited', or 'default' for the platform number (the vetting presets set it too)")
 	cmd.Flags().StringVar(&addressCreates, "address-creates-per-day", "", "addresses this account may create per rolling 24h: a number, 'unlimited', or 'default'")
 	cmd.Flags().StringVar(&domainCreates, "domain-creates-per-day", "", "domains this account may add per rolling 24h: a number, 'unlimited', or 'default'")
@@ -525,6 +574,12 @@ func newAccountUpdateCmd(a *app) *cobra.Command {
 // operator setting a plan tier reads these flags as one family and a divergence
 // in what "default" means is the kind of thing found later, on a live account.
 func parseStorageLimitFlag(s string) (*int64, error) {
+	return parseByteCapFlag("--storage-limit", s)
+}
+
+// parseByteCapFlag reads a byte-sized cap's three states: 'default' drops the
+// override (null), 'unlimited' is an explicit 0, anything else a human size.
+func parseByteCapFlag(flag, s string) (*int64, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "default":
 		return nil, nil
@@ -534,9 +589,20 @@ func parseStorageLimitFlag(s string) (*int64, error) {
 	}
 	n, err := parseByteSize(s)
 	if err != nil {
-		return nil, fmt.Errorf("invalid --storage-limit %q: %w", s, err)
+		return nil, fmt.Errorf("invalid %s %q: %w", flag, s, err)
 	}
 	return &n, nil
+}
+
+// fmtByteCap renders a byte-sized cap: the platform default, unlimited, or a size.
+func fmtByteCap(p *int64) string {
+	if p == nil {
+		return "platform default"
+	}
+	if *p == 0 {
+		return "unlimited"
+	}
+	return fmtBytes(*p)
 }
 
 func parseBoolFlag(flag, raw string) (bool, error) {

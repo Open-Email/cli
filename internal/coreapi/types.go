@@ -108,6 +108,13 @@ type Account struct {
 	// backstop, not a plan axis: over it inbound is DEFERRED, never bounced.
 	RecvMsgsPerDay  *int64 `json:"recvMsgsPerDay"`
 	RecvBytesPerDay *int64 `json:"recvBytesPerDay"`
+	// The account's DEFAULTS for its mailboxes' send caps (core migration
+	// 0154): a mailbox's own override, then these, then the platform number.
+	// Same nil/0 spelling.
+	MailboxSendMsgsPerDay   *int64 `json:"mailboxSendMsgsPerDay"`
+	MailboxSendRcptsPerDay  *int64 `json:"mailboxSendRcptsPerDay"`
+	MailboxSendMsgsPerHour  *int64 `json:"mailboxSendMsgsPerHour"`
+	MailboxSendRcptsPerHour *int64 `json:"mailboxSendRcptsPerHour"`
 	// The per-day CREATE bounds — churn limits, not ceilings: MaxMailboxes is
 	// the ceiling, and these bound how fast the account may walk toward it.
 	// Same nil/0 spelling as the send axes.
