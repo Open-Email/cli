@@ -43,6 +43,11 @@ type Identity struct {
 	// suspension and whether its enforcement is still being applied.
 	SuspendedAt       *int64 `json:"suspendedAt"`
 	SuspensionPending bool   `json:"suspensionPending"`
+	// ProvisioningPending is present, and true, only while an identity created
+	// with messageWebhook or eventWebhook is still setting up: mail to its
+	// address and its calendar and contact writes are refused as temporary
+	// (503 temporary_failure) until it is. Absent for every other identity.
+	ProvisioningPending bool `json:"provisioningPending,omitempty"`
 	// ReceiveHold, ReceiveHoldAt, ReceiveHoldPending and HasMailStore: see
 	// Mailbox's copies, the owner's inbound hold and the mail capability.
 	ReceiveHold        *string `json:"receiveHold"`
