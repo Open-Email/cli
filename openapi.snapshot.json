@@ -69,6 +69,38 @@
               "null"
             ]
           },
+          "mailboxSendMsgsPerDay": {
+            "description": "The MAILBOX DEFAULT: messages each of this account's mailboxes may send per day when it has no override of its own (null = the platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailboxSendMsgsPerHour": {
+            "description": "The MAILBOX DEFAULT's burst window: messages each mailbox may send per hour when it has no override of its own (null = the platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailboxSendRcptsPerDay": {
+            "description": "The MAILBOX DEFAULT: recipients each mailbox may send to per day when it has no override of its own (null = the platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mailboxSendRcptsPerHour": {
+            "description": "The MAILBOX DEFAULT's burst window: recipients each mailbox may send to per hour when it has no override of its own (null = the platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "maxMailTemplates": {
             "description": "Stored mail templates this account may hold (null = the platform default, MAX_MAIL_TEMPLATES_DEFAULT; 0 = unlimited)",
             "format": "int64",
@@ -230,6 +262,10 @@
           "sendRcptsPerDay",
           "sendMsgsPerHour",
           "sendRcptsPerHour",
+          "mailboxSendMsgsPerDay",
+          "mailboxSendRcptsPerDay",
+          "mailboxSendMsgsPerHour",
+          "mailboxSendRcptsPerHour",
           "recvMsgsPerDay",
           "recvBytesPerDay",
           "mailboxCreatesPerDay",
@@ -429,6 +465,17 @@
               "null"
             ]
           },
+          "limitOverrides": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "description": "The account's AGREED LIMITS: every plan number an operator set on this account with PATCH /accounts/:accountId, keyed by its PATCH field name, in the platform's spelling (null = the platform default, 0 = unlimited). Every stamp (a vet, a revoke, a billing-tier change) lays these over its preset, so none of them loses an agreement; while the label is `untrusted` each limit is the stricter of untrusted's number and the agreement. Empty when there are none. Forget one with PATCH `clearLimitOverrides`",
+            "type": "object"
+          },
           "plan": {
             "description": "The label on the account (null = no plan recorded)",
             "type": [
@@ -441,7 +488,8 @@
           "accountId",
           "plan",
           "appliedAt",
-          "appliedBy"
+          "appliedBy",
+          "limitOverrides"
         ],
         "type": "object"
       },
@@ -2329,6 +2377,194 @@
           "text",
           "html",
           "attachments"
+        ],
+        "type": "object"
+      },
+      "CreatedIdentity": {
+        "properties": {
+          "accountId": {
+            "description": "Account ID owning this mailbox, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "description": "Creation timestamp in epoch seconds",
+            "format": "int64",
+            "type": "integer"
+          },
+          "ephemeral": {
+            "description": "Whether the mailbox was created DISPOSABLE (ephemeral: true at creation, immutable afterwards): its DELETE destroys it at once — no undo record, no 7-day window, the address free again immediately. False for every ordinary mailbox, whose DELETE keeps the window",
+            "type": "boolean"
+          },
+          "eventWebhook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventWebhook"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present when the create asked for an eventWebhook: the mailbox's event webhook as it now is (null if it has since been deleted)"
+          },
+          "groupAddress": {
+            "description": "When this identity is a GROUP PERSONA, the group address whose archive it keeps and which it may send as; null for every other identity. A persona has no primaryAddress, cannot be a route target, refuses its own DELETE (delete the group route instead) and its Sieve/rules writes, and is exempt from max_mailboxes",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasMailStore": {
+            "description": "Whether this identity has the mail capability. False for a calendar/contacts-only identity; true may also have a null primaryAddress. Derived from the directory row without reading or provisioning a store, not an indication that the store has been initialized or contains messages",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Unique mailbox ULID",
+            "type": "string"
+          },
+          "messageWebhook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageWebhook"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present when the create asked for a messageWebhook: the tap as it now is on the claimed route (null if it has since been removed)"
+          },
+          "primaryAddress": {
+            "description": "Primary email address assigned to this mailbox, or null if none",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provisioningPending": {
+            "description": "Present, true, only while this identity's creation with messageWebhook or eventWebhook is still setting up: mail to its address and its calendar and contact writes are refused as temporary (503 temporary_failure) until it is, and the setup completes in the background. Absent for every other identity",
+            "type": "boolean"
+          },
+          "quotaBytes": {
+            "description": "Storage quota in bytes, or null for unlimited",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "receiveHold": {
+            "description": "The account owner's hold on this mailbox's RECEIVING, independent of suspension and of sendHold: 'paused' = senders are told to retry later (429 receiving_paused, SMTP 451; they give up after about four to five days, so a pause is for short interruptions), 'disabled' = mail to it is rejected at once (403 receiving_disabled, SMTP 550), null = receiving. Set with PATCH {\"receiveHold\": \"paused\"|\"disabled\"|null}, or on create",
+            "enum": [
+              "paused",
+              "disabled"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "receiveHoldAt": {
+            "description": "When the current receiveHold was set (epoch seconds), restamped when the mode changes; null while receiving. The age of a pause is what decides whether it is still a pause: warn from the third day",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "receiveHoldPending": {
+            "description": "Whether the current receiveHold has not yet reached the mailbox's store: true right after a change still being applied (PATCH answered 202), false once it holds. Poll until false",
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "description": "The mailbox's OWN time-based retention window in days (null = none; the account default applies if one is set). The window in force, with a preview, is GET /mailboxes/:id/retention",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "semantic": {
+            "description": "Whether SEMANTIC (meaning-based) search is enabled for this mailbox: messages are embedded after delivery and GET /mailboxes/:id/search/semantic and …/messages/:id/similar answer. Tenant-set, gated by the account's plan; off by default. Turning it off DELETES the mailbox's embeddings",
+            "type": "boolean"
+          },
+          "sendHold": {
+            "description": "This mailbox's own operator enforcement: 'disabled' = permanent stop (403 sending_disabled), 'paused' = reversible hold (429 sending_paused), null = neither. System-written only",
+            "enum": [
+              "disabled",
+              "paused"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sendMsgsPerDay": {
+            "description": "Daily outbound message limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sendMsgsPerHour": {
+            "description": "Hourly (burst) outbound message limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sendRcptsPerDay": {
+            "description": "Daily outbound recipient limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sendRcptsPerHour": {
+            "description": "Hourly (burst) outbound recipient limit (null = platform default, 0 = unlimited)",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "suspendedAt": {
+            "description": "When the account owner suspended this mailbox (epoch seconds), null when it is not suspended. While suspended its logins are refused as a wrong password is, its sending is held (429 sending_paused) and its open sessions end; it still receives mail, and its owner keys can still read and administer it. Set with PATCH {\"suspended\": true|false}",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "suspensionPending": {
+            "description": "Whether the current suspendedAt has not yet reached every core gate it must: true right after a change whose enforcement is still being applied (PATCH answered 202), false once it holds everywhere. Poll until false",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "primaryAddress",
+          "hasMailStore",
+          "quotaBytes",
+          "accountId",
+          "createdAt",
+          "sendHold",
+          "suspendedAt",
+          "suspensionPending",
+          "receiveHold",
+          "receiveHoldAt",
+          "receiveHoldPending",
+          "sendMsgsPerDay",
+          "sendRcptsPerDay",
+          "sendMsgsPerHour",
+          "sendRcptsPerHour",
+          "retentionDays",
+          "groupAddress",
+          "semantic",
+          "ephemeral"
         ],
         "type": "object"
       },
@@ -7072,6 +7308,10 @@
               "null"
             ]
           },
+          "provisioningPending": {
+            "description": "Present, true, only while this identity's creation with messageWebhook or eventWebhook is still setting up: mail to its address and its calendar and contact writes are refused as temporary (503 temporary_failure) until it is, and the setup completes in the background. Absent for every other identity",
+            "type": "boolean"
+          },
           "quotaBytes": {
             "description": "Storage quota in bytes, or null for unlimited",
             "format": "int64",
@@ -8517,6 +8757,32 @@
           "deliveryMeta",
           "auth",
           "deliveryState"
+        ],
+        "type": "object"
+      },
+      "MessageWebhook": {
+        "properties": {
+          "address": {
+            "description": "The route the tap rides: the primary address this create claimed. Alias routes never inherit it, and changing the identity's primaryAddress label later does not move it",
+            "type": "string"
+          },
+          "format": {
+            "description": "The payload shape (the route's webhookFormat)",
+            "enum": [
+              "parsed",
+              "reference"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Where each admitted message's payload is POSTed, beside its normal delivery to the mailbox",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "url",
+          "format"
         ],
         "type": "object"
       },
@@ -16892,7 +17158,7 @@
         ]
       },
       "patch": {
-        "description": "Updates tenant limits, mailbox quotas, vanity hostname permissions, and emergency send pause/disable controls (system callers only).",
+        "description": "Updates tenant limits, mailbox quotas, vanity hostname permissions, and emergency send pause/disable controls (system callers only). Every limit this writes (each plan number: the send, receive, storage, mailbox, template, create and forwarding fields) binds at once and is recorded as the account's AGREED LIMIT, listed as `limitOverrides` on GET /accounts/:accountId/plan: every later stamp (a vet, a revoke, a billing-tier change) lays it back over its preset instead of losing it, held to the stricter of untrusted's number and the agreement while the account is `untrusted`. On an `untrusted` account a limit may be cut but not raised above the unvetted preset: such a PATCH is refused 409 account_not_vetted. `clearLimitOverrides` forgets agreements.",
         "operationId": "patch_AccountPatch",
         "parameters": [
           {
@@ -16920,6 +17186,34 @@
                       "null"
                     ]
                   },
+                  "clearLimitOverrides": {
+                    "description": "Forget these AGREED LIMITS (by PATCH field name) and put each column back on what core's preset stamps for the account's label and billing tier, or the platform default for a label core does not define. A field both set and cleared in one PATCH is refused 400 limit_override_conflict",
+                    "items": {
+                      "enum": [
+                        "sendMsgsPerDay",
+                        "sendRcptsPerDay",
+                        "sendMsgsPerHour",
+                        "sendRcptsPerHour",
+                        "mailboxSendMsgsPerDay",
+                        "mailboxSendRcptsPerDay",
+                        "mailboxSendMsgsPerHour",
+                        "mailboxSendRcptsPerHour",
+                        "recvMsgsPerDay",
+                        "recvBytesPerDay",
+                        "storageLimitBytes",
+                        "maxMailboxes",
+                        "mailboxCreatesPerDay",
+                        "addressCreatesPerDay",
+                        "domainCreatesPerDay",
+                        "forwardMsgsPerDay",
+                        "maxMailTemplates"
+                      ],
+                      "type": "string"
+                    },
+                    "maxItems": 17,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "domainCreatesPerDay": {
                     "description": "Domains this ACCOUNT may onboard per rolling 24h, claimed BEFORE the ownership probe so a farming script spends no resolver calls. null = the platform default; 0 = unlimited",
                     "maximum": 9007199254740991,
@@ -16940,6 +17234,42 @@
                   },
                   "mailboxCreatesPerDay": {
                     "description": "Mailboxes this ACCOUNT may CREATE per rolling 24h — a CHURN bound, not a ceiling (maxMailboxes is the ceiling): a fresh mailbox is a fresh, empty send ledger, so purge + recreate would otherwise recycle the per-mailbox cap while the count never moves. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "mailboxSendMsgsPerDay": {
+                    "description": "The MAILBOX DEFAULT: distinct messages EACH mailbox may send per rolling 24h. Applies to each of this account's mailboxes that carries no override of its own (a mailbox's own override, set with PATCH /identities/:identityId, still wins). null = the platform default; 0 = unlimited (the account caps still bound the total). Recorded as the account's agreed limit",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "mailboxSendMsgsPerHour": {
+                    "description": "The MAILBOX DEFAULT's burst window: distinct messages EACH mailbox may send per hour. Applies to each of this account's mailboxes that carries no override of its own (a mailbox's own override, set with PATCH /identities/:identityId, still wins). null = the platform default; 0 = unlimited (the account caps still bound the total). Recorded as the account's agreed limit",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "mailboxSendRcptsPerDay": {
+                    "description": "The MAILBOX DEFAULT: envelope recipients EACH mailbox may send to per rolling 24h. Applies to each of this account's mailboxes that carries no override of its own (a mailbox's own override, set with PATCH /identities/:identityId, still wins). null = the platform default; 0 = unlimited (the account caps still bound the total). Recorded as the account's agreed limit",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "mailboxSendRcptsPerHour": {
+                    "description": "The MAILBOX DEFAULT's burst window: envelope recipients EACH mailbox may send to per hour. Applies to each of this account's mailboxes that carries no override of its own (a mailbox's own override, set with PATCH /identities/:identityId, still wins). null = the platform default; 0 = unlimited (the account caps still bound the total). Recorded as the account's agreed limit",
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
@@ -17095,7 +17425,7 @@
                 }
               }
             },
-            "description": "validation_failed, empty_patch (no recognized field supplied), notice_mailbox_not_owned (the incident-notice mailbox must belong to this account), notice_mailbox_no_mail_store (the incident-notice mailbox must have a mail store to deliver into)"
+            "description": "validation_failed, empty_patch (no recognized field supplied), limit_override_conflict (a limit both set and named in clearLimitOverrides; `keys` lists them), notice_mailbox_not_owned (the incident-notice mailbox must belong to this account), notice_mailbox_no_mail_store (the incident-notice mailbox must have a mail store to deliver into)"
           },
           "401": {
             "content": {
@@ -17135,7 +17465,7 @@
                 }
               }
             },
-            "description": "account_deleted — the account is inside its deletion window or purged; restore it first; or semantic_mailboxes_opted_in — `semantic: false` while `optedIn` mailboxes are opted in: paid with vectors does not become free; the tenant opts out (which deletes the embeddings) or the account is deleted (which wipes them)"
+            "description": "account_deleted — the account is inside its deletion window or purged; restore it first; or semantic_mailboxes_opted_in — `semantic: false` while `optedIn` mailboxes are opted in: paid with vectors does not become free; the tenant opts out (which deletes the embeddings) or the account is deleted (which wipes them); or account_not_vetted — the account's label is `untrusted` and the PATCH would set a limit looser than the unvetted preset allows: nothing is written, `limits` names each refused field with the unvetted ceiling (null = the platform default), and `message` says so. Cuts, equal values and clears are accepted; vet the account to raise it"
           }
         },
         "summary": "Update account settings",
@@ -17265,7 +17595,7 @@
     },
     "/api/v1/accounts/{accountId}/plan": {
       "post": {
-        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label, plus who applied it and when. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` of the DEFINITION — for caller content every key present, sorted, omitted numbers as null and the gate as false, so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Content is the caller's for the tiers tooling owns; omit `limits` to apply one of core's own presets by name — the vetting axis, `untrusted` (what every signup starts on) and `trusted` (lifted by an operator after looking) — and a name core does not define is refused 400 unknown_plan. Applying a vetting preset by name stamps only the columns core's table defines (every number, no feature gate) and leaves every other plan column exactly as the account has it: `vanityHosts` is a billing feature an operator opens with PATCH, not a trust verdict, so re-vetting or revoking never closes a gate that was opened. Caller content stamps every column, the gate included.",
+        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label, plus who applied it and when. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` of the DEFINITION — for caller content every key present, sorted, omitted numbers as null and the gate as false, so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Content is the caller's for the tiers tooling owns; omit `limits` to apply one of core's own presets by name — the vetting axis, `untrusted` (what every signup starts on) and `trusted` (lifted by an operator after looking) — and a name core does not define is refused 400 unknown_plan. Applying a vetting preset by name stamps only the columns core's table defines (every number, no feature gate) and leaves every other plan column exactly as the account has it: `vanityHosts` is a billing feature an operator opens with PATCH, not a trust verdict, so re-vetting or revoking never closes a gate that was opened. Caller content stamps every column, the gate included. Every stamp then lays the account's AGREED LIMITS over the preset: the numbers an operator set on this account with PATCH /accounts/:accountId (listed as `limitOverrides` on GET /accounts/:accountId/plan), so neither a re-vet, a revoke nor a tooling tier loses them. While the label is `untrusted` each is held to the stricter of untrusted's number and the agreement, so a raise waits for the next vet and a cut survives the revoke. The hash still names the definition, never the agreements.",
         "operationId": "post_AccountPlanApply",
         "parameters": [
           {
@@ -17561,7 +17891,7 @@
     },
     "/api/v1/accounts/{accountId}/billing-tier": {
       "put": {
-        "description": "Records the tier the billing tool sold the account (`free` or `pro`). Not a limit: the plan columns are stamped from the tier TOGETHER with the vetting label, so a Pro tier lifts nothing on an `untrusted` account until an operator vets it (POST /accounts/:accountId/plan `trusted`, which then stamps the `pro` preset). On a `trusted` account the write itself moves it into or out of the Pro release: `pro` stamps the `pro` preset (trusted's numbers, storage uncapped, a 5,000-mailbox ceiling, the vanity-host gate open) and `free` stamps `trusted` with the gate closed. The vetting label and its record are never changed. Writing the tier the account already holds is a no-op answered 200.",
+        "description": "Records the tier the billing tool sold the account (`free` or `pro`). Not a limit: the plan columns are stamped from the tier TOGETHER with the vetting label, so a Pro tier lifts nothing on an `untrusted` account until an operator vets it (POST /accounts/:accountId/plan `trusted`, which then stamps the `pro` preset). On a `trusted` account the write itself moves it into or out of the Pro release: `pro` stamps the `pro` preset (trusted's numbers, storage uncapped, a 5,000-mailbox ceiling, the vanity-host gate open) and `free` stamps `trusted` with the gate closed. The vetting label and its record are never changed. The account's agreed limits (numbers an operator set with PATCH /accounts/:accountId) are laid over whichever preset this stamps. Writing the tier the account already holds is a no-op answered 200.",
         "operationId": "put_AccountBillingTierSet",
         "parameters": [
           {
@@ -24911,11 +25241,23 @@
     },
     "/api/v1/identities": {
       "post": {
-        "description": "An identity is a principal in an account: it owns stores (a mail store, calendars, contacts), holds credentials, and can be shared with. It takes one of two shapes at creation.\n\n**With primaryAddress** (the common case): the address is claimed and routed to the identity atomically, the mail store is bound, and the initial labels are provisioned. The identity receives mail at once and logs in with the address as its username.\n\n**With withoutAddress: true**: no email address and no mail store, so it receives no mail and every mail route (messages, labels, uploads, search, filters, sharing) answers 404 for it, while the identity routes (credentials, settings, delete and restore) and its calendars and contacts work as for any identity. There is no login until a credential is minted with an explicit username (POST /api/v1/identities/{identityId}/credentials), since there is no address to default to; the username is a bare name without @. Routing an address to it later (POST /api/v1/routes or /api/v1/patterns, destinationType mailbox, or a retarget of either) gives it a mail store in that write, and it then receives mail like any other identity; nothing undoes that, a later route delete included. semantic: true is refused on it (400 no_mail_store), since there is no mail to index. Until then it holds events, tasks and contacts and takes part in sharing, but not in scheduling: iCalendar names participants by mailto: address, so it can neither invite nor be invited.\n\nA create with neither is refused 400 primary_address_required; both together is 400 without_address_has_address.\n\n**receiveHold** creates the mailbox already holding its receiving (paused or disabled), committed with the identity and its address so it applies from the first arrival; the answer carries receiveHold, receiveHoldAt and receiveHoldPending as GET does. On a withoutAddress create the hold is the identity's until an address is routed to it, and the mail store that write gives it holds from its first arrival.",
+        "description": "An identity is a principal in an account: it owns stores (a mail store, calendars, contacts), holds credentials, and can be shared with. It takes one of two shapes at creation.\n\n**With primaryAddress** (the common case): the address is claimed and routed to the identity atomically, the mail store is bound, and the initial labels are provisioned. The identity receives mail at once and logs in with the address as its username.\n\n**With withoutAddress: true**: no email address and no mail store, so it receives no mail and every mail route (messages, labels, uploads, search, filters, sharing) answers 404 for it, while the identity routes (credentials, settings, delete and restore) and its calendars and contacts work as for any identity. There is no login until a credential is minted with an explicit username (POST /api/v1/identities/{identityId}/credentials), since there is no address to default to; the username is a bare name without @. Routing an address to it later (POST /api/v1/routes or /api/v1/patterns, destinationType mailbox, or a retarget of either) gives it a mail store in that write, and it then receives mail like any other identity; nothing undoes that, a later route delete included. semantic: true is refused on it (400 no_mail_store), since there is no mail to index. Until then it holds events, tasks and contacts and takes part in sharing, but not in scheduling: iCalendar names participants by mailto: address, so it can neither invite nor be invited.\n\nA create with neither is refused 400 primary_address_required; both together is 400 without_address_has_address.\n\n**receiveHold** creates the mailbox already holding its receiving (paused or disabled), committed with the identity and its address so it applies from the first arrival; the answer carries receiveHold, receiveHoldAt and receiveHoldPending as GET does. On a withoutAddress create the hold is the identity's until an address is routed to it, and the mail store that write gives it holds from its first arrival.\n\n**messageWebhook and eventWebhook** configure, in the same request, a webhook tap on the primary route this create claims (each admitted message's payload, beside its normal delivery) and the identity's mailbox-scope event webhook, so the identity never exists without them. Each is optional; with neither the request and answer are exactly as above. Both are an account's: a platform identity takes neither (409 account_required). A create naming either requires an `Idempotency-Key` header (1 to 128 characters), which names one creation: a retry with the same key and body answers the same identity as it now is, never re-applying either webhook over a later change; any other body under the key is refused 409 idempotency_key_reused; and an identity deleted since is never re-created (409 identity_deleted). A completed creation answers its key for 30 days, the retry window. The 200 comes once the identity, its route, each webhook and its mail store's arming are in place. Until then the answer is 503 temporary_failure with Retry-After, mail to the address is refused as temporary (SMTP 451) and the identity's calendar and contact writes too, and the setup completes in the background whether or not the request is retried. Nothing is sent to either URL at creation.",
         "operationId": "post_IdentityCreate",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "eventWebhook": {
+                  "secret": "whsec_events_3f6b8d1a9c4e2f7b",
+                  "url": "https://hooks.acme.example/events"
+                },
+                "messageWebhook": {
+                  "format": "parsed",
+                  "secret": "whsec_message_7c2e9a4f1b8d3e6a",
+                  "url": "https://hooks.acme.example/incoming"
+                },
+                "primaryAddress": "agent@acme.example"
+              },
               "schema": {
                 "properties": {
                   "accountId": {
@@ -24925,6 +25267,69 @@
                   "ephemeral": {
                     "description": "Create the mailbox DISPOSABLE (#483): its DELETE destroys it at once — no undo record, no 7-day window, its object gone, the address free again immediately — the shape for a mailbox per support case, agent session or transaction. Fixed at creation and reported on every read; a PATCH naming it is refused 400 ephemeral_immutable in either direction, so a key cannot make a long-lived mailbox disposable after the fact. Omitted or false creates an ordinary mailbox. Refused 400 ephemeral_requires_account on a platform identity, which has no account home to destroy through",
                     "type": "boolean"
+                  },
+                  "eventWebhook": {
+                    "additionalProperties": false,
+                    "description": "The identity's mailbox-scope event webhook, as PUT /api/v1/mailboxes/{mailboxId}/event-webhook configures it: one URL, every supported event, batched and signed. Allowed with withoutAddress: true, for calendar and contact notifications. Requires an owning account (409 account_required on a platform identity). Manage it afterwards at /api/v1/mailboxes/{mailboxId}/event-webhook. Omitted or null configures none. Requires an Idempotency-Key",
+                    "properties": {
+                      "secret": {
+                        "description": "HMAC signing secret, 1 to 256 characters, write-only. Omitted or null: unsigned",
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "url": {
+                        "description": "HTTPS endpoint on a public host",
+                        "format": "uri",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "messageWebhook": {
+                    "additionalProperties": false,
+                    "description": "A webhook TAP on the primary route this create claims: each message the address admits is POSTed here (the incoming-email payload, its signing and retries) beside its normal delivery to the mailbox, which it never replaces. Requires a primaryAddress (400 message_webhook_requires_address with withoutAddress: true) and an owning account (409 account_required on a platform identity). Alias routes bound later do not inherit it. Manage it afterwards on the route (GET/PATCH /api/v1/routes/{address}). Omitted or null configures none. Requires an Idempotency-Key",
+                    "properties": {
+                      "format": {
+                        "description": "The payload shape: parsed (the default) or reference (headers plus a capability rawUrl; 400 webhook_format_unavailable where the deployment mints none)",
+                        "enum": [
+                          "parsed",
+                          "reference"
+                        ],
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "secret": {
+                        "description": "HMAC signing secret, write-only. Omitted or null: the tap is unsigned",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "url": {
+                        "description": "HTTPS endpoint on a public host",
+                        "format": "uri",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": [
+                      "object",
+                      "null"
+                    ]
                   },
                   "permittedRecipients": {
                     "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
@@ -25041,12 +25446,54 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "accountId": "01J9ACCT8B1D4F7H2K00000000",
+                  "createdAt": 1788264000,
+                  "ephemeral": false,
+                  "eventWebhook": {
+                    "consecutiveFailures": 0,
+                    "createdAt": 1788264000,
+                    "disabledReason": null,
+                    "enabled": true,
+                    "failingSince": null,
+                    "hasSecret": true,
+                    "lastDeliveredAt": null,
+                    "lastFailure": null,
+                    "lastFailureAt": null,
+                    "mailboxId": "01J9MBX7F4Q2K9T3W600000000",
+                    "scope": "mailbox",
+                    "updatedAt": 1788264000,
+                    "url": "https://hooks.acme.example/events"
+                  },
+                  "groupAddress": null,
+                  "hasMailStore": true,
+                  "id": "01J9MBX7F4Q2K9T3W600000000",
+                  "messageWebhook": {
+                    "address": "agent@acme.example",
+                    "format": "parsed",
+                    "url": "https://hooks.acme.example/incoming"
+                  },
+                  "primaryAddress": "agent@acme.example",
+                  "quotaBytes": null,
+                  "receiveHold": null,
+                  "receiveHoldAt": null,
+                  "receiveHoldPending": false,
+                  "retentionDays": null,
+                  "semantic": false,
+                  "sendHold": null,
+                  "sendMsgsPerDay": null,
+                  "sendMsgsPerHour": null,
+                  "sendRcptsPerDay": null,
+                  "sendRcptsPerHour": null,
+                  "suspendedAt": null,
+                  "suspensionPending": false
+                },
                 "schema": {
-                  "$ref": "#/components/schemas/Mailbox"
+                  "$ref": "#/components/schemas/CreatedIdentity"
                 }
               }
             },
-            "description": "Created identity"
+            "description": "Created identity. With messageWebhook or eventWebhook it carries each, redacted, and answers only once the identity, its route and every requested webhook are configured and its mail store armed"
           },
           "400": {
             "content": {
@@ -25056,7 +25503,7 @@
                 }
               }
             },
-            "description": "validation_failed, ephemeral_requires_account (ephemeral: true on a platform identity), unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), without_address_has_address (withoutAddress: true with a primaryAddress), no_mail_store (semantic: true with withoutAddress: true: no mail to index), or not_holdable (receiveHold on a platform identity, which belongs to no account)"
+            "description": "validation_failed, ephemeral_requires_account (ephemeral: true on a platform identity), unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), without_address_has_address (withoutAddress: true with a primaryAddress), no_mail_store (semantic: true with withoutAddress: true: no mail to index), not_holdable (receiveHold on a platform identity, which belongs to no account), message_webhook_requires_address (messageWebhook with withoutAddress: true), webhook_format_unavailable (messageWebhook.format reference on a deployment that mints no capability URLs), idempotency_key_required (messageWebhook or eventWebhook without an Idempotency-Key) or idempotency_key_invalid (empty or over 128 characters)"
           },
           "401": {
             "content": {
@@ -25086,7 +25533,7 @@
                 }
               }
             },
-            "description": "address_taken — the primary email address is already routed to another mailbox — or account_deleted (the owning account is soft-deleted; restore it first)"
+            "description": "address_taken — the primary email address is already routed to another mailbox — or account_deleted (the owning account is soft-deleted; restore it first), account_required (messageWebhook or eventWebhook on a platform identity: webhooks at creation are an account's), idempotency_key_reused (this Idempotency-Key belongs to a create with another request body; nothing changed), or identity_deleted (the identity this Idempotency-Key created was deleted since; a retry never re-creates it, use a fresh key)"
           },
           "429": {
             "content": {
@@ -25114,7 +25561,7 @@
                 }
               }
             },
-            "description": "semantic_capacity, when semantic: true was asked for but every vector shard is closed to new assignment: nothing was created, retry without the flag or once a shard is open. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing was created; retry after the Retry-After window. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window"
+            "description": "semantic_capacity, when semantic: true was asked for but every vector shard is closed to new assignment: nothing was created, retry without the flag or once a shard is open. Or temporary_failure: under the object directory, semantic: true was asked for while the fleet's shard counts could not be read consistently (a bucket move, or semantic facts still backfilling); nothing was created; retry after the Retry-After window. Or temporary_failure on a create with messageWebhook or eventWebhook whose setup has not finished (its initialization, the event webhook or the mail store's arming): the identity is reserved and its setup is completed in the background; mail to its address is refused as temporary and its calendar and contact writes too until it is; retry with the same Idempotency-Key and body, which never creates a second identity. Or temporary_failure (with Retry-After): under the object directory, the account's identity census could not be updated just now, so the write that would move it was not made; retry the same request after the Retry-After window"
           }
         },
         "summary": "Create an identity",
@@ -26360,6 +26807,16 @@
               }
             },
             "description": "account_required — the mailbox has no owning account, and a hook row must reference one"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure — the mailbox's creation (POST /identities with eventWebhook) is still installing its hook; retry after Retry-After"
           }
         },
         "summary": "Create or replace the mailbox's event webhook",
@@ -26464,6 +26921,16 @@
               }
             },
             "description": "No hook configured, or mailbox not accessible"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure — the mailbox’s creation is still installing its hook; retry after Retry-After"
           }
         },
         "summary": "Remove the mailbox's event webhook",
