@@ -913,6 +913,23 @@ Note `unlimited` and `default` are different words on purpose: `default` drops
 the override and inherits the platform number, which may well be tighter than
 what you just removed.
 
+The hourly (burst) caps, the inbound receive allowance and the per-domain
+forward cap take the same words (`--send-msgs-per-hour`, `--recv-msgs-per-day`,
+`--recv-bytes-per-day 100G`, `--forward-msgs-per-day`). A tenant that mints
+mailboxes in bulk and wants every one of them above the platform's per-mailbox
+numbers sets the account's DEFAULTS for them, instead of an override on each
+mailbox after the fact:
+
+```sh
+openemail accounts update 01JARQ00000000000000000001 \
+  --mailbox-send-msgs-per-day 2000 --mailbox-send-msgs-per-hour 300 \
+  --mailbox-send-rcpts-per-day 8000 --mailbox-send-rcpts-per-hour 1200
+```
+
+A mailbox's own override still wins over the account default, and core records
+every number such a PATCH writes as the account's agreed limit, which a later
+vet or billing change lays back over its preset rather than losing.
+
 The same goes for a tenant provisioning in bulk who hits `429
 mailbox_creates_per_day`. That is the create VELOCITY bound (per rolling 24h),
 not the `--max-mailboxes` ceiling, and it drains on its own; raise it for that
