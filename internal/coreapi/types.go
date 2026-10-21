@@ -296,6 +296,11 @@ type Mailbox struct {
 	// has not yet reached every gate core enforces it at: the PATCH answered
 	// 202, and GET reports false once it holds everywhere.
 	SuspensionPending bool `json:"suspensionPending"`
+	// ProvisioningPending is present, and true, only while an identity created
+	// with messageWebhook or eventWebhook is still setting up: mail to its
+	// address and its calendar and contact writes are refused as temporary
+	// (503 temporary_failure) until it is. Absent for every other identity.
+	ProvisioningPending bool `json:"provisioningPending,omitempty"`
 	// ReceiveHold is the account OWNER's hold on this mailbox's receiving,
 	// independent of suspension and of SendHold: nil = receiving, "paused" =
 	// senders are told to retry later (SMTP 451; they give up after four to
