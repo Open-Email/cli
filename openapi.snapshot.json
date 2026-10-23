@@ -2433,7 +2433,17 @@
                 "type": "null"
               }
             ],
-            "description": "Present when the create asked for a messageWebhook: the tap as it now is on the claimed route (null if it has since been removed)"
+            "description": "Present when the create asked for a messageWebhook: the mailbox's message webhook as it now is (null if it has since been removed)"
+          },
+          "permittedRecipients": {
+            "description": "This mailbox's outbound recipient allowlist, written by system callers only. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). null = unrestricted (the default); [] = may send to nobody. A submission outside the list is refused with 403 recipient_not_permitted (SMTP 550). Egress only: receiving is unaffected. A credential's own permittedRecipients may restrict sending further",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "primaryAddress": {
             "description": "Primary email address assigned to this mailbox, or null if none",
@@ -2552,6 +2562,7 @@
           "accountId",
           "createdAt",
           "sendHold",
+          "permittedRecipients",
           "suspendedAt",
           "suspensionPending",
           "receiveHold",
@@ -5389,25 +5400,31 @@
       },
       "FilteringBody": {
         "properties": {
+          "discardIncoming": {
+            "description": "Store nothing this mailbox receives (see FilteringSettings). An account key or system key only: an app password is refused 403 insufficient_scope",
+            "type": "boolean"
+          },
           "trustContacts": {
             "description": "Trust the mailbox's own address book as an implicit allow list",
             "type": "boolean"
           }
         },
-        "required": [
-          "trustContacts"
-        ],
         "type": "object"
       },
       "FilteringSettings": {
         "properties": {
+          "discardIncoming": {
+            "description": "When true, the mailbox stores nothing it receives: every message that arrives from someone else (inbound mail, mail from other mailboxes here, group copies, forwarded copies, delivery-status notices, platform notices) is accepted, passed to the mailbox's message webhook (GET/PUT /mailboxes/{mailboxId}/message-webhook) and the address's forward tap, counted as a receive, and then discarded, with no spam check, Sieve, vacation reply, forward-all, push or message.new event. The mailbox's own writes are still kept: its Sent copies and drafts, APPEND and Email/import, POP3 pickups. A blocked sender is still refused, and a receive hold still applies first. False by default; only the account (or the platform) may change it. Without a message webhook, a discard keeps no copy anywhere.",
+            "type": "boolean"
+          },
           "trustContacts": {
             "description": "When true (the default), mail from a sender in this mailbox's own address book is delivered to the inbox even when the spam filter would have filed it to Junk, provided the sender identity was authenticated (DMARC for the From, SPF for the envelope). Explicit block lists still win.",
             "type": "boolean"
           }
         },
         "required": [
-          "trustContacts"
+          "trustContacts",
+          "discardIncoming"
         ],
         "type": "object"
       },
@@ -6336,140 +6353,6 @@
         },
         "type": "object"
       },
-      "InvitationCheck": {
-        "properties": {
-          "code": {
-            "description": "The code's canonical spelling; null when none was asked about or it cannot be a code",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "inviteOnly": {
-            "description": "Whether POST /accounts demands a code right now",
-            "type": "boolean"
-          },
-          "live": {
-            "description": "Whether the code exists and is unspent; null when none was asked about",
-            "type": [
-              "boolean",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "inviteOnly",
-          "code",
-          "live"
-        ],
-        "type": "object"
-      },
-      "InvitationCounts": {
-        "properties": {
-          "total": {
-            "description": "Every code ever minted",
-            "type": "integer"
-          },
-          "unused": {
-            "description": "Codes still to be spent",
-            "type": "integer"
-          },
-          "used": {
-            "description": "Codes an account was created on",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "unused",
-          "used"
-        ],
-        "type": "object"
-      },
-      "InvitationEntry": {
-        "properties": {
-          "code": {
-            "description": "The code, XXXX-XXXX-XXXX — in clear, it is a handout",
-            "type": "string"
-          },
-          "createdAt": {
-            "description": "When it was minted, epoch seconds",
-            "format": "int64",
-            "type": "integer"
-          },
-          "createdBy": {
-            "description": "Id of the system key that minted it",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "description": "Unique ULID identifier",
-            "type": "string"
-          },
-          "note": {
-            "description": "What the batch was for, stamped on every code of it",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "usedAccountId": {
-            "description": "The account whose creation spent it",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "usedAt": {
-            "description": "When it was spent, epoch seconds; null while unspent",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "usedBy": {
-            "description": "That account's name — the signup address, the way the console names accounts",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "code",
-          "note",
-          "createdAt",
-          "createdBy",
-          "usedAt",
-          "usedAccountId",
-          "usedBy"
-        ],
-        "type": "object"
-      },
-      "InvitationMintResult": {
-        "properties": {
-          "count": {
-            "description": "How many were minted",
-            "type": "integer"
-          },
-          "entries": {
-            "description": "The fresh codes",
-            "items": {
-              "$ref": "#/components/schemas/InvitationEntry"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "count",
-          "entries"
-        ],
-        "type": "object"
-      },
       "KeywordCount": {
         "properties": {
           "count": {
@@ -7301,6 +7184,16 @@
             "description": "Unique mailbox ULID",
             "type": "string"
           },
+          "permittedRecipients": {
+            "description": "This mailbox's outbound recipient allowlist, written by system callers only. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). null = unrestricted (the default); [] = may send to nobody. A submission outside the list is refused with 403 recipient_not_permitted (SMTP 550). Egress only: receiving is unaffected. A credential's own permittedRecipients may restrict sending further",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "primaryAddress": {
             "description": "Primary email address assigned to this mailbox, or null if none",
             "type": [
@@ -7418,6 +7311,7 @@
           "accountId",
           "createdAt",
           "sendHold",
+          "permittedRecipients",
           "suspendedAt",
           "suspensionPending",
           "receiveHold",
@@ -8762,27 +8656,70 @@
       },
       "MessageWebhook": {
         "properties": {
-          "address": {
-            "description": "The route the tap rides: the primary address this create claimed. Alias routes never inherit it, and changing the identity's primaryAddress label later does not move it",
-            "type": "string"
+          "createdAt": {
+            "description": "When the webhook was first set (epoch seconds)",
+            "format": "int64",
+            "type": "integer"
           },
           "format": {
-            "description": "The payload shape (the route's webhookFormat)",
+            "description": "The payload shape: parsed (decoded bodies and inlined attachments) or reference (headers plus a capability rawUrl)",
             "enum": [
               "parsed",
               "reference"
             ],
             "type": "string"
           },
+          "hasSecret": {
+            "description": "Whether each POST is signed (X-OpenEmail-Signature, HMAC-SHA-256 over the body); the secret itself is write-only",
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "description": "When it last changed (epoch seconds)",
+            "format": "int64",
+            "type": "integer"
+          },
           "url": {
-            "description": "Where each admitted message's payload is POSTed, beside its normal delivery to the mailbox",
+            "description": "Where each message that lands in this mailbox is POSTed (the incoming-email payload), however it got there: any of its addresses, a pattern or catch-all, a group, a forward, a delivery-status or platform notice, whether the mailbox keeps it or not",
             "type": "string"
           }
         },
         "required": [
-          "address",
           "url",
-          "format"
+          "format",
+          "hasSecret",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "MessageWebhookBody": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "description": "The payload shape. Omit to keep (parsed for a new webhook); reference needs a deployment that mints capability URLs (400 webhook_format_unavailable)",
+            "enum": [
+              "parsed",
+              "reference"
+            ],
+            "type": "string"
+          },
+          "secret": {
+            "description": "HMAC signing secret, write-only. Omit to keep the stored one, a string to set or rotate it, null to clear it (unsigned)",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "description": "HTTPS endpoint on a public host",
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
         ],
         "type": "object"
       },
@@ -14383,34 +14320,6 @@
         ],
         "type": "object"
       },
-      "SystemInvitations": {
-        "properties": {
-          "counts": {
-            "$ref": "#/components/schemas/InvitationCounts"
-          },
-          "entries": {
-            "description": "Invitation codes, newest first",
-            "items": {
-              "$ref": "#/components/schemas/InvitationEntry"
-            },
-            "type": "array"
-          },
-          "inviteOnly": {
-            "description": "Whether POST /accounts demands a code right now (SIGNUP_INVITE_ONLY)",
-            "type": "boolean"
-          },
-          "nextCursor": {
-            "description": "Cursor for next page",
-            "type": "string"
-          }
-        },
-        "required": [
-          "inviteOnly",
-          "counts",
-          "entries"
-        ],
-        "type": "object"
-      },
       "SystemLimits": {
         "properties": {
           "maxMessageBytes": {
@@ -16871,11 +16780,6 @@
             "application/json": {
               "schema": {
                 "properties": {
-                  "invitationCode": {
-                    "description": "The signup invitation this account is created on. Required, and SPENT on the new account, when the deployment is invitation-only (SIGNUP_INVITE_ONLY; GET /system/invitations/check says); ignored when it is not. Case, spaces and dashes are forgiven",
-                    "maxLength": 64,
-                    "type": "string"
-                  },
                   "maxMailboxes": {
                     "description": "Maximum number of mailboxes allowed in this account (null = the platform default, MAX_MAILBOXES_DEFAULT)",
                     "exclusiveMinimum": 0,
@@ -16940,7 +16844,7 @@
                 }
               }
             },
-            "description": "system_credentials_required; invitation_required — the deployment is invitation-only and no code was presented; invitation_invalid — the code is unknown, malformed, or already spent (one answer for all three, so a guesser learns nothing)"
+            "description": "system_credentials_required"
           },
           "502": {
             "content": {
@@ -16960,7 +16864,7 @@
                 }
               }
             },
-            "description": "root_capacity: the deployment has reached its provisioning watermark: the account rows its directory root is budgeted for (ROOT_CUSTOMER_WATERMARK, counting purged accounts), or the root database's byte allowance (the D1 limit less its reserve, counting the frozen pre-cutover snapshot); nothing was created and no invitation was spent. Raising either bound (ROOT_CUSTOMER_WATERMARK, ROOT_BYTE_ALLOWANCE) is an operator decision"
+            "description": "root_capacity: the deployment has reached its provisioning watermark: the account rows its directory root is budgeted for (ROOT_CUSTOMER_WATERMARK, counting purged accounts), or the root database's byte allowance (the D1 limit less its reserve, counting the frozen pre-cutover snapshot); nothing was created. Raising either bound (ROOT_CUSTOMER_WATERMARK, ROOT_BYTE_ALLOWANCE) is an operator decision"
           }
         },
         "summary": "Create account",
@@ -25241,7 +25145,7 @@
     },
     "/api/v1/identities": {
       "post": {
-        "description": "An identity is a principal in an account: it owns stores (a mail store, calendars, contacts), holds credentials, and can be shared with. It takes one of two shapes at creation.\n\n**With primaryAddress** (the common case): the address is claimed and routed to the identity atomically, the mail store is bound, and the initial labels are provisioned. The identity receives mail at once and logs in with the address as its username.\n\n**With withoutAddress: true**: no email address and no mail store, so it receives no mail and every mail route (messages, labels, uploads, search, filters, sharing) answers 404 for it, while the identity routes (credentials, settings, delete and restore) and its calendars and contacts work as for any identity. There is no login until a credential is minted with an explicit username (POST /api/v1/identities/{identityId}/credentials), since there is no address to default to; the username is a bare name without @. Routing an address to it later (POST /api/v1/routes or /api/v1/patterns, destinationType mailbox, or a retarget of either) gives it a mail store in that write, and it then receives mail like any other identity; nothing undoes that, a later route delete included. semantic: true is refused on it (400 no_mail_store), since there is no mail to index. Until then it holds events, tasks and contacts and takes part in sharing, but not in scheduling: iCalendar names participants by mailto: address, so it can neither invite nor be invited.\n\nA create with neither is refused 400 primary_address_required; both together is 400 without_address_has_address.\n\n**receiveHold** creates the mailbox already holding its receiving (paused or disabled), committed with the identity and its address so it applies from the first arrival; the answer carries receiveHold, receiveHoldAt and receiveHoldPending as GET does. On a withoutAddress create the hold is the identity's until an address is routed to it, and the mail store that write gives it holds from its first arrival.\n\n**messageWebhook and eventWebhook** configure, in the same request, a webhook tap on the primary route this create claims (each admitted message's payload, beside its normal delivery) and the identity's mailbox-scope event webhook, so the identity never exists without them. Each is optional; with neither the request and answer are exactly as above. Both are an account's: a platform identity takes neither (409 account_required). A create naming either requires an `Idempotency-Key` header (1 to 128 characters), which names one creation: a retry with the same key and body answers the same identity as it now is, never re-applying either webhook over a later change; any other body under the key is refused 409 idempotency_key_reused; and an identity deleted since is never re-created (409 identity_deleted). A completed creation answers its key for 30 days, the retry window. The 200 comes once the identity, its route, each webhook and its mail store's arming are in place. Until then the answer is 503 temporary_failure with Retry-After, mail to the address is refused as temporary (SMTP 451) and the identity's calendar and contact writes too, and the setup completes in the background whether or not the request is retried. Nothing is sent to either URL at creation.",
+        "description": "An identity is a principal in an account: it owns stores (a mail store, calendars, contacts), holds credentials, and can be shared with. It takes one of two shapes at creation.\n\n**With primaryAddress** (the common case): the address is claimed and routed to the identity atomically, the mail store is bound, and the initial labels are provisioned. The identity receives mail at once and logs in with the address as its username.\n\n**With withoutAddress: true**: no email address and no mail store, so it receives no mail and every mail route (messages, labels, uploads, search, filters, sharing) answers 404 for it, while the identity routes (credentials, settings, delete and restore) and its calendars and contacts work as for any identity. There is no login until a credential is minted with an explicit username (POST /api/v1/identities/{identityId}/credentials), since there is no address to default to; the username is a bare name without @. Routing an address to it later (POST /api/v1/routes or /api/v1/patterns, destinationType mailbox, or a retarget of either) gives it a mail store in that write, and it then receives mail like any other identity; nothing undoes that, a later route delete included. semantic: true is refused on it (400 no_mail_store), since there is no mail to index. Until then it holds events, tasks and contacts and takes part in sharing, but not in scheduling: iCalendar names participants by mailto: address, so it can neither invite nor be invited.\n\nA create with neither is refused 400 primary_address_required; both together is 400 without_address_has_address.\n\n**receiveHold** creates the mailbox already holding its receiving (paused or disabled), committed with the identity and its address so it applies from the first arrival; the answer carries receiveHold, receiveHoldAt and receiveHoldPending as GET does. On a withoutAddress create the hold is the identity's until an address is routed to it, and the mail store that write gives it holds from its first arrival.\n\n**messageWebhook and eventWebhook** configure, in the same request, the mailbox's message webhook (every message that lands in the mailbox, however it was routed, POSTed beside its normal delivery; managed afterwards at /api/v1/mailboxes/{mailboxId}/message-webhook) and the identity's mailbox-scope event webhook, so the identity never exists without them. Each is optional; with neither the request and answer are exactly as above. Both are an account's: a platform identity takes neither (409 account_required). A create naming either requires an `Idempotency-Key` header (1 to 128 characters), which names one creation: a retry with the same key and body answers the same identity as it now is, never re-applying either webhook over a later change; any other body under the key is refused 409 idempotency_key_reused; and an identity deleted since is never re-created (409 identity_deleted). A completed creation answers its key for 30 days, the retry window. The 200 comes once the identity, its route, each webhook and its mail store's arming are in place. Until then the answer is 503 temporary_failure with Retry-After, mail to the address is refused as temporary (SMTP 451) and the identity's calendar and contact writes too, and the setup completes in the background whether or not the request is retried. Nothing is sent to either URL at creation.",
         "operationId": "post_IdentityCreate",
         "requestBody": {
           "content": {
@@ -25297,7 +25201,7 @@
                   },
                   "messageWebhook": {
                     "additionalProperties": false,
-                    "description": "A webhook TAP on the primary route this create claims: each message the address admits is POSTed here (the incoming-email payload, its signing and retries) beside its normal delivery to the mailbox, which it never replaces. Requires a primaryAddress (400 message_webhook_requires_address with withoutAddress: true) and an owning account (409 account_required on a platform identity). Alias routes bound later do not inherit it. Manage it afterwards on the route (GET/PATCH /api/v1/routes/{address}). Omitted or null configures none. Requires an Idempotency-Key",
+                    "description": "The mailbox's message webhook: every message that lands in the mailbox is POSTed here (the incoming-email payload, its signing and retries) beside its normal delivery, however it got there: its primary address, any address routed to it later, a pattern or catch-all, a group, a forward, a delivery-status or platform notice. Requires a primaryAddress (400 message_webhook_requires_address with withoutAddress: true) and an owning account (409 account_required on a platform identity). Manage it afterwards at /api/v1/mailboxes/{mailboxId}/message-webhook. Omitted or null configures none. Requires an Idempotency-Key",
                     "properties": {
                       "format": {
                         "description": "The payload shape: parsed (the default) or reference (headers plus a capability rawUrl; 400 webhook_format_unavailable where the deployment mints none)",
@@ -25469,10 +25373,13 @@
                   "hasMailStore": true,
                   "id": "01J9MBX7F4Q2K9T3W600000000",
                   "messageWebhook": {
-                    "address": "agent@acme.example",
+                    "createdAt": 1788264000,
                     "format": "parsed",
+                    "hasSecret": true,
+                    "updatedAt": 1788264000,
                     "url": "https://hooks.acme.example/incoming"
                   },
+                  "permittedRecipients": null,
                   "primaryAddress": "agent@acme.example",
                   "quotaBytes": null,
                   "receiveHold": null,
@@ -26988,6 +26895,214 @@
           }
         },
         "summary": "Send a test event to the mailbox's event webhook",
+        "tags": [
+          "Mailboxes"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{mailboxId}/message-webhook": {
+      "put": {
+        "description": "Every message that lands in this mailbox is POSTed here (the incoming-email payload, its signing and retries), however it got there: any of its addresses, a pattern or catch-all route, a group, a forward or redirect into it, a delivery-status notice or a platform notice; and whether the mailbox then keeps it, files it, or discards it (a Sieve discard, or discardIncoming on GET/PUT /mailboxes/{mailboxId}/filtering). Not the mailbox's own writes (its Sent copies, drafts, APPEND and imports, POP3 pickups), and not mail the mailbox refused (a blocked sender, a receive hold). A webhook tap on one of its addresses (PUT /routes/{address}) is separate: with both, each POSTs. Deleting the mailbox stops the POSTs, including ones already queued, and restoring it brings it back without its webhook. Omit `secret` to keep the stored one, pass a string to rotate it, null to clear it; omit `format` to keep it. Only an account key or system key may set it.",
+        "operationId": "put_MailboxMessageWebhookSet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageWebhookBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageWebhook"
+                }
+              }
+            },
+            "description": "The webhook"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed (the URL refused), or webhook_format_unavailable (format reference on a deployment that mints no capability URLs)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Mailbox not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_required: the mailbox has no owning account"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the mailbox's creation (POST /identities with messageWebhook) is still installing its webhook; retry after Retry-After"
+          }
+        },
+        "summary": "Create or replace the mailbox's message webhook",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "get": {
+        "description": "Where each message that lands in this mailbox is POSTed, however it arrived. The signing secret is write-only and never returned. A mailbox's own app password may read it.",
+        "operationId": "get_MailboxMessageWebhookGet",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageWebhook"
+                }
+              }
+            },
+            "description": "The webhook"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No webhook configured, or mailbox not accessible"
+          }
+        },
+        "summary": "Read the mailbox's message webhook",
+        "tags": [
+          "Mailboxes"
+        ]
+      },
+      "delete": {
+        "description": "Stops the POSTs: mail that lands from now on reaches the mailbox alone. A POST already queued completes against nothing and is dropped. Only an account key or system key may remove it.",
+        "operationId": "delete_MailboxMessageWebhookDelete",
+        "parameters": [
+          {
+            "description": "Mailbox ULID identifier",
+            "in": "path",
+            "name": "mailboxId",
+            "required": true,
+            "schema": {
+              "description": "Mailbox ULID identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Removed"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No webhook configured, or mailbox not accessible"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the mailbox's creation is still installing its webhook; retry after Retry-After"
+          }
+        },
+        "summary": "Remove the mailbox's message webhook",
         "tags": [
           "Mailboxes"
         ]
@@ -32099,7 +32214,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/filtering": {
       "get": {
-        "description": "Returns the mailbox's filtering switches: today `trustContacts`, whether the mailbox's own address book acts as an implicit allow list against the spam verdict.",
+        "description": "Returns the mailbox's filtering switches: `trustContacts`, whether the mailbox's own address book acts as an implicit allow list against the spam verdict, and `discardIncoming`, whether the mailbox stores nothing it receives.",
         "operationId": "get_FilteringGet",
         "parameters": [
           {
@@ -32151,7 +32266,7 @@
         ]
       },
       "put": {
-        "description": "Sets the mailbox's filtering switches. Turning `trustContacts` off makes address-book membership irrelevant to delivery; explicit allow and block lists are unaffected either way.",
+        "description": "Sets the mailbox's filtering switches; a field the body leaves out keeps its value, and a body naming neither is refused. Turning `trustContacts` off makes address-book membership irrelevant to delivery; explicit allow and block lists are unaffected either way. Turning `discardIncoming` on makes the mailbox keep nothing it receives from then on (mail it already holds stays): each arrival is still accepted, passed to the mailbox's message webhook (however it was routed, catch-all included) and counted as a receive, and the mailbox can still send. It is for a mailbox kept for its sending identity whose mail its message webhook consumes; without one, a discard keeps no copy anywhere. Only an account key or system key may set it.",
         "operationId": "put_FilteringPut",
         "parameters": [
           {
@@ -32173,7 +32288,7 @@
               }
             }
           },
-          "required": true
+          "required": false
         },
         "responses": {
           "200": {
@@ -32194,7 +32309,7 @@
                 }
               }
             },
-            "description": "validation_failed — invalid request body"
+            "description": "validation_failed: an invalid request body, or one naming neither switch"
           },
           "401": {
             "content": {
@@ -32205,6 +32320,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "insufficient_scope (an app password naming discardIncoming: it may read that switch but not change it)"
           },
           "404": {
             "content": {
@@ -54802,218 +54927,6 @@
           }
         },
         "summary": "List grandfathered mail-share fan-out excesses",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/invitations": {
-      "get": {
-        "description": "The codes, newest first, each with who spent it (the account it created, named after the signup address) and when; the counts over the whole table; and whether the deployment is invitation-only right now (SIGNUP_INVITE_ONLY) — a screen of unused codes on an open deployment otherwise reads as 'nobody signed up'.",
-        "operationId": "get_SystemInvitationsGet",
-        "parameters": [
-          {
-            "description": "Spent, unspent, or every code (default all)",
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "description": "Spent, unspent, or every code (default all)",
-              "enum": [
-                "all",
-                "unused",
-                "used"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "Page size (default 100)",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "description": "Page size (default 100)",
-              "maximum": 200,
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Opaque page cursor from a previous response",
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "description": "Opaque page cursor from a previous response",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SystemInvitations"
-                }
-              }
-            },
-            "description": "Invitation codes, newest first; nextCursor present when a further page exists"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          }
-        },
-        "summary": "List signup invitation codes (system only)",
-        "tags": [
-          "System"
-        ]
-      },
-      "post": {
-        "description": "Creates a batch of single-use codes, stamped with the minting key and a note saying what the batch was for (the note rides on every code, so the listing can say why one exists). The codes are answered here and are readable on the listing thereafter. One call mints up to 500.",
-        "operationId": "post_SystemInvitationsPost",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "count": {
-                    "description": "How many codes to mint (1–500)",
-                    "maximum": 500,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "note": {
-                    "description": "What the batch is for — stamped on every code",
-                    "maxLength": 500,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "count"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvitationMintResult"
-                }
-              }
-            },
-            "description": "The fresh codes"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
-                }
-              }
-            },
-            "description": "validation_failed"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          }
-        },
-        "summary": "Mint signup invitation codes (system only)",
-        "tags": [
-          "System"
-        ]
-      }
-    },
-    "/api/v1/system/invitations/check": {
-      "get": {
-        "description": "What a signup form asks before it asks the visitor: `inviteOnly` says whether POST /accounts will demand a code at all, and — when a code is given — `live` says whether that code exists and is unspent. Writes nothing: the code is spent only by the account creation it goes on to. A code that cannot be one (wrong length, a symbol outside the alphabet) answers `code: null, live: false`.",
-        "operationId": "get_SystemInvitationsCheck",
-        "parameters": [
-          {
-            "description": "The code as typed — case, spaces and dashes are forgiven",
-            "in": "query",
-            "name": "code",
-            "required": false,
-            "schema": {
-              "description": "The code as typed — case, spaces and dashes are forgiven",
-              "maxLength": 64,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvitationCheck"
-                }
-              }
-            },
-            "description": "The gate's state, and the code's when one was asked about"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "system_credentials_required"
-          }
-        },
-        "summary": "Is the deployment invitation-only, and is this code live? (system only)",
         "tags": [
           "System"
         ]
