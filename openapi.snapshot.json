@@ -6276,41 +6276,40 @@
             "description": "Mail store details if bound",
             "properties": {
               "expungedBytes": {
-                "description": "Storage used by trash in bytes",
+                "description": "Storage used by trash in bytes. Omitted when `unavailable` is true",
                 "format": "int64",
                 "type": "integer"
               },
               "expungedCount": {
-                "description": "Number of messages in trash",
+                "description": "Number of messages in trash. Omitted when `unavailable` is true",
                 "format": "int64",
                 "type": "integer"
               },
               "messageCount": {
-                "description": "Total number of active messages",
+                "description": "Total number of active messages. Omitted when `unavailable` is true",
                 "format": "int64",
                 "type": "integer"
               },
               "provisioned": {
-                "description": "True if the mail store has been initialized and may contain data",
+                "description": "True if the mail store has been initialized and may contain data. Omitted when `unavailable` is true",
                 "type": "boolean"
               },
               "storeId": {
                 "description": "Mail store identifier",
                 "type": "string"
               },
+              "unavailable": {
+                "description": "True when the store did not report its usage in time (a storage fault, or a slow start); `provisioned` and the counts are then omitted, never zero. The store is still bound. Retry later for the counts. Absent otherwise",
+                "type": "boolean"
+              },
               "usedBytes": {
-                "description": "Total mail storage used in bytes",
+                "description": "Total mail storage used in bytes. Omitted when `unavailable` is true",
                 "format": "int64",
                 "type": "integer"
               }
             },
             "required": [
-              "storeId",
-              "provisioned",
-              "messageCount",
-              "usedBytes",
-              "expungedCount",
-              "expungedBytes"
+              "storeId"
             ],
             "type": "object"
           },
@@ -6318,35 +6317,35 @@
             "description": "PIM (calendar and contacts) store details if bound",
             "properties": {
               "bytes": {
-                "description": "Total storage used by calendar and contact objects in bytes",
+                "description": "Total storage used by calendar and contact objects in bytes. Omitted when `unavailable` is true",
                 "format": "int64",
                 "type": "integer"
               },
               "collections": {
-                "description": "Total number of calendar and addressbook collections",
+                "description": "Total number of calendar and addressbook collections. Omitted when `unavailable` is true",
                 "format": "int64",
                 "type": "integer"
               },
               "objects": {
-                "description": "Total number of calendar events and contact cards",
+                "description": "Total number of calendar events and contact cards. Omitted when `unavailable` is true",
                 "format": "int64",
                 "type": "integer"
               },
               "provisioned": {
-                "description": "True if the PIM store has been initialized and may contain data",
+                "description": "True if the PIM store has been initialized and may contain data. Omitted when `unavailable` is true",
                 "type": "boolean"
               },
               "storeId": {
                 "description": "PIM (calendar/contacts) store identifier",
                 "type": "string"
+              },
+              "unavailable": {
+                "description": "True when the store did not report its usage in time (a storage fault, or a slow start); `provisioned` and the counts are then omitted, never zero. The store is still bound. Retry later for the counts. Absent otherwise",
+                "type": "boolean"
               }
             },
             "required": [
-              "storeId",
-              "provisioned",
-              "collections",
-              "objects",
-              "bytes"
+              "storeId"
             ],
             "type": "object"
           }
@@ -25702,7 +25701,7 @@
     },
     "/api/v1/identities/{identityId}": {
       "get": {
-        "description": "Returns an identity with its bound stores (mail, calendars, contacts) and usage metrics.",
+        "description": "Returns an identity with its bound stores (mail, calendars, contacts) and usage metrics. A bound store that cannot report its usage within a few seconds is still listed, marked `unavailable: true` with no counts; the rest of the identity is returned as usual.",
         "operationId": "get_IdentityGet",
         "parameters": [
           {

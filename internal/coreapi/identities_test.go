@@ -2,11 +2,39 @@ package coreapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+// A store that could not report its usage stays listed (it is still bound) and
+// carries no counts; re-encoding it must not turn the absent counts into zeros.
+func TestGetIdentityFacetUnavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":"01I","primaryAddress":"a@b.test","quotaBytes":null,"accountId":"acc1","createdAt":5,"facets":{"mail":{"storeId":"01I","unavailable":true},"pim":{"storeId":"01I","provisioned":true,"collections":0,"objects":0,"bytes":0}}}`))
+	}))
+	defer srv.Close()
+	id, err := m3Client(t, srv.URL).GetIdentity(context.Background(), "01I")
+	if err != nil {
+		t.Fatalf("GetIdentity: %v", err)
+	}
+	if id.Facets.Mail == nil || !id.Facets.Mail.Unavailable || id.Facets.Mail.StoreID != "01I" {
+		t.Fatalf("mail facet: %+v", id.Facets.Mail)
+	}
+	if id.Facets.Pim == nil || id.Facets.Pim.Unavailable {
+		t.Fatalf("pim facet: %+v", id.Facets.Pim)
+	}
+	mail, _ := json.Marshal(id.Facets.Mail)
+	if string(mail) != `{"storeId":"01I","unavailable":true}` {
+		t.Fatalf("unavailable mail facet re-encoded as %s", mail)
+	}
+	pim, _ := json.Marshal(id.Facets.Pim)
+	if string(pim) != `{"storeId":"01I","provisioned":true,"collections":0,"objects":0,"bytes":0}` {
+		t.Fatalf("available pim facet re-encoded as %s", pim)
+	}
+}
 
 // GetIdentity decodes the facet map; an absent facet key stays nil.
 func TestGetIdentityMailless(t *testing.T) {

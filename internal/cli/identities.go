@@ -99,7 +99,9 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 						[]string{"  rcpts/day", fmtSendCap(id.SendRcptsPerDay)},
 					)
 				}
-				if m := id.Facets.Mail; m != nil {
+				if m := id.Facets.Mail; m != nil && m.Unavailable {
+					rows = append(rows, []string{"Mail store", m.StoreID + unavailableNote})
+				} else if m != nil {
 					rows = append(rows,
 						[]string{"Mail store", m.StoreID + provisionedNote(m.Provisioned)},
 						[]string{"  messages", fmt.Sprintf("%d (%s)", m.MessageCount, fmtBytes(m.UsedBytes))},
@@ -108,7 +110,9 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 				} else {
 					rows = append(rows, []string{"Mail store", "— (not bound: cannot speak the mail protocols)"})
 				}
-				if p := id.Facets.Pim; p != nil {
+				if p := id.Facets.Pim; p != nil && p.Unavailable {
+					rows = append(rows, []string{"PIM store", p.StoreID + unavailableNote})
+				} else if p != nil {
 					rows = append(rows,
 						[]string{"PIM store", p.StoreID + provisionedNote(p.Provisioned)},
 						[]string{"  collections", fmt.Sprintf("%d", p.Collections)},
@@ -123,6 +127,10 @@ func newIdentityGetCmd(a *app) *cobra.Command {
 		},
 	}
 }
+
+// unavailableNote follows a bound store whose usage core could not read in
+// time: the store is there, its counts are unknown, and a retry may answer.
+const unavailableNote = " (usage unavailable just now; retry later)"
 
 func provisionedNote(provisioned bool) string {
 	if provisioned {
