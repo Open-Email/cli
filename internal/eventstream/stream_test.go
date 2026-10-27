@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -232,7 +233,12 @@ func TestCleanStopSendsNormalClosureFrame(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	pimReady := make(chan struct{})
+	// Closed when the CLIENT reports its PIM socket open, not when the server
+	// accepts it: Accept returns before the client's Dial has read the 101, and
+	// a stop in that gap cancels the dial, so a socket the client never opened
+	// gets no close frame to send (#62: the server then read EOF, status -1).
+	pimConnected := make(chan struct{})
+	var pimConnectedOnce sync.Once
 	mailCode := make(chan websocket.StatusCode, 1)
 	pimCode := make(chan websocket.StatusCode, 1)
 
@@ -245,13 +251,12 @@ func TestCleanStopSendsNormalClosureFrame(t *testing.T) {
 		defer conn.CloseNow()
 
 		if isPIM {
-			close(pimReady)
 			_, _, rerr := conn.Read(ctx)
 			pimCode <- websocket.CloseStatus(rerr)
 			return
 		}
 		select {
-		case <-pimReady:
+		case <-pimConnected:
 		case <-ctx.Done():
 			return
 		}
@@ -262,6 +267,9 @@ func TestCleanStopSendsNormalClosureFrame(t *testing.T) {
 	defer srv.Close()
 
 	err := Run(ctx, Config{APIURL: srv.URL, Token: "test", IdentityID: "MBX", Reconnect: true}, func(u Update) bool {
+		if u.Kind == PIM && u.Connected {
+			pimConnectedOnce.Do(func() { close(pimConnected) })
+		}
 		return strings.Contains(string(u.Frame), "message.new")
 	})
 	if err != nil {
