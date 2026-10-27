@@ -35,6 +35,9 @@ type Identity struct {
 	// GroupAddress — see Mailbox.GroupAddress: non-nil iff this identity is a
 	// group's persona.
 	GroupAddress *string `json:"groupAddress"`
+	// PermittedRecipients — see Mailbox.PermittedRecipients: nil = unrestricted,
+	// empty = may send to nobody.
+	PermittedRecipients []string `json:"permittedRecipients"`
 	// Semantic — see Mailbox.Semantic: whether meaning-based search is on for
 	// this identity's mail store. The Identity component composes Mailbox, so
 	// this field is always present.

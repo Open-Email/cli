@@ -276,6 +276,10 @@ type Mailbox struct {
 	// identity has no primary address, refuses its own DELETE (delete the
 	// group route instead) and is exempt from max_mailboxes.
 	GroupAddress *string `json:"groupAddress"`
+	// PermittedRecipients is the mailbox's outbound recipient allowlist
+	// (system-written): exact addresses or `*@domain` wildcards. nil (null) =
+	// unrestricted, the default; empty (`[]`) = may send to nobody. Egress only.
+	PermittedRecipients []string `json:"permittedRecipients"`
 	// Semantic is whether MEANING-BASED search is on for this mailbox: messages
 	// are embedded after delivery and the semantic read routes answer.
 	// Tenant-set but gated by the account's Semantic plan flag; off by default.
