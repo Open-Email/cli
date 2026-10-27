@@ -26207,6 +26207,16 @@
               }
             },
             "description": "Mailbox not found or not accessible to this principal"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the mail store could not report its usage just now (a storage fault, or no answer within a few seconds); retry after the Retry-After window"
           }
         },
         "summary": "Get mailbox details and usage statistics",
