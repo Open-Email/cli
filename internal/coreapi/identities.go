@@ -35,6 +35,9 @@ type Identity struct {
 	// GroupAddress — see Mailbox.GroupAddress: non-nil iff this identity is a
 	// group's persona.
 	GroupAddress *string `json:"groupAddress"`
+	// PermittedRecipients — see Mailbox.PermittedRecipients: nil = unrestricted,
+	// empty = may send to nobody.
+	PermittedRecipients []string `json:"permittedRecipients"`
 	// Semantic — see Mailbox.Semantic: whether meaning-based search is on for
 	// this identity's mail store. The Identity component composes Mailbox, so
 	// this field is always present.
@@ -96,8 +99,11 @@ func (f *IdentityFacets) UnmarshalJSON(data []byte) error {
 }
 
 // IdentityMailFacet is the mail store's usage (live + trash tiers).
+// Unavailable means core could not read the store in time: it is still bound,
+// and Provisioned and the counts were not sent (zero here, never meaningful).
 type IdentityMailFacet struct {
 	StoreID       string `json:"storeId"`
+	Unavailable   bool   `json:"unavailable,omitempty"`
 	Provisioned   bool   `json:"provisioned"`
 	MessageCount  int64  `json:"messageCount"`
 	UsedBytes     int64  `json:"usedBytes"`
@@ -105,13 +111,39 @@ type IdentityMailFacet struct {
 	ExpungedBytes int64  `json:"expungedBytes"`
 }
 
+// MarshalJSON keeps an unavailable facet's counts absent, as core sent it.
+func (f IdentityMailFacet) MarshalJSON() ([]byte, error) {
+	if f.Unavailable {
+		return json.Marshal(unavailableFacet{StoreID: f.StoreID, Unavailable: true})
+	}
+	type plain IdentityMailFacet
+	return json.Marshal(plain(f))
+}
+
 // IdentityPimFacet is the PIM store's usage (calendars + addressbooks).
+// Unavailable as on IdentityMailFacet.
 type IdentityPimFacet struct {
 	StoreID     string `json:"storeId"`
+	Unavailable bool   `json:"unavailable,omitempty"`
 	Provisioned bool   `json:"provisioned"`
 	Collections int64  `json:"collections"`
 	Objects     int64  `json:"objects"`
 	Bytes       int64  `json:"bytes"`
+}
+
+// MarshalJSON keeps an unavailable facet's counts absent, as core sent it.
+func (f IdentityPimFacet) MarshalJSON() ([]byte, error) {
+	if f.Unavailable {
+		return json.Marshal(unavailableFacet{StoreID: f.StoreID, Unavailable: true})
+	}
+	type plain IdentityPimFacet
+	return json.Marshal(plain(f))
+}
+
+// unavailableFacet is the whole of a facet whose usage core could not read.
+type unavailableFacet struct {
+	StoreID     string `json:"storeId"`
+	Unavailable bool   `json:"unavailable"`
 }
 
 // GetIdentity fetches an identity with per-facet usage. Non-adopting: reading
