@@ -2806,6 +2806,27 @@
           }
         ]
       },
+      "D1ReadinessCheck": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ReadinessCheck"
+          },
+          {
+            "properties": {
+              "servedByPrimary": {
+                "description": "From D1's result meta: true if the primary executed the statement. Absent when the runtime reports no meta. On d1Replica, true with ok also true means read replication is off or the nearest instance is the primary",
+                "type": "boolean"
+              },
+              "servedByRegion": {
+                "description": "From D1's result meta: the region of the instance that executed the statement",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "One D1 readiness probe's answer, with the instance that answered it"
+      },
       "DeadLetter": {
         "properties": {
           "expiresInDays": {
@@ -11612,6 +11633,34 @@
         ],
         "type": "object"
       },
+      "ReadinessCheck": {
+        "description": "One readiness probe's answer",
+        "properties": {
+          "error": {
+            "description": "Present only when ok is false. `timeout`: no answer inside the probe's deadline (about 2 s). `unavailable`: the platform's transient storage failure (the faults the API answers 503 temporary_failure for; on r2, also R2's retryable codes 10001 InternalError, 10043 ServiceUnavailable and 10058 TooManyRequests). `failed`: any other error, which is ours to investigate (a bad statement, a missing binding, or on r2 a non-retryable refusal such as 10006 NoSuchBucket). `replica_fallthrough` (d1Replica only): the read replica did not answer inside its own 1 s deadline, or answered with an error, and the primary answered instead, which is what requests are doing too, a second slower on their first statement. It is a degradation: it sets degraded and does not make the answer not ready",
+            "enum": [
+              "timeout",
+              "unavailable",
+              "failed",
+              "replica_fallthrough"
+            ],
+            "type": "string"
+          },
+          "ms": {
+            "description": "How long the probe took, in milliseconds",
+            "type": "integer"
+          },
+          "ok": {
+            "description": "True if the dependency answered inside the probe's deadline",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "ms"
+        ],
+        "type": "object"
+      },
       "RecipientAccepted": {
         "properties": {
           "accepted": {
@@ -14708,6 +14757,54 @@
         ],
         "type": "object"
       },
+      "SystemReadiness": {
+        "properties": {
+          "checkedAt": {
+            "description": "When the probe run behind this answer finished, epoch milliseconds. Results are cached per isolate for a few seconds, so this can be slightly in the past",
+            "format": "int64",
+            "type": "integer"
+          },
+          "checks": {
+            "description": "One answer per dependency, each probe run concurrently under its own deadline. d1Primary: SELECT 1 on the D1 primary. d1Replica: the same through the read-replica session every replica read uses. durableObject: one round trip to a Durable Object that runs a statement on its SQLite storage (the DKIM scheduler singleton; the call changes nothing). r2: a HEAD on the mail bucket for a key nothing writes; a miss is success",
+            "properties": {
+              "d1Primary": {
+                "$ref": "#/components/schemas/D1ReadinessCheck"
+              },
+              "d1Replica": {
+                "$ref": "#/components/schemas/D1ReadinessCheck"
+              },
+              "durableObject": {
+                "$ref": "#/components/schemas/ReadinessCheck"
+              },
+              "r2": {
+                "$ref": "#/components/schemas/ReadinessCheck"
+              }
+            },
+            "required": [
+              "d1Primary",
+              "d1Replica",
+              "durableObject",
+              "r2"
+            ],
+            "type": "object"
+          },
+          "degraded": {
+            "description": "True if a check failed in a way requests absorb; today only d1Replica's replica_fallthrough, where the primary answered for a replica that did not. ok and the status are unaffected, so match on this to warn about a silent replica without paging",
+            "type": "boolean"
+          },
+          "ok": {
+            "description": "True if storage is serving: every check is ok, or the only failures are degradations (see degraded). The response is 200 when true and 503 otherwise, so a monitor can key on the status code alone",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "degraded",
+          "checkedAt",
+          "checks"
+        ],
+        "type": "object"
+      },
       "SystemRelayIps": {
         "properties": {
           "ips": {
@@ -17012,6 +17109,16 @@
             },
             "description": "system_credentials_required; invitation_required — the deployment is invitation-only and no code was presented; invitation_invalid — the code is unknown, malformed, or already spent (one answer for all three, so a guesser learns nothing)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "502": {
             "content": {
               "application/json": {
@@ -17054,7 +17161,8 @@
         "summary": "Create account",
         "tags": [
           "Accounts"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns a paginated list of accounts with optional lifecycle state filtering (system callers only).",
@@ -17591,6 +17699,16 @@
             },
             "description": "account_deleted — the account is inside its deletion window or purged; restore it first; or semantic_mailboxes_opted_in — `semantic: false` while `optedIn` mailboxes are opted in: paid with vectors does not become free; the tenant opts out (which deletes the embeddings) or the account is deleted (which wipes them); or account_not_vetted — the account's label is `untrusted` and the PATCH would set a limit looser than the unvetted preset allows: nothing is written, `limits` names each refused field with the unvetted ceiling (null = the platform default), and `message` says so. Cuts, equal values and clears are accepted; vet the account to raise it"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -17613,7 +17731,8 @@
         "summary": "Update account settings",
         "tags": [
           "Accounts"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Soft-deletes an account, starting a grace period before final data purge.",
@@ -17980,6 +18099,16 @@
             },
             "description": "account_deleted — the account is inside its deletion window; restore it first; or account_not_vetted — caller content under the untrusted label would stamp a looser limit than core allows (including omitted numbers resolved as platform defaults): nothing is written, limits names the refused fields and message explains the refusal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -18002,7 +18131,8 @@
         "summary": "Apply a service-class preset to an account (system only)",
         "tags": [
           "Accounts"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "The plan label on the account and who applied it and when (the calling key's id at the time — with per-operator keys, the operator who vetted the account). The vetting record the operator panel shows per account. Operator-only: a tenant's own account read carries the label but neither the author nor the instant. The stamped numbers are on GET /accounts/:accountId.",
@@ -18185,6 +18315,16 @@
             },
             "description": "account_deleted: the account is inside its deletion window; restore it first"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -18207,7 +18347,8 @@
         "summary": "Record an account's billing tier (system only)",
         "tags": [
           "Accounts"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/accounts/{accountId}/recovery-policy": {
@@ -18300,6 +18441,16 @@
             },
             "description": "account_deleted — the account is inside its deletion window or purged; restore it first"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -18322,7 +18473,8 @@
         "summary": "Set the account's mailbox recovery policy",
         "tags": [
           "Accounts"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/accounts/{accountId}/retention": {
@@ -18413,6 +18565,16 @@
             },
             "description": "account_deleted — the account is inside its deletion window or purged; restore it first"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -18435,7 +18597,8 @@
         "summary": "Set account default retention window",
         "tags": [
           "Accounts"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Pages the account's mailboxes with each one's own window, the window in force after resolution against the account default, and a preview of what a window would expunge — the window named by ?days= (what an account default WOULD do, before setting one), else each mailbox's effective window. One store read per mailbox; a store that could not be read is listed in `unreadable` rather than reported as zero.",
@@ -20286,6 +20449,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -20326,7 +20499,8 @@
         "summary": "Verify mailbox credentials",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/api-keys": {
@@ -20446,6 +20620,16 @@
             },
             "description": "system_credentials_required or cannot_mint_for_other_account"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -20468,7 +20652,8 @@
         "summary": "Create API key",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns a paginated list of API keys without secrets. A key that finished (revoked, or lapsed past its idle window) more than 180 days ago may be omitted: finished keys are retained for the audit trail's 180-day window.",
@@ -20570,7 +20755,7 @@
     },
     "/api/v1/api-keys/{apiKeyId}": {
       "patch": {
-        "description": "Sets or clears the acting fences on a SYSTEM API key; name either field or both, and one left unnamed is left unchanged. `requireActing` (migration 0046): mailbox-scoped requests made with the key must declare `X-Acting-Identity` or are refused `403 acting_required`. `requireActingCredential` (migration 0081): they must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — and this is the flag `/auth/verify` consults before it will hand this key a credential scoped below `full` at all, since only a key that carries the header can honour a scope. Both are for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry either.",
+        "description": "Sets or clears the acting fences on a SYSTEM API key; name either field or both, and one left unnamed is left unchanged. `requireActing` (migration 0046): mailbox-scoped requests made with the key must declare `X-Acting-Identity` or are refused `403 acting_required`. `requireActingCredential` (migration 0081): they must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — and this is the flag `/auth/verify` consults before it will hand this key a credential scoped below `full` at all, since only a key that carries the header can honour a scope. Both are for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry either. A key listed in the deployment's SYSTEM_KEYS secret (by id, or by its stored hash under another id) authenticates with the fences in its entry there, and its row is what it falls back to if the secret stops serving it, so for such a key this writes only values equal to its entry's, keeping that fallback in step; any other value is refused (409 system_key_in_secret, naming the entry's values): change the entry and deploy first, then set the row to match here. While SYSTEM_KEYS is set but does not parse, a system key's fences are not written at all (409 system_keys_invalid).",
         "operationId": "patch_ApiKeyPatch",
         "parameters": [
           {
@@ -20655,6 +20840,26 @@
             },
             "description": "No such system API key"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_key_in_secret: the key is listed in the SYSTEM_KEYS secret and the body names a value its entry does not carry (`listedAs` names the entry's values); change the entry and deploy, then set the row to match. system_keys_invalid: SYSTEM_KEYS is set but does not parse, so which fences authenticate the key once it is fixed cannot be known; fix it (or clear it) and deploy, then retry"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -20677,10 +20882,11 @@
         "summary": "Update an API key (system only)",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
-        "description": "Permanently revokes an API key. Where finished keys are retained for 180 days (see List API keys), an id in the form keys are minted in (26 upper-case Crockford base32 characters) that no principal holds unrevoked, such as a key already revoked or one the retention removed, answers 200 without changing anything; a key another principal still holds, or an id in any other form, answers 404.",
+        "description": "Permanently revokes an API key. Where finished keys are retained for 180 days (see List API keys), an id in the form keys are minted in (26 upper-case Crockford base32 characters) that no principal holds unrevoked, such as a key already revoked or one the retention removed, answers 200 without changing anything; a key another principal still holds, or an id in any other form, answers 404. A system key the deployment's SYSTEM_KEYS secret serves (listed by its id, or by its stored hash under any id) authenticates from the secret, not from its row, so revoking it here is refused (409 system_key_in_secret) until the entry is removed from the secret; while SYSTEM_KEYS is set but does not parse, revoking any system key is refused (409 system_keys_invalid), since fixing the secret could bring a revoked key back.",
         "operationId": "delete_ApiKeyDelete",
         "parameters": [
           {
@@ -20724,6 +20930,16 @@
               }
             },
             "description": "API key not found or not accessible to this principal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "System callers only. system_key_in_secret: the SYSTEM_KEYS secret serves the key and it keeps authenticating from it (`listedAs` names the entry); remove that entry from the secret and deploy, then revoke. system_keys_invalid: SYSTEM_KEYS is set but does not parse, and fixing it could bring a revoked system key back; fix it (or clear it) and deploy, then revoke"
           },
           "503": {
             "content": {
@@ -20831,7 +21047,7 @@
                         "type": "string"
                       },
                       "permittedRecipients": {
-                        "description": "The credential's OWN outbound recipient allowlist (exact addresses or `*@domain`), INTERSECTED with the identity's: both must permit. Accepted only with scope 'send' (400 permitted_recipients_requires_send otherwise); `[]` means this credential may send to nobody. Omit or null for no list of its own",
+                        "description": "The credential's OWN outbound recipient allowlist (exact addresses or `*@domain`), INTERSECTED with the identity's: both must permit. Accepted only with scope 'send' (400 permitted_recipients_requires_send otherwise); `[]` means this credential may send to nobody. At most 64 entries of at most 320 characters each (400 validation_failed otherwise). Omit or null for no list of its own",
                         "items": {
                           "maxLength": 320,
                           "pattern": "^[^\\s@]+@[^\\s@]+$",
@@ -20944,6 +21160,16 @@
             },
             "description": "no_password_credential — the mailbox has no login password to prove, so it cannot self-serve; username_taken: a username that is not an address, already another identity's (under the objects directory)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -20984,7 +21210,8 @@
         "summary": "Create mailbox credential",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns every credential of a mailbox, revoked and expired ones included (secrets are never returned). Self-service: the mailbox's own bearer may read its own list.",
@@ -21253,6 +21480,16 @@
             },
             "description": "recovery_address_verified: this mailbox already has a VERIFIED recovery address. Re-pointing one is PUT /recovery, which re-proves the mailbox's password; an invitation may only nominate where there is nothing to displace"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -21293,7 +21530,8 @@
         "summary": "Invite a mailbox user to set their own password",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/password": {
@@ -21399,6 +21637,16 @@
             },
             "description": "no_password_credential — mailbox has no password credential to change"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -21439,7 +21687,8 @@
         "summary": "Change mailbox login password",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/password/reset": {
@@ -21534,6 +21783,16 @@
             },
             "description": "no_username — the identity has no password credential to rotate and no address (primary or group) to name a new one after; nothing was changed. Create the login with POST /credentials and an explicit username"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -21556,7 +21815,8 @@
         "summary": "Reset a mailbox password as an administrator",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/recovery": {
@@ -21664,6 +21924,16 @@
             },
             "description": "no_password_credential: the mailbox has no password to re-prove"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -21704,7 +21974,8 @@
         "summary": "Set the mailbox's recovery address",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Reports whether this mailbox has a verified recovery address and how many recovery codes remain. The address is masked for every principal except system.",
@@ -21870,6 +22141,16 @@
             },
             "description": "no_password_credential: the mailbox's own bearer has no password to re-prove"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -21910,7 +22191,8 @@
         "summary": "Remove the mailbox's recovery address",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/recovery/confirm": {
@@ -22001,6 +22283,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -22023,7 +22315,8 @@
         "summary": "Confirm the mailbox's pending recovery address",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/recovery/codes": {
@@ -22124,6 +22417,16 @@
             },
             "description": "no_password_credential: the mailbox has no password to re-prove, so it cannot pass the sudo gate"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -22164,7 +22467,8 @@
         "summary": "Issue mailbox recovery codes",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/auth/recovery/start": {
@@ -22238,6 +22542,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -22278,7 +22592,8 @@
         "summary": "Start a password recovery by mail",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/auth/recovery/complete": {
@@ -22447,6 +22762,16 @@
             },
             "description": "invitation_superseded: the mailbox acquired a password credential after the invitation was sent, so it is live and a stale invitation must not take it over"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 2 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -22487,7 +22812,8 @@
         "summary": "Complete a recovery with a recovery code",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       }
     },
     "/api/v1/identities/{identityId}/webauthn/registrations": {
@@ -22594,6 +22920,16 @@
             },
             "description": "no_password_credential: the password was removed during re-proof; restart registration"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -22634,7 +22970,8 @@
         "summary": "Begin WebAuthn security key registration",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/webauthn/credentials": {
@@ -22755,6 +23092,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -22777,7 +23124,8 @@
         "summary": "Finish WebAuthn security key registration",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns all enrolled WebAuthn hardware keys and passkeys for a mailbox.",
@@ -22959,6 +23307,16 @@
             },
             "description": "no_password_credential: the mailbox's own bearer has no password to re-prove"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -22999,7 +23357,8 @@
         "summary": "Remove an enrolled WebAuthn security key",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/auth/webauthn/options": {
@@ -23074,6 +23433,16 @@
             },
             "description": "no_webauthn_credentials — identity has no enrolled keys under this rpId"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -23114,7 +23483,8 @@
         "summary": "Begin WebAuthn second factor login",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/auth/webauthn/verify": {
@@ -23235,6 +23605,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -23275,7 +23655,8 @@
         "summary": "Verify WebAuthn second factor assertion",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/clients": {
@@ -23563,6 +23944,16 @@
             },
             "description": "not_found: no live identity by that id — nothing is written"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -23585,7 +23976,8 @@
         "summary": "Report a client sighting",
         "tags": [
           "Credentials"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/domains": {
@@ -23738,6 +24130,16 @@
             },
             "description": "domain_claimed_elsewhere (the caller proved control, but another account holds the domain — an operator must transfer it), domain_unavailable (identical for every other conflict — no tenant enumeration), account_deleted, alias_conflict, or domain_transition_in_progress (retry after the registration settles)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "502": {
             "content": {
               "application/json": {
@@ -23770,7 +24172,8 @@
         "summary": "Register or verify a domain",
         "tags": [
           "Domains"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns a paginated list of domains owned by this account with optional mailbox counts and sampled storage metrics. A SYSTEM caller lists every domain on the deployment, and may narrow to one tenant with `accountId`.",
@@ -24158,6 +24561,16 @@
             },
             "description": "domain_in_use, domain_is_alias_target, alias_fbl_exclusive, alias_conflict, account_deleted, or domain_transition_in_progress"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "502": {
             "content": {
               "application/json": {
@@ -24190,7 +24603,8 @@
         "summary": "Update domain settings",
         "tags": [
           "Domains"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Removes a domain from an account after all routes and aliases referencing it have been cleared.",
@@ -24454,6 +24868,16 @@
             },
             "description": "Domain not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -24476,7 +24900,8 @@
         "summary": "Update domain brand name",
         "tags": [
           "Domains"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns white-label branding configuration (brand name and logo metadata) for a domain.",
@@ -25088,6 +25513,16 @@
             },
             "description": "hostname_taken, service_unavailable, or domain_is_alias"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -25110,7 +25545,8 @@
         "summary": "Configure vanity hostname",
         "tags": [
           "Domains"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Releases a custom vanity hostname and removes its provisioned SSL certificates.",
@@ -25468,6 +25904,16 @@
             },
             "description": "account_required: the domain has no owning account, and a hook row must reference one (the legacy directory; once the partitioned directory answers, a platform domain's hook is accepted for the system caller)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -25490,7 +25936,8 @@
         "summary": "Create or replace the domain's event webhook",
         "tags": [
           "Domains"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "The domain-scope event webhook: every mailbox whose primary address is on the domain feeds it, plus the domain's directory lifecycle and send outcomes. The signing secret is write-only.",
@@ -26714,10 +27161,12 @@
                     ]
                   },
                   "permittedRecipients": {
-                    "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
+                    "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. At most 1,000 entries of at most 320 characters each (400 validation_failed otherwise); a list stored before these limits keeps working. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
                     "items": {
+                      "maxLength": 320,
                       "type": "string"
                     },
+                    "maxItems": 1000,
                     "type": [
                       "array",
                       "null"
@@ -26920,6 +27369,16 @@
             },
             "description": "address_taken — the primary email address is already routed to another mailbox — or account_deleted (the owning account is soft-deleted; restore it first), account_required (messageWebhook or eventWebhook on a platform identity: webhooks at creation are an account's), idempotency_key_reused (this Idempotency-Key belongs to a create with another request body; nothing changed), or identity_deleted (the identity this Idempotency-Key created was deleted since; a retry never re-creates it, use a fresh key)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -26960,7 +27419,8 @@
         "summary": "Create an identity",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Lists mailboxes for the authenticated account. Set state=deleted to list restorable tombstones (deleted mailboxes still within the undo window). A SYSTEM caller lists every mailbox on the deployment, and may narrow to one tenant with `accountId`. Under the partitioned directory a system caller's deployment-wide listing walks the accounts in turn: its rows come account by account, its pages are bounded in work, so one may hold fewer than limit rows while more follow, and the list ends only when nextCursor is absent.",
@@ -27290,10 +27750,12 @@
                     "type": "boolean"
                   },
                   "permittedRecipients": {
-                    "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
+                    "description": "System callers only. Outbound recipient allowlist: the ONLY addresses this mailbox may send to. Entries are exact addresses (`jo@acme.dev`) or domain wildcards (`*@acme.dev`). `null` = unrestricted (the default); `[]` = may send to nobody. At most 1,000 entries of at most 320 characters each (400 validation_failed otherwise); a list stored before these limits keeps working. A refused submission answers 403 recipient_not_permitted — permanent, so SMTP submission gets a 550. EGRESS ONLY: a restricted mailbox still receives from anyone",
                     "items": {
+                      "maxLength": 320,
                       "type": "string"
                     },
+                    "maxItems": 1000,
                     "type": [
                       "array",
                       "null"
@@ -27467,6 +27929,16 @@
             },
             "description": "semantic_not_enabled — semanticFloor given while semantic search is off; or no_mail_store: semantic: true or semanticFloor on an identity without a mail store, which has no mail to index (semantic: false is what it already is, and is accepted); or suspension_changed: a newer opposite suspend or resume superseded this one before it completed: the body's `mailbox` carries the current fields; or receive_hold_changed: a newer different receiveHold superseded this one before it completed, the body's `mailbox` carrying the current fields; or idempotency_key_reused: this Idempotency-Key was already used asking for another value, nothing changed, use a fresh key for a new gesture"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -27489,7 +27961,8 @@
         "summary": "Update mailbox settings",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Soft-deletes a mailbox with a 7-day retention window for recovery. Pass purge=true to immediately queue the mailbox for permanent deletion.",
@@ -27948,7 +28421,8 @@
         "summary": "Save identity preferences",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/retention": {
@@ -28129,6 +28603,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -28151,7 +28635,8 @@
         "summary": "Set retention window",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Clears this mailbox's OWN retention window. The account default, if any, then applies — the response says which window is now in force, which is why this answers the GET view rather than a bare deleted flag. Nothing already in the trash tier is restored by this: restore messages explicitly.",
@@ -28349,6 +28834,16 @@
             },
             "description": "account_required — the mailbox has no owning account, and a hook row must reference one"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -28371,7 +28866,8 @@
         "summary": "Create or replace the mailbox's event webhook",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "The mailbox-scope event webhook: endpoint URL and delivery status. The signing secret is write-only and never returned.",
@@ -28663,6 +29159,16 @@
             },
             "description": "account_required: the mailbox has no owning account"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -28685,7 +29191,8 @@
         "summary": "Create or replace the mailbox's message webhook",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Where each message that lands in this mailbox is POSTed, however it arrived. The signing secret is write-only and never returned. A mailbox's own app password may read it.",
@@ -28915,6 +29422,16 @@
             },
             "description": "`mail_share_grantee_limit` or `mail_share_readable_store_limit`: a new grant would exceed the share fan-out cap; the response carries `max`. Existing grants remain editable."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -28937,7 +29454,8 @@
         "summary": "Give another user access to this mailbox",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Takes away an identity's access to this mailbox. Access stops immediately — rights are re-read on every request, so a session that is already open loses the mailbox on its next operation rather than at some later expiry.\n\nThe read/unread marks that identity had made in this mailbox are their own, and are discarded with the grant. Nothing belonging to the mailbox owner is deleted.",
@@ -29420,6 +29938,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -29460,7 +29988,8 @@
         "summary": "Check whether a mailbox may send from an address",
         "tags": [
           "Mailboxes"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/send-usage": {
@@ -30020,6 +30549,16 @@
             },
             "description": "route_exists — the address is bound to a DIFFERENT destination; mailbox_is_group_persona — the mailbox target is a group's persona, which nothing may route to; group_delete_in_flight — this group's delete is still running (retry the DELETE, then re-create); inbound_edge_cap — the destination cannot accept another incoming edge; route_changed — a concurrent edit replaced the publication"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -30060,7 +30599,8 @@
         "summary": "Create a routing rule",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns email routing rules. Filter with type=group for group listings (includes posting and member counts), type=webhook for destination webhooks and webhook taps, or type=remote for destination forwards and forward taps.",
@@ -30401,6 +30941,16 @@
             },
             "description": "group_has_persona — a group never changes shape in place (DELETE the route instead: its persona's archive and credential would otherwise be orphaned); mailbox_is_group_persona — the mailbox target is a group's persona; inbound_edge_cap — the destination cannot accept another incoming edge; route_changed — a concurrent edit replaced the publication"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -30441,7 +30991,8 @@
         "summary": "Update email route",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Removes an email address routing rule. Deleting a GROUP also soft-deletes its persona mailbox (the archive and sending identity) — restorable by its ULID for the usual window through POST /identities/:id/restore; re-creating the address mints a fresh persona.",
@@ -30600,6 +31151,16 @@
             },
             "description": "member_exists; inbound_edge_cap: the member cannot accept another incoming delivery edge; route_changed: a concurrent edit replaced the membership while it was published (either names memberAddress)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -30622,7 +31183,8 @@
         "summary": "Add group member",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns a paginated list of recipient member email addresses belonging to a group route.",
@@ -30841,6 +31403,16 @@
             },
             "description": "inbound_edge_cap: the member cannot accept another incoming delivery edge; route_changed: a concurrent edit replaced the membership while it was published (either names memberAddress; the rest of the write stands)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -30863,7 +31435,8 @@
         "summary": "Replace all group members",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/routes/{address}/members/batch": {
@@ -30958,6 +31531,16 @@
             },
             "description": "inbound_edge_cap: the member cannot accept another incoming delivery edge; route_changed: a concurrent edit replaced the membership while it was published (either names memberAddress; the rest of the write stands)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -30980,7 +31563,8 @@
         "summary": "Batch add group members",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/routes/{address}/members/{memberAddress}": {
@@ -31178,6 +31762,16 @@
             },
             "description": "pattern_exists"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -31200,7 +31794,8 @@
         "summary": "Create pattern route",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns a paginated list of wildcard address pattern routes for an account or domain.",
@@ -31423,6 +32018,16 @@
             },
             "description": "Pattern not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -31445,7 +32050,8 @@
         "summary": "Update pattern route",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Removes a pattern routing rule.",
@@ -31777,6 +32383,16 @@
             },
             "description": "list_name_taken (name already exists in this scope) or list_limit_reached (maximum lists for this scope reached)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -31799,7 +32415,8 @@
         "summary": "Create an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns allow and block address lists for this account or mailbox, optionally filtered by scope, direction (inbound/outbound), or verdict (allow/block).",
@@ -32171,6 +32788,16 @@
             },
             "description": "list_name_taken"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -32193,7 +32820,8 @@
         "summary": "Update an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Deletes an address list and removes all of its associated address and domain patterns.",
@@ -32417,6 +33045,16 @@
             },
             "description": "list_full — maximum allowed pattern entries reached"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -32439,7 +33077,8 @@
         "summary": "Add a pattern to an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns all address, domain, and wildcard patterns contained in an address list with pagination.",
@@ -32689,6 +33328,16 @@
             },
             "description": "list_full"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 2 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -32711,7 +33360,8 @@
         "summary": "Add multiple patterns to an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       }
     },
     "/api/v1/accounts/{accountId}/lists/{listId}/entries/import": {
@@ -33177,6 +33827,16 @@
             },
             "description": "not_found — the account, mailbox, scope or list is not accessible"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -33199,7 +33859,8 @@
         "summary": "Test address list policy against an address",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/lists": {
@@ -33335,6 +33996,16 @@
             },
             "description": "list_name_taken (name already exists in this scope) or list_limit_reached (maximum lists for this scope reached)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -33357,7 +34028,8 @@
         "summary": "Create an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns allow and block address lists for this account or mailbox, optionally filtered by scope, direction (inbound/outbound), or verdict (allow/block).",
@@ -33729,6 +34401,16 @@
             },
             "description": "list_name_taken"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -33751,7 +34433,8 @@
         "summary": "Update an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Deletes an address list and removes all of its associated address and domain patterns.",
@@ -33975,6 +34658,16 @@
             },
             "description": "list_full — maximum allowed pattern entries reached"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -33997,7 +34690,8 @@
         "summary": "Add a pattern to an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns all address, domain, and wildcard patterns contained in an address list with pagination.",
@@ -34247,6 +34941,16 @@
             },
             "description": "list_full"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 2 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -34269,7 +34973,8 @@
         "summary": "Add multiple patterns to an address list",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       }
     },
     "/api/v1/mailboxes/{mailboxId}/lists/{listId}/entries/import": {
@@ -34735,6 +35440,16 @@
             },
             "description": "not_found — the account, mailbox, scope or list is not accessible"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -34757,7 +35472,8 @@
         "summary": "Test address list policy against an address",
         "tags": [
           "Routing"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/filtering": {
@@ -34907,6 +35623,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -34929,7 +35655,8 @@
         "summary": "Update mailbox filtering settings",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/rules": {
@@ -35121,7 +35848,8 @@
         "summary": "Save and activate filter rules",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 786432
       },
       "delete": {
         "description": "Removes all JSON filter rules and deactivates the rules script from incoming delivery.",
@@ -35343,6 +36071,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -35365,7 +36103,8 @@
         "summary": "Validate a Sieve filter script without saving",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/sieve/scripts/{scriptName}": {
@@ -35488,6 +36227,16 @@
             },
             "description": "too_many_scripts, name_exists, or mailbox_is_group_persona (a group persona's archive runs no script)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -35520,7 +36269,8 @@
         "summary": "Upload or replace a Sieve filter script",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns the raw Sieve source code and active status for a specific script.",
@@ -35924,6 +36674,16 @@
             },
             "description": "name_exists — a script with the new name already exists; or mailbox_is_group_persona (a group persona's archive runs no script)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -35946,7 +36706,8 @@
         "summary": "Rename a Sieve filter script",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/sieve/active": {
@@ -36038,6 +36799,16 @@
             },
             "description": "mailbox_is_group_persona — a group persona's archive runs no script"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -36060,7 +36831,8 @@
         "summary": "Activate a Sieve filter script",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns the name of the currently active Sieve script, or null if no filter script is active.",
@@ -36408,6 +37180,16 @@
             },
             "description": "state_conflict — state token does not match current version"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -36440,7 +37222,8 @@
         "summary": "Update out-of-office auto-reply settings",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/forwarding": {
@@ -36603,6 +37386,16 @@
             },
             "description": "inbound_edge_cap — the destination already receives the most forwards an address may. Carries `forwardAll`, the setting as it now stands: the refused write cleared the forward it replaced, so it reads off"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -36625,7 +37418,8 @@
         "summary": "Forward all mail to a destination",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "patch": {
         "description": "Pauses or resumes forward-everything without touching the destination: a paused forward keeps its proof, so resuming never re-verifies.",
@@ -36702,6 +37496,16 @@
             },
             "description": "Mailbox not found, or forwarding is not set"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -36724,7 +37528,8 @@
         "summary": "Pause or resume forwarding",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Switches forward-everything off. Destinations survive — they are proven, and re-proving them to resume would be punitive.",
@@ -36885,6 +37690,16 @@
             },
             "description": "too_many_destinations — the per-mailbox cap is reached; remove one first"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -36925,7 +37740,8 @@
         "summary": "Add a forwarding destination",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/forwarding/destinations/{destId}/verify": {
@@ -37026,6 +37842,16 @@
             },
             "description": "Mailbox or destination not found, or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -37048,7 +37874,8 @@
         "summary": "Confirm a forwarding destination",
         "tags": [
           "Filtering"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/forwarding/destinations/{destId}": {
@@ -37358,6 +38185,16 @@
             },
             "description": "label_exists — a label with this name already exists; or too_many_labels — the mailbox is at its ceiling of 500 labels (system labels are not counted), and a retry under another name cannot help. Delete one first"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -37380,7 +38217,8 @@
         "summary": "Create a new custom label",
         "tags": [
           "Labels"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns all system and custom labels with message counts, unread counts, UID validity, and next UID sequence numbers. Listing requires the lookup (`l`) right. With `name`, returns only that exact label's statistics and requires read (`r`) instead, so a reader can check a known folder without enumerating the mailbox. An unknown or out-of-scope name returns an empty labels array; wildcard characters are literal. For the owner identity, an unfiltered listing also reports how many sends are scheduled and not yet released, so a client can decide whether to offer a Scheduled view without a second request.",
@@ -37653,6 +38491,16 @@
             },
             "description": "Target label name already exists"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -37675,7 +38523,8 @@
         "summary": "Rename a label or update folder settings",
         "tags": [
           "Labels"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Deletes a custom label. Messages carrying this label will retain any other labels they have. Messages with no other labels are expunged (moved to Recently deleted) by default, or moved to Archive when `?orphans=archive` is passed.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
@@ -37921,6 +38770,16 @@
             },
             "description": "Target label name already exists"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -37943,7 +38802,8 @@
         "summary": "Rename a label or update folder settings, by id",
         "tags": [
           "Labels"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Keyed on the label's numeric `id` — as `GET /labels` and `POST /labels` report it — rather than on its name. The id survives a rename (it is what JMAP `Mailbox/set` and folder-scoped shares key on), so a client that renames folders should hold it: the by-name route's key changes as the operation succeeds. It also never contains a `/`, so a folder name that does need not be encoded into a path segment. Otherwise identical to the by-name operation.\n\nDeletes a custom label. Messages carrying this label will retain any other labels they have. Messages with no other labels are expunged (moved to Recently deleted) by default, or moved to Archive when `?orphans=archive` is passed.\n\nFolder-scoped shares follow the folder into deletion: the folder is removed from every grant that names it, and a grant left naming no folders is revoked outright — the person it was shared with stops seeing the mailbox at once, exactly as if the grant had been DELETEd. Whole-mailbox grants are unaffected.",
@@ -38421,6 +39281,16 @@
             },
             "description": "uid_validity_mismatch — the label's UIDVALIDITY is not the one given"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -38443,7 +39313,8 @@
         "summary": "Update flags, labels and keywords for every message in a folder",
         "tags": [
           "Labels"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/labels/by-id/{labelId}/messages": {
@@ -38665,6 +39536,16 @@
             },
             "description": "uid_validity_mismatch — the label's UIDVALIDITY is not the one given"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -38687,7 +39568,8 @@
         "summary": "Update flags, labels and keywords for every message in a folder, by label id",
         "tags": [
           "Labels"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/labels/{label}/uids": {
@@ -39196,6 +40078,16 @@
             },
             "description": "duplicate_source — same host and username already configured for this mailbox; pickup_limit_reached — the mailbox already holds the maximum number of sources (`limit` says how many), a ceiling rather than a rate, so it is not retried; or conflict — destination preparation expired or is unavailable, so retry"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -39218,7 +40110,8 @@
         "summary": "Create POP3 pickup source",
         "tags": [
           "Pickups"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns all configured POP3 pickup sources for this mailbox with pagination.",
@@ -39578,6 +40471,16 @@
             },
             "description": "conflict: destination configuration changed or a handoff is pending; retry"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -39600,7 +40503,8 @@
         "summary": "Update a POP3 pickup source",
         "tags": [
           "Pickups"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Deletes a POP3 pickup source configuration and stops its background polling schedule.",
@@ -40081,6 +40985,16 @@
             },
             "description": "unknown_source"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 8 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -40121,7 +41035,8 @@
         "summary": "Filter a POP3 UIDL listing to the messages not yet ingested",
         "tags": [
           "Pickups"
-        ]
+        ],
+        "x-max-json-body-bytes": 8388608
       }
     },
     "/api/v1/pickups/{pickupId}/report": {
@@ -40244,6 +41159,16 @@
             },
             "description": "unknown_source"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -40266,7 +41191,8 @@
         "summary": "Report POP3 pickup job status",
         "tags": [
           "Pickups"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages": {
@@ -40796,6 +41722,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -40818,7 +41754,8 @@
         "summary": "Update flags and labels for multiple messages or whole conversations",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "post": {
         "description": "Stores raw RFC 5322 email bytes directly into a mailbox under a label without sending (similar to IMAP APPEND). Supports custom flags, Sieve filtering, and historical internaldate. Lone CR and LF are normalized to CRLF before storage; the size limit applies to the normalized message.",
@@ -41204,6 +42141,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -41226,7 +42173,8 @@
         "summary": "Empty trash, or delete a batch of messages or whole conversations",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}": {
@@ -41604,6 +42552,16 @@
             },
             "description": "not_in_label — flagLabel names a label the message is not filed in; nothing written"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -41626,7 +42584,8 @@
         "summary": "Update message flags and labels",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Soft-deletes a message to trash or permanently purges it. Use label to detach from a single label.",
@@ -42264,6 +43223,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -42286,7 +43255,8 @@
         "summary": "Batch get message metadata",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/heads": {
@@ -42372,6 +43342,16 @@
             },
             "description": "Mailbox not found or not accessible"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -42394,7 +43374,8 @@
         "summary": "Batch get raw header blocks",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/mime": {
@@ -42478,6 +43459,16 @@
             },
             "description": "Mailbox not found or not accessible"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -42500,7 +43491,8 @@
         "summary": "Batch get cached MIME structures",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/keywords": {
@@ -43065,6 +44057,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -43087,7 +44089,8 @@
         "summary": "Structured filter and query messages",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "patch": {
         "description": "Applies one patch to every message `POST /search/query` would return for the same `filter` — the way to act on a whole result set without naming its messages. The filter grammar, and the set it selects, are that route's own.\n\nSEND BACK THE `excludeRoles` YOU SEARCHED WITH. It narrows the selection here exactly as it narrows the results there, and it is not part of the filter — so a call that omits it patches the Trash and Junk mail the search left out.\n\nTHE CEILING. `idMax` is a message id (a ULID, so ordered by arrival) resolved on the first call and echoed back: mail that arrives while the gesture runs has a later id and is never touched. Send it back unchanged on every continuation.\n\nIT MAY ANSWER A CURSOR, exactly as `PATCH /labels/{label}/messages` does: the call spends a bounded budget, and a non-null `nextAfter` means call again with `after` set to it, the same `idMax`, the same filter and the same patch. Unlike that route it reports no `remaining` — measure progress against the search's own `total`.\n\nA FULL-TEXT filter is bounded: one that matches more than 5,000 messages is refused with `too_large`, having written nothing, rather than applied to some of them. Narrow the search. A filter is REQUIRED — this route will not patch a whole mailbox by omission.",
@@ -43269,6 +44272,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -43291,7 +44304,8 @@
         "summary": "Update flags, labels and keywords for every message a search selects",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/search/snippets": {
@@ -43361,6 +44375,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -43383,7 +44407,8 @@
         "summary": "Highlighted excerpts for search results",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/search/semantic": {
@@ -44399,7 +45424,8 @@
         "summary": "Save structured message to mailbox",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 26214400
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/copy": {
@@ -44526,6 +45552,16 @@
             },
             "description": "not_found — either mailbox is missing or not accessible with the rights this needs"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -44548,7 +45584,8 @@
         "summary": "Copy or move messages and conversations into another mailbox",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/learn": {
@@ -44639,6 +45676,16 @@
             },
             "description": "Mailbox or message not found"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -44661,7 +45708,8 @@
         "summary": "Train spam filter from a message",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/learn": {
@@ -44754,6 +45802,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -44776,7 +45834,8 @@
         "summary": "Train spam filter from multiple messages",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/untrash": {
@@ -44867,6 +45926,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -44889,7 +45958,8 @@
         "summary": "Take messages out of Trash, back to where they were filed",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/unjunk": {
@@ -44980,6 +46050,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -45002,7 +46082,8 @@
         "summary": "Take messages out of Junk, back to where they were filed",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/restore": {
@@ -45168,6 +46249,16 @@
             },
             "description": "Mailbox not found or not accessible to this principal"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -45190,7 +46281,8 @@
         "summary": "Restore multiple messages from trash",
         "tags": [
           "Messages"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/threads": {
@@ -46190,7 +47282,8 @@
         "summary": "Send an email message",
         "tags": [
           "Delivery"
-        ]
+        ],
+        "x-max-json-body-bytes": 26214400
       }
     },
     "/api/v1/mailboxes/{mailboxId}/threads/{threadId}/reply": {
@@ -46548,7 +47641,8 @@
         "summary": "Reply to a conversation thread",
         "tags": [
           "Delivery"
-        ]
+        ],
+        "x-max-json-body-bytes": 26214400
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/submit": {
@@ -47028,6 +48122,16 @@
             },
             "description": "cannot_unsend (release already started), schedule_failed, or already_canceled"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -47050,7 +48154,8 @@
         "summary": "Change a scheduled send's release time",
         "tags": [
           "Delivery"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/scheduled/{scheduleId}/cancel": {
@@ -48061,7 +49166,7 @@
                 }
               }
             },
-            "description": "Temporary, retry after the specified delay: receiving_paused (the recipient account is inside its deletion window, or the destination mailbox's receive hold is `paused`, then with `policyScope: \"mailbox\"`; a restore or a cleared hold receives the backlog) or rate_limited (the domain's forwarding budget is exhausted: the wire code is rate_limited; forward_rate_limited is the traffic log's detail, never the response body's error). rate_limited also answers a recipient whose tenant is over its delivery admission share; the traffic log's detail is then admission_shed. recently_unknown: the recipient did not resolve moments ago and is not asked again until that answer is a minute old (the object directory's negative memo); it may have been created since, so this DEFERS and never bounces, and Retry-After is at most the seconds left before it is asked again. Only the first miss answers 404 unknown_address.",
+            "description": "Temporary, retry after the specified delay: receiving_paused (the recipient account is inside its deletion window, or the destination mailbox's receive hold is `paused`, then with `policyScope: \"mailbox\"`; a restore or a cleared hold receives the backlog) or rate_limited (the domain's forwarding budget is exhausted: the wire code is rate_limited; forward_rate_limited is the traffic log's detail, never the response body's error). rate_limited also answers a recipient whose tenant is over its delivery admission share, or whose admission check could not answer just now; the traffic log's detail is then admission_shed or admission_unavailable respectively. recently_unknown: the recipient did not resolve moments ago and is not asked again until that answer is a minute old (the object directory's negative memo); it may have been created since, so this DEFERS and never bounces, and Retry-After is at most the seconds left before it is asked again. Only the first miss answers 404 unknown_address.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -48266,6 +49371,16 @@
             },
             "description": "insufficient_scope — only a system key may report refusals. An account or mailbox principal reporting a refusal would be asserting what happened to somebody else's mail."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -48288,7 +49403,8 @@
         "summary": "Report a DATA-time refusal (system only)",
         "tags": [
           "Delivery"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/suppressions": {
@@ -48464,6 +49580,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -48486,7 +49612,8 @@
         "summary": "Manually suppress an email address",
         "tags": [
           "Suppressions"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/suppressions/{address}": {
@@ -48761,6 +49888,16 @@
             },
             "description": "mailbox_credential_required, or web_push_not_configured"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "429": {
             "content": {
               "application/json": {
@@ -48801,7 +49938,8 @@
         "summary": "Register a push subscription",
         "tags": [
           "Push"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns the subscriptions registered by the CALLING credential (another app password's registrations on the same mailbox are not visible: they belong to that credential), plus `vapidPublicKey`, the applicationServerKey a client passes to `PushManager.subscribe` before POSTing the resulting endpoint here. A null `vapidPublicKey` means Web Push is not configured on this deployment and POST would refuse. Requires a mailbox app password (`oemp_…`): subscriptions belong to the credential that creates them, so account and system keys are refused with 403 `mailbox_credential_required`.",
@@ -48981,6 +50119,16 @@
             },
             "description": "No such subscription for THIS credential (another credential's ids are indistinguishable from absent), or it expired"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -49003,7 +50151,8 @@
         "summary": "Verify or extend a push subscription",
         "tags": [
           "Push"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Stops pushes to this device immediately. A device that unsubscribed locally should also delete its registration; a device that merely lost its endpoint (the push service answers 404/410) is cleaned up automatically. Requires a mailbox app password (`oemp_…`): subscriptions belong to the credential that creates them, so account and system keys are refused with 403 `mailbox_credential_required`.",
@@ -49325,7 +50474,8 @@
         "summary": "Free/busy for several addresses",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/scheduling-inbox": {
@@ -49736,6 +50886,16 @@
             },
             "description": "name_taken, or too_many_collections (max 10)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -49758,7 +50918,8 @@
         "summary": "Create calendar",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns all calendars for a mailbox with their sync tokens.",
@@ -50092,6 +51253,16 @@
             },
             "description": "name_taken; visibility_conflict (CAS lost); or components_conflict with count of incompatible live and restorable trashed objects. No properties change on refusal."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -50114,7 +51285,8 @@
         "summary": "Update calendar",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Deletes a calendar collection and all objects stored within it. Both move to the trash tier: GET …/calendars/trash lists them, POST …/trash/{id}/restore brings the collection and its members back (private, since grants and feed tokens were retired), and the purge duty removes them for good fourteen days after deletion.",
@@ -51278,6 +52450,16 @@
             },
             "description": "precondition_failed: If-Match not satisfied"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -51300,7 +52482,8 @@
         "summary": "Move or rename calendar object",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}/respond": {
@@ -51450,6 +52633,16 @@
             },
             "description": "conflict: the copy changed concurrently under the reply; retry"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -51472,7 +52665,8 @@
         "summary": "RSVP to calendar invitation",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/calendars/{calendarId}/objects/{href}/scheduling": {
@@ -52412,6 +53606,16 @@
             },
             "description": "No such collection, sharee, or mailbox"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -52434,7 +53638,8 @@
         "summary": "Grant calendar access",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Revokes a mailbox's access grant to a calendar collection.",
@@ -52706,6 +53911,16 @@
             },
             "description": "No such collection, or mailbox not accessible"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -52728,7 +53943,8 @@
         "summary": "Create calendar feed token",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns active read-only subscription tokens for a calendar collection.",
@@ -53449,7 +54665,8 @@
         "summary": "Accept or decline emailed invitation",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       }
     },
     "/api/v1/mailboxes/{mailboxId}/messages/{messageId}/invitation": {
@@ -53687,6 +54904,16 @@
             },
             "description": "name_taken, or too_many_collections (max 10)"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -53709,7 +54936,8 @@
         "summary": "Create addressbook",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns all addressbooks for a mailbox with their sync tokens.",
@@ -54020,6 +55248,16 @@
             },
             "description": "name_taken; visibility_conflict (CAS lost); or components_conflict with count of incompatible live and restorable trashed objects. No properties change on refusal."
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -54042,7 +55280,8 @@
         "summary": "Update addressbook",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Deletes a addressbook collection and all objects stored within it. Both move to the trash tier: GET …/addressbooks/trash lists them, POST …/trash/{id}/restore brings the collection and its members back (private, since grants and feed tokens were retired), and the purge duty removes them for good fourteen days after deletion.",
@@ -55099,6 +56338,16 @@
             },
             "description": "precondition_failed: If-Match not satisfied"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -55121,7 +56370,8 @@
         "summary": "Move or rename addressbook object",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/identities/{identityId}/addressbooks/{addressbookId}/trash": {
@@ -55941,6 +57191,16 @@
             },
             "description": "No such collection, sharee, or mailbox"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -55963,7 +57223,8 @@
         "summary": "Grant addressbook access",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Revokes a mailbox's access grant to a addressbook collection.",
@@ -56235,6 +57496,16 @@
             },
             "description": "No such collection, or mailbox not accessible"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -56257,7 +57528,8 @@
         "summary": "Create addressbook feed token",
         "tags": [
           "PIM"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Returns active read-only subscription tokens for a addressbook collection.",
@@ -57701,7 +58973,8 @@
         "summary": "Create a mail template",
         "tags": [
           "Templates"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       }
     },
     "/api/v1/accounts/{accountId}/templates/{slug}": {
@@ -57966,7 +59239,8 @@
         "summary": "Update a template's metadata",
         "tags": [
           "Templates"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       },
       "delete": {
         "description": "Removes the template and every language's copy. Messages already sent are unaffected; a send naming this slug afterwards answers not_found.",
@@ -58258,7 +59532,8 @@
         "summary": "Write one language's copy",
         "tags": [
           "Templates"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       },
       "delete": {
         "description": "Drops a language. The template keeps its other languages; a send asking for this one falls to the template's default language, or is refused when there is none.",
@@ -58583,7 +59858,8 @@
         "summary": "Render a template without sending it",
         "tags": [
           "Templates"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       }
     },
     "/api/v1/accounts/{accountId}/templates/{slug}/send": {
@@ -58860,7 +60136,8 @@
         "summary": "Send a template to one or more recipients",
         "tags": [
           "Templates"
-        ]
+        ],
+        "x-max-json-body-bytes": 2097152
       }
     },
     "/api/v1/dkim": {
@@ -59451,6 +60728,16 @@
             },
             "description": "unknown_slot"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 8 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -59473,7 +60760,8 @@
         "summary": "Preview a platform mail slot",
         "tags": [
           "Platform mail"
-        ]
+        ],
+        "x-max-json-body-bytes": 8388608
       }
     },
     "/api/v1/system/mail-slots/{slug}/variants/{lang}": {
@@ -59583,6 +60871,16 @@
             },
             "description": "unknown_slot"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -59605,7 +60903,8 @@
         "summary": "Override one language of a platform mail slot",
         "tags": [
           "Platform mail"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "delete": {
         "description": "Drops an override so the slot renders its compiled-in default again. Removing the last language removes the slot's row entirely (system callers only).",
@@ -59814,6 +61113,16 @@
             },
             "description": "unknown_slot"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "502": {
             "content": {
               "application/json": {
@@ -59846,7 +61155,8 @@
         "summary": "Send one real copy of a platform mail slot",
         "tags": [
           "Platform mail"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/mailboxes/{mailboxId}/reindex": {
@@ -60024,6 +61334,16 @@
             },
             "description": "not_found: no such mailbox, or it has no mail store"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -60046,7 +61366,8 @@
         "summary": "Acquire POP3 maildrop lock",
         "tags": [
           "Maintenance"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       },
       "get": {
         "description": "Inspects current POP3 maildrop lock holder and expiration without acquiring it (system callers only).",
@@ -60254,6 +61575,73 @@
         },
         "security": [],
         "summary": "Liveness check",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/readiness": {
+      "get": {
+        "description": "Probes the storage this Worker depends on, concurrently and each under its own deadline of about 2 s: a SELECT 1 on the D1 primary, the same through the read-replica session, one round trip to a Durable Object that touches its SQLite storage, and an R2 HEAD. Answers 200 when storage is serving and 503 otherwise, with the per-check breakdown in both. A read replica the session fell through to the primary is a degradation, not unreadiness: d1Replica reports replica_fallthrough, degraded is true, and the answer stays 200. The result is cached per isolate for 5 seconds, failures included, and concurrent requests share one probe, so polling cannot multiply load on the storage tier (system admin only). GET /api/v1/health is the public liveness check and probes nothing.",
+        "operationId": "get_SystemReadinessGet",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemReadiness"
+                }
+              }
+            },
+            "description": "Storage is serving: every dependency answered, or degraded is true and the primary answered for a silent replica"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SystemReadiness"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorBody"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not ready: at least one check failed, and the body says which, with Retry-After set to when the cached result is replaced. Or temporary_failure (the error envelope, no checks): the platform's storage could not answer before the probe ran, which is as much not ready",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get platform readiness (system only)",
         "tags": [
           "System"
         ]
@@ -60882,6 +62270,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -60904,7 +62302,8 @@
         "summary": "Mint signup invitation codes (system only)",
         "tags": [
           "System"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/system/invitations/check": {
@@ -62831,6 +64230,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -62853,7 +64262,8 @@
         "summary": "Mark accounts' usage day reported (system only)",
         "tags": [
           "System"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/system/limit-incidents": {
@@ -63291,6 +64701,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -63313,7 +64733,8 @@
         "summary": "Ban a domain or address: add it to the platform blocklist (system only)",
         "tags": [
           "System"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/system/blocklist/check": {
@@ -63676,6 +65097,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -63698,7 +65129,8 @@
         "summary": "Re-embed the rows a shaping or model change left stale (system only)",
         "tags": [
           "System"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/system/vec/rebalance": {
@@ -63785,6 +65217,16 @@
             },
             "description": "system_credentials_required"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -63807,7 +65249,8 @@
         "summary": "Move mailboxes off a shard (system only)",
         "tags": [
           "System"
-        ]
+        ],
+        "x-max-json-body-bytes": 1048576
       }
     },
     "/api/v1/system/vec/orphans/{mailboxId}": {
