@@ -23,15 +23,30 @@ func TestParseBytes(t *testing.T) {
 		want int64
 		err  bool
 	}{
+		{"0", 0, false},
+		{"512 B", 512, false},
 		{"1024", 1024, false},
+		{"3000000000", 3_000_000_000, false},
 		{"1K", 1024, false},
 		{"1kb", 1024, false},
+		{"1 KiB", 1024, false},
+		{"1.125 KiB", 1152, false},
 		{"500M", 500 << 20, false},
+		{"500 MiB", 500 << 20, false},
 		{"1.5G", 3 << 29, false}, // 1.5 * 2^30
+		{"1.5 GiB", 3 << 29, false},
+		{"50 GiB", 50 << 30, false},
 		{"2 TB", 2 << 40, false},
+		{"2 TiB", 2 << 40, false},
 		{"", 0, true},
 		{"abc", 0, true},
 		{"-5M", 0, true},
+		{"1.3 KiB", 0, true}, // 1331.2 bytes — not a whole byte count
+		{"100 IB", 0, true},
+		{"50 KiBB", 0, true},
+		{".5G", 0, true},
+		{"1.G", 0, true},
+		{"9999999999 TiB", 0, true}, // overflows int64
 	}
 	for _, c := range cases {
 		got, err := parseBytes(c.in)

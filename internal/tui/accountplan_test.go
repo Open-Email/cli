@@ -170,10 +170,58 @@ func TestAccountPlanStorageAcceptsHumanSizes(t *testing.T) {
 	if ptr == nil || *ptr != 50<<30 {
 		t.Fatalf("want 50 GiB in bytes, got %v", patch["storageLimitBytes"])
 	}
-	// And it renders back in the same vocabulary it accepts.
+	// And it renders back in IEC units that parsePlanBytes accepts losslessly.
 	cur.StorageLimitBytes = i64(50 << 30)
-	if got := planFromAccount(cur).storage; got != "50.0 GB" {
-		t.Fatalf("want a human size seeded back, got %q", got)
+	if got := planFromAccount(cur).storage; got != "50 GiB" {
+		t.Fatalf("want a lossless IEC size seeded back, got %q", got)
+	}
+	if patch, err := accountPlanPatch(cur, planFromAccount(cur)); err != nil || len(patch) != 0 {
+		t.Fatalf("seeded IEC size must round-trip clean, got %v (%v)", patch, err)
+	}
+	// Restating the same byte count in another spelling ("50G" vs "50 GiB") is a no-op.
+	p = planFromAccount(cur)
+	p.storage = "50G"
+	if patch, err := accountPlanPatch(cur, p); err != nil || len(patch) != 0 {
+		t.Fatalf("equivalent byte size must not emit a patch, got %v (%v)", patch, err)
+	}
+	// Exact binary fractions up to thousandths render cleanly too.
+	cur.StorageLimitBytes = i64(3 << 29)
+	if got := planFromAccount(cur).storage; got != "1.5 GiB" {
+		t.Fatalf("want 1.5 GiB seeded back, got %q", got)
+	}
+	if patch, err := accountPlanPatch(cur, planFromAccount(cur)); err != nil || len(patch) != 0 {
+		t.Fatalf("1.5 GiB must round-trip clean, got %v (%v)", patch, err)
+	}
+}
+
+// Core's published Free storage pool is decimal 3_000_000_000 (3 GB), which is
+// not an exact binary multiple. Seeding it through a rounded display formatter
+// ("2.8 GB" -> 3_006_477_107) would emit a spurious storageLimitBytes raise on
+// every unrelated edit — 409 account_not_vetted on untrusted accounts, or a
+// sticky operator agreement on trusted Free accounts.
+func TestAccountPlanDecimalStorageRoundTripsLosslessly(t *testing.T) {
+	cur := baseAccount()
+	cur.StorageLimitBytes = i64(3_000_000_000)
+
+	p := planFromAccount(cur)
+	if p.storage != "3000000000" {
+		t.Fatalf("non-binary pool must seed plain bytes, got %q", p.storage)
+	}
+	patch, err := accountPlanPatch(cur, p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(patch) != 0 {
+		t.Fatalf("untouched 3_000_000_000 pool must round-trip to empty patch, got %v", patch)
+	}
+
+	p.name = "Acme Renamed"
+	patch, err = accountPlanPatch(cur, p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, leaked := patch["storageLimitBytes"]; leaked || len(patch) != 1 || patch["name"] != "Acme Renamed" {
+		t.Fatalf("unrelated edit must not touch storageLimitBytes, got %v", patch)
 	}
 }
 

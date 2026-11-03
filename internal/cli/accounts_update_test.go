@@ -121,3 +121,37 @@ func TestAccountUpdateNamesTheBadMailboxDefaultFlag(t *testing.T) {
 		t.Fatalf("error = %v; want one naming --recv-bytes-per-day", err)
 	}
 }
+
+func TestAccountUpdateStorageLimitAcceptsIECAndExactBytes(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want any
+	}{
+		{"50 GiB", float64(50 << 30)},
+		{"1.5GiB", float64(3 << 29)},
+		{"2TiB", float64(2 << 40)},
+		{"3000000000", float64(3_000_000_000)},
+		{"unlimited", float64(0)},
+		{"default", nil},
+	} {
+		srv, body := fakeAccountCore(t)
+		cmd := newAccountUpdateCmd(domainTestApp(srv.URL))
+		cmd.SetArgs([]string{"ACC1", "--storage-limit", tc.in})
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("--storage-limit %q: %v", tc.in, err)
+		}
+		if got, ok := (*body)["storageLimitBytes"]; !ok || got != tc.want {
+			t.Errorf("--storage-limit %q -> %v (present=%v); want %v", tc.in, got, ok, tc.want)
+		}
+	}
+
+	for _, bad := range []string{"1.3 KiB", "100 IB", "-5G"} {
+		cmd := newAccountUpdateCmd(domainTestApp("http://127.0.0.1:0"))
+		cmd.SetArgs([]string{"ACC1", "--storage-limit", bad})
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--storage-limit") {
+			t.Fatalf("--storage-limit %q: error = %v; want one naming --storage-limit", bad, err)
+		}
+	}
+}

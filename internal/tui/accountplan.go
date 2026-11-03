@@ -93,15 +93,39 @@ func planCapText(p *int64) string {
 	}
 }
 
+// planBytesText renders a byte pool limit in the SAME vocabulary parsePlanBytes
+// accepts back, without rounding. A lossy display formatter (fmtBytes) turns
+// core's decimal 3_000_000_000 into "2.8 GB", which parses back to
+// 3_006_477_107 and makes every unrelated edit look like a storage change.
+// Mirrors Cockpit's bytesText: use the largest binary unit that divides cleanly
+// to <= 3 decimal places, else plain integer bytes.
 func planBytesText(p *int64) string {
 	switch {
 	case p == nil:
 		return ""
 	case *p == 0:
 		return "unlimited"
-	default:
-		return fmtBytes(*p)
 	}
+	v := *p
+	for _, u := range []struct {
+		name string
+		size int64
+	}{
+		{"TiB", 1 << 40},
+		{"GiB", 1 << 30},
+		{"MiB", 1 << 20},
+		{"KiB", 1 << 10},
+	} {
+		whole, rem := v/u.size, v%u.size
+		if v >= u.size && (whole < 1024 || u.name == "TiB") && (rem*1000)%u.size == 0 {
+			if rem == 0 {
+				return fmt.Sprintf("%d %s", whole, u.name)
+			}
+			frac := strings.TrimRight(fmt.Sprintf("%03d", (rem*1000)/u.size), "0")
+			return fmt.Sprintf("%d.%s %s", whole, frac, u.name)
+		}
+	}
+	return strconv.FormatInt(v, 10)
 }
 
 // parsePlanCap reads the three-state cap vocabulary the CLI's --send-*-per-day
@@ -243,12 +267,14 @@ func accountPlanPatch(cur coreapi.Account, p accountPlan) (map[string]any, error
 		}
 	}
 
-	storage, err := parsePlanBytes("storage pool", p.storage)
-	if err != nil {
-		return nil, err
-	}
-	if !int64PtrEq(storage, cur.StorageLimitBytes) {
-		patch["storageLimitBytes"] = storage
+	if strings.TrimSpace(p.storage) != planBytesText(cur.StorageLimitBytes) {
+		storage, err := parsePlanBytes("storage pool", p.storage)
+		if err != nil {
+			return nil, err
+		}
+		if !int64PtrEq(storage, cur.StorageLimitBytes) {
+			patch["storageLimitBytes"] = storage
+		}
 	}
 
 	return patch, nil

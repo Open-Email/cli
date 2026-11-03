@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -587,11 +588,62 @@ func parseByteCapFlag(flag, s string) (*int64, error) {
 		var zero int64
 		return &zero, nil
 	}
-	n, err := parseByteSize(s)
+	n, err := parseCapBytes(s)
 	if err != nil {
 		return nil, fmt.Errorf("invalid %s %q: %w", flag, s, err)
 	}
 	return &n, nil
+}
+
+// parseCapBytes reads a byte-sized account cap ("50 GiB", "1.5GiB", "100G",
+// "3000000000") using exact base-1024 integer scaling so the CLI flags accept
+// the IEC strings `accounts get` prints (`fmtBytes`) as well as TUI sizes. Kept
+// separate from `parseByteSize` (`rules.go`), which intentionally sticks to
+// Sieve's integer k/m/g suffixes.
+func parseCapBytes(s string) (int64, error) {
+	t := strings.TrimSpace(strings.ToUpper(s))
+	if t == "" || len(t) > 64 {
+		return 0, fmt.Errorf("bad size %q (use e.g. 50GiB, 1.5GiB, or plain bytes)", s)
+	}
+	mult := int64(1)
+units:
+	for _, u := range []struct {
+		mult     int64
+		suffixes []string
+	}{
+		{1 << 10, []string{"KIB", "KB", "K"}},
+		{1 << 20, []string{"MIB", "MB", "M"}},
+		{1 << 30, []string{"GIB", "GB", "G"}},
+		{1 << 40, []string{"TIB", "TB", "T"}},
+		{1, []string{"B"}},
+	} {
+		for _, sfx := range u.suffixes {
+			if strings.HasSuffix(t, sfx) {
+				mult, t = u.mult, strings.TrimSpace(strings.TrimSuffix(t, sfx))
+				break units
+			}
+		}
+	}
+	whole, frac, hasDot := strings.Cut(t, ".")
+	if whole == "" || (hasDot && frac == "") {
+		return 0, fmt.Errorf("bad size %q (use e.g. 50GiB, 1.5GiB, or plain bytes)", s)
+	}
+	for _, r := range whole + frac {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("bad size %q (use e.g. 50GiB, 1.5GiB, or plain bytes)", s)
+		}
+	}
+	digits, _ := new(big.Int).SetString(whole+frac, 10)
+	scaled := new(big.Int).Mul(digits, big.NewInt(mult))
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(len(frac))), nil)
+	quo, rem := new(big.Int).QuoRem(scaled, scale, new(big.Int))
+	if rem.Sign() != 0 {
+		return 0, fmt.Errorf("bad size %q: not a whole byte count", s)
+	}
+	if !quo.IsInt64() {
+		return 0, fmt.Errorf("bad size %q: byte count overflows int64", s)
+	}
+	return quo.Int64(), nil
 }
 
 // fmtByteCap renders a byte-sized cap: the platform default, unlimited, or a size.
