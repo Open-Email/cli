@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -178,32 +179,57 @@ func fmtMsgFlags(flags []string) string {
 	return string(out)
 }
 
-// parseBytes reads a human byte size ("500M", "1.5 GB", "1073741824") into
-// bytes (base 1024). The empty string is the caller's case (usually
-// "unlimited"), not this function's.
+// parseBytes reads a human byte size ("500MiB", "1.5 GiB", "50G", "1073741824")
+// into bytes (base 1024) using exact integer arithmetic, refusing fractions
+// that do not resolve to a whole byte count. The empty string is the caller's
+// case (usually "unlimited" or "default"), not this function's.
 func parseBytes(s string) (int64, error) {
 	t := strings.TrimSpace(strings.ToUpper(s))
 	if t == "" {
 		return 0, fmt.Errorf("empty size")
 	}
+	if len(t) > 64 {
+		return 0, fmt.Errorf("bad size %q (use e.g. 500MiB, 1.5GiB, or plain bytes)", s)
+	}
 	mult := int64(1)
-	t = strings.TrimSuffix(t, "B")
-	switch {
-	case strings.HasSuffix(t, "K"):
-		mult, t = 1<<10, strings.TrimSuffix(t, "K")
-	case strings.HasSuffix(t, "M"):
-		mult, t = 1<<20, strings.TrimSuffix(t, "M")
-	case strings.HasSuffix(t, "G"):
-		mult, t = 1<<30, strings.TrimSuffix(t, "G")
-	case strings.HasSuffix(t, "T"):
-		mult, t = 1<<40, strings.TrimSuffix(t, "T")
+units:
+	for _, u := range []struct {
+		mult     int64
+		suffixes []string
+	}{
+		{1 << 10, []string{"KIB", "KB", "K"}},
+		{1 << 20, []string{"MIB", "MB", "M"}},
+		{1 << 30, []string{"GIB", "GB", "G"}},
+		{1 << 40, []string{"TIB", "TB", "T"}},
+		{1, []string{"B"}},
+	} {
+		for _, sfx := range u.suffixes {
+			if strings.HasSuffix(t, sfx) {
+				mult, t = u.mult, strings.TrimSpace(strings.TrimSuffix(t, sfx))
+				break units
+			}
+		}
 	}
-	t = strings.TrimSpace(t)
-	f, err := strconv.ParseFloat(t, 64)
-	if err != nil || f < 0 {
-		return 0, fmt.Errorf("bad size %q (use e.g. 500M, 1.5G, or plain bytes)", s)
+	whole, frac, hasDot := strings.Cut(t, ".")
+	if whole == "" || (hasDot && frac == "") {
+		return 0, fmt.Errorf("bad size %q (use e.g. 500MiB, 1.5GiB, or plain bytes)", s)
 	}
-	return int64(f * float64(mult)), nil
+	for _, r := range whole + frac {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("bad size %q (use e.g. 500MiB, 1.5GiB, or plain bytes)", s)
+		}
+	}
+	digits, _ := new(big.Int).SetString(whole+frac, 10)
+	scaled := new(big.Int).Mul(digits, big.NewInt(mult))
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(len(frac))), nil)
+	quo, rem := new(big.Int).QuoRem(scaled, scale, new(big.Int))
+	if rem.Sign() != 0 {
+		return 0, fmt.Errorf("bad size %q: not a whole byte count", s)
+	}
+	if !quo.IsInt64() {
+		return 0, fmt.Errorf("bad size %q: byte count overflows int64", s)
+	}
+	return quo.Int64(), nil
 }
 
 // truncate shortens s to n display runes with an ellipsis, sanitizing control sequences.
