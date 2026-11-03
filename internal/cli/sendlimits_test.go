@@ -4,7 +4,7 @@ import "testing"
 
 // The send-allowance cap has THREE states where a quota has two, and the flag
 // parser is the only place the third one is expressible. Getting it wrong is
-// not a cosmetic bug: reading "inherit the platform default" as "unlimited"
+// not a cosmetic bug: reading "inherit the account's number" as "unlimited"
 // reports a bounded mailbox as unbounded, and does it in the direction that
 // removes a limit rather than adding one.
 func TestParseSendCapFlag(t *testing.T) {
@@ -48,17 +48,39 @@ func TestParseSendCapFlag(t *testing.T) {
 	}
 }
 
-// The rendering side of the same three states. `nil` must never read as
-// "unlimited" — that is the misreading the pointer type exists to prevent.
+// The rendering side of the same three states, on a MAILBOX's own cap: `nil`
+// is no override, so the account's mailbox default applies. It must never read
+// as "unlimited" — that is the misreading the pointer type exists to prevent.
 func TestFmtSendCap(t *testing.T) {
-	if got := fmtSendCap(nil); got != "platform default" {
-		t.Errorf("fmtSendCap(nil) = %q; want %q", got, "platform default")
+	if got := fmtSendCap(nil); got != "account's mailbox default" {
+		t.Errorf("fmtSendCap(nil) = %q; want %q", got, "account's mailbox default")
 	}
 	if got := fmtSendCap(ptr(0)); got != "unlimited" {
 		t.Errorf("fmtSendCap(0) = %q; want %q", got, "unlimited")
 	}
 	if got := fmtSendCap(ptr(250)); got != "250" {
 		t.Errorf("fmtSendCap(250) = %q; want %q", got, "250")
+	}
+}
+
+// An ACCOUNT's own limits mean something else by nil: core stamps a number into
+// every one from the account's plan, so nil is a column with no number (only a
+// purged account's row) and reads as the caller's unset word. 0 is no limit on
+// every one of them, the mailbox ceiling included, and reads "unlimited".
+func TestLimitOr(t *testing.T) {
+	for _, tc := range []struct {
+		in    *int64
+		unset string
+		want  string
+	}{
+		{nil, "not set", "not set"},
+		{nil, "—", "—"},
+		{ptr(0), "not set", "unlimited"},
+		{ptr(250), "—", "250"},
+	} {
+		if got := limitOr(tc.in, tc.unset); got != tc.want {
+			t.Errorf("limitOr(%v, %q) = %q; want %q", deref64(tc.in), tc.unset, got, tc.want)
+		}
 	}
 }
 

@@ -87,13 +87,17 @@ func int64Or(p *int64, dash string) string {
 	return strconv.FormatInt(*p, 10)
 }
 
-// sendCapOr renders an allowance cap's THREE states. A nil pointer is
-// "platform default", never "∞": on a quota those would mean the same thing,
-// but here the platform number may be the tightest bound in play, so showing it
-// as unlimited would tell an operator the opposite of the truth.
-func sendCapOr(p *int64) string {
+// limitOr renders one of an ACCOUNT's own limit columns (a send cap, the
+// mailbox ceiling) in its THREE states. Core stamps every one of them from the
+// account's plan (migration 0157), so a live account holds a number, and 0 is
+// no limit: "unlimited", never a bare "0", which reads as a ceiling of nothing.
+// A nil column holds no number at all (only a purged account's row still shows
+// one) and renders as `unset` — "—" in a list cell, "not set" in a detail view
+// — never as "∞": a column with nothing in it is not a bound anyone lifted, and
+// showing it as unlimited would tell an operator the opposite of the truth.
+func limitOr(p *int64, unset string) string {
 	if p == nil {
-		return "platform default"
+		return unset
 	}
 	if *p == 0 {
 		return "unlimited"
@@ -101,13 +105,13 @@ func sendCapOr(p *int64) string {
 	return strconv.FormatInt(*p, 10)
 }
 
-// storagePoolOr is sendCapOr for the account storage pool: same three states,
+// storagePoolOr is limitOr for the account storage pool: same three states,
 // but a byte count read as a raw integer is unreadable, so the configured case
-// goes through fmtBytes. Kept apart rather than teaching sendCapOr a unit,
-// because every other caller of that is a message or recipient COUNT.
+// goes through fmtBytes. Kept apart rather than teaching limitOr a unit,
+// because every other caller of that is a COUNT.
 func storagePoolOr(p *int64) string {
 	if p == nil {
-		return "platform default"
+		return "not set"
 	}
 	if *p == 0 {
 		return "unlimited"

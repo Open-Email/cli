@@ -877,16 +877,18 @@ func accountFormPane(ctx context.Context, ui *Options) pane {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().Title("Name").Placeholder("Acme Corp").
 				Value(&name).Validate(required("name")),
+			// The plan form's vocabulary. Blank leaves the field out, so the
+			// account starts on the new accounts' number like every other limit.
 			huh.NewInput().Title("Max mailboxes").Placeholder("50").
-				Description("cap on live mailboxes — empty for platform default").
+				Description("cap on live mailboxes — blank for the new accounts' plan · 'unlimited' · or a number").
 				Value(&maxMbx).Validate(func(s string) error {
-				_, err := parsePlanMailboxCap(s)
+				_, err := parsePlanCap("max mailboxes", s)
 				return err
 			}),
 		))
 	}
 	submit := func(sctx context.Context, c *coreapi.Client) (string, pane, error) {
-		capPtr, err := parsePlanMailboxCap(maxMbx)
+		capPtr, err := parsePlanCap("max mailboxes", maxMbx)
 		if err != nil {
 			return "", nil, err
 		}

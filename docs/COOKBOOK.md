@@ -910,13 +910,13 @@ openemail accounts update 01JARQ00000000000000000001 --send-rcpts-per-day unlimi
 ```
 
 Note `unlimited` and `default` are different words on purpose: `default` drops
-the override and inherits the platform number, which may well be tighter than
-what you just removed.
+the number you set and hands the cap back to the account's plan, whose number
+may well be tighter than what you just removed.
 
 The hourly (burst) caps, the inbound receive allowance and the per-domain
 forward cap take the same words (`--send-msgs-per-hour`, `--recv-msgs-per-day`,
 `--recv-bytes-per-day 100G`, `--forward-msgs-per-day`). A tenant that mints
-mailboxes in bulk and wants every one of them above the platform's per-mailbox
+mailboxes in bulk and wants every one of them above its plan's per-mailbox
 numbers sets the account's DEFAULTS for them, instead of an override on each
 mailbox after the fact:
 
@@ -933,15 +933,27 @@ vet or billing change lays back over its preset rather than losing.
 The same goes for a tenant provisioning in bulk who hits `429
 mailbox_creates_per_day`. That is the create VELOCITY bound (per rolling 24h),
 not the `--max-mailboxes` ceiling, and it drains on its own; raise it for that
-one account rather than the platform-wide var:
+one account rather than for everyone on its plan:
 
 ```sh
 openemail accounts update 01JARQ00000000000000000001 --mailbox-creates-per-day 500
 openemail accounts update 01JARQ00000000000000000001 --address-creates-per-day 2000 --domain-creates-per-day 50
 ```
 
-Vetting the account to the trusted preset stamps all three as well, so an
-override here lasts until the next preset is applied.
+A tenant that hits `403 mailbox_limit_reached` is at the ceiling itself: the
+mailboxes the account may hold across all its domains. It takes the same words,
+a number, `unlimited` (0, no limit) or `default` for the plan's number, and
+`accounts get` shows a 0 ceiling as `unlimited`:
+
+```sh
+openemail accounts update 01JARQ00000000000000000001 --max-mailboxes 500
+openemail accounts update 01JARQ00000000000000000001 --max-mailboxes unlimited
+```
+
+Vetting the account stamps all of these from its new plan, but a number set
+here is the account's agreed limit and stands through the vet; `default` hands
+it back to the plan. Until an account is vetted, core accepts a cut but refuses
+a raise above the new accounts' numbers (`409 account_not_vetted`).
 
 Two independent choices: **scope** (how much) and **mode** (how permanent).
 

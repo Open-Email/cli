@@ -598,7 +598,7 @@ func accountsDesc() resourceDesc {
 					name += " [PAUSED]"
 				}
 				rows[i] = rowData{
-					cells: []string{a.ID, name, int64Or(a.MaxMailboxes, "default"), fmtEpoch(a.CreatedAt), accountActivityOr(a)},
+					cells: []string{a.ID, name, limitOr(a.MaxMailboxes, "—"), fmtEpoch(a.CreatedAt), accountActivityOr(a)},
 					item:  a,
 				}
 			}
@@ -617,11 +617,13 @@ func accountsDesc() resourceDesc {
 				{k: "id", v: a.ID},
 				{k: "name", v: a.Name},
 				{k: "sending", v: sending},
-				// Three states, not two: "platform default" is not "unlimited",
-				// and it may well be the tightest bound in play.
-				{k: "messages/day", v: sendCapOr(a.SendMsgsPerDay)},
-				{k: "recipients/day", v: sendCapOr(a.SendRcptsPerDay)},
-				{k: "max mailboxes", v: int64Or(a.MaxMailboxes, "default")},
+				// Three states, not two: the account's own numbers, stamped from
+				// its plan, where 0 is no limit and reads "unlimited". A column
+				// with no number ("not set", only a purged account's row) is not
+				// "unlimited", and must not read as it.
+				{k: "messages/day", v: limitOr(a.SendMsgsPerDay, "not set")},
+				{k: "recipients/day", v: limitOr(a.SendRcptsPerDay, "not set")},
+				{k: "max mailboxes", v: limitOr(a.MaxMailboxes, "not set")},
 				// The rest of the plan. Shown here rather than only in the edit
 				// form because the question "what tier is this account on" is
 				// asked far more often than it is changed, and answering it from

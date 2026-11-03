@@ -197,20 +197,40 @@ func fmtQuota(b *int64) string {
 	return fmtBytes(*b)
 }
 
-// fmtSendCap renders a send-allowance cap, which has THREE states where a
-// quota has two — and conflating any pair of them misreports the bound:
+// fmtSendCap renders a MAILBOX's own send-allowance cap, which has THREE states
+// where a quota has two — and conflating any pair of them misreports the bound:
 //
-//	nil → no override on this mailbox, so the platform default applies. NOT
-//	      the same as unlimited, and reading it that way is the dangerous
-//	      direction (it reports a bounded mailbox as unbounded).
+//	nil → no override on this mailbox, so its account's mailbox default
+//	      applies. NOT the same as unlimited, and reading it that way is the
+//	      dangerous direction (it reports a bounded mailbox as unbounded).
 //	0   → explicitly unlimited, deliberately asked for.
 //	n   → that many per rolling 24h.
 //
-// The platform default is not visible from a mailbox row — `send-usage`
-// reports the number actually in force.
+// The account's number is not visible from a mailbox row — `accounts get`
+// shows the account's mailbox defaults, and `send-usage` reports the number
+// actually in force. An account's own limits render through limitOr instead,
+// because there nil means something else.
 func fmtSendCap(n *int64) string {
 	if n == nil {
-		return "platform default"
+		return "account's mailbox default"
+	}
+	if *n == 0 {
+		return "unlimited"
+	}
+	return strconv.FormatInt(*n, 10)
+}
+
+// limitOr renders one of an ACCOUNT's own limit columns (a send or receive cap,
+// a create velocity, the mailbox ceiling, the template ceiling). Core stamps
+// every one of them from the account's plan (migration 0157), so a live account
+// holds a number, and 0 is no limit: "unlimited", never a bare "0", which reads
+// as a ceiling of nothing. A nil column holds no number at all — only a purged
+// account's row still shows one — and renders as `unset` ("—" in a list cell,
+// "not set" in a detail table), never as unlimited: a column with nothing in it
+// is not a bound anyone lifted.
+func limitOr(n *int64, unset string) string {
+	if n == nil {
+		return unset
 	}
 	if *n == 0 {
 		return "unlimited"

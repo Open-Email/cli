@@ -673,7 +673,7 @@ func TestAccountsUpdateSetsTheTemplateCeilingAndNoticeLanguage(t *testing.T) {
 		want string
 	}{
 		{[]string{"--max-mail-templates", "5"}, `{"maxMailTemplates":5}`},
-		// 0 is core's unlimited; null is the platform default.
+		// 0 is core's unlimited; null follows the account's plan.
 		{[]string{"--max-mail-templates", "unlimited"}, `{"maxMailTemplates":0}`},
 		{[]string{"--max-mail-templates", "default"}, `{"maxMailTemplates":null}`},
 		{[]string{"--notice-language", "DE-at"}, `{"noticeLanguage":"de-at"}`},
@@ -724,7 +724,7 @@ func TestAccountsGetShowsTheTemplateCeilingAndNoticeLanguage(t *testing.T) {
 
 func TestFmtTemplateCeilingNamesTheThreeStates(t *testing.T) {
 	five, zero := int64(5), int64(0)
-	if got := fmtTemplateCeiling(nil); got != "platform default" {
+	if got := fmtTemplateCeiling(nil); got != "not set" {
 		t.Errorf("nil = %q", got)
 	}
 	if got := fmtTemplateCeiling(&zero); got != "unlimited" {

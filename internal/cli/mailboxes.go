@@ -514,13 +514,20 @@ func parseSemanticFloorFlag(s string) (int64, error) {
 }
 
 // parseSendCapFlag parses a --send-*-per-day value into the three states core
-// distinguishes: "default" → nil (drop the override, inherit the platform
-// number), "unlimited" → 0, a non-negative integer → itself.
+// distinguishes: "default" → nil (drop the override), "unlimited" → 0, a
+// non-negative integer → itself.
+//
+// What dropping the override hands the cap back to depends on whose cap it is.
+// On a MAILBOX (`mailboxes update`), the mailbox's own number goes and its
+// account's mailbox default applies. On an ACCOUNT (`accounts update` reuses
+// this for its count caps, and for the mailbox ceiling via
+// parseMaxMailboxesFlag), the operator's agreed number goes and the account
+// follows its plan's number again.
 //
 // "default" and "unlimited" are deliberately different words. On quota they
 // would mean the same thing, which is exactly why the cap flags cannot reuse
 // parseQuotaFlag: there, null IS unlimited; here, null is "whatever the
-// platform says" and could be the tightest bound in play.
+// account (or its plan) says" and could be the tightest bound in play.
 func parseSendCapFlag(s string) (*int64, error) {
 	t := strings.ToLower(strings.TrimSpace(s))
 	switch t {
@@ -705,8 +712,8 @@ func printMailbox(w io.Writer, p *Printer, m *coreapi.Mailbox) {
 		rows = append(rows, []string{"Suspended", fmtSuspension(m)})
 	}
 	// The caps are shown only when this mailbox overrides them. On the common
-	// mailbox both read "platform default", which is two rows of noise saying
-	// nothing — and would bury the Sending row that does say something.
+	// mailbox both read "account's mailbox default", which is two rows of noise
+	// saying nothing — and would bury the Sending row that does say something.
 	if m.SendMsgsPerDay != nil || m.SendRcptsPerDay != nil {
 		rows = append(rows,
 			[]string{"  msgs/day", fmtSendCap(m.SendMsgsPerDay)},

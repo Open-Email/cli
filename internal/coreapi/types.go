@@ -77,9 +77,12 @@ type Account struct {
 	// BillingTier is what the billing tool sold the account ("free" | "pro"),
 	// system-written. Not a limit: the numbers follow the vetted plan.
 	BillingTier string `json:"billingTier"`
-	// MaxMailboxes is how many mailboxes the account may HOLD. NIL = the
-	// platform default (MAX_MAILBOXES_DEFAULT), never unlimited: core has no
-	// unlimited value for this one (the column is positive-or-null).
+	// MaxMailboxes is how many mailboxes the account may HOLD: the account's
+	// own number, stamped from its plan (core migration 0157, which left Free
+	// and Pro accounts at 0), where 0 = no limit, like every other account
+	// limit. NIL is a column with no number — only a purged account's row
+	// still shows one — and never means unlimited. On a PATCH, null hands the
+	// ceiling back to the account's plan.
 	MaxMailboxes *int64 `json:"maxMailboxes"`
 	// VerificationToken is the value this account publishes in
 	// `_openemail.<domain>` TXT to claim a domain. Per-account and stable, so it
@@ -95,22 +98,25 @@ type Account struct {
 	// field, so there is no precedence to know. Egress only — a held account
 	// still receives its mail. System-writable only.
 	SendHold *string `json:"sendHold"`
-	// Account-tier daily caps. NIL = the platform default is in force; 0 =
-	// explicitly unlimited. Pointers because those are DIFFERENT states and
-	// collapsing them inverts the meaning in the direction that removes a bound.
+	// Account-tier daily caps: the account's own numbers, stamped from its
+	// plan (core migration 0157); 0 = explicitly unlimited. NIL is a column
+	// with no number (only a purged account's row still shows one); on a
+	// PATCH, null hands the cap back to the account's plan. Pointers because
+	// nil and 0 are DIFFERENT states and collapsing them inverts the meaning in
+	// the direction that removes a bound.
 	SendMsgsPerDay  *int64 `json:"sendMsgsPerDay"`
 	SendRcptsPerDay *int64 `json:"sendRcptsPerDay"`
 	// The BURST window (core migration 0047): the same two axes over one hour,
 	// same nil/0 spelling.
 	SendMsgsPerHour  *int64 `json:"sendMsgsPerHour"`
 	SendRcptsPerHour *int64 `json:"sendRcptsPerHour"`
-	// The inbound RECEIVE allowance (core migration 0048) — a platform
-	// backstop, not a plan axis: over it inbound is DEFERRED, never bounced.
+	// The inbound RECEIVE allowance (core migration 0048), a plan limit since
+	// core migration 0157: over it inbound is DEFERRED, never bounced.
 	RecvMsgsPerDay  *int64 `json:"recvMsgsPerDay"`
 	RecvBytesPerDay *int64 `json:"recvBytesPerDay"`
 	// The account's DEFAULTS for its mailboxes' send caps (core migration
-	// 0154): a mailbox's own override, then these, then the platform number.
-	// Same nil/0 spelling.
+	// 0154): a mailbox's own override wins, and every other mailbox gets these.
+	// Same nil/0 spelling, stamped from the plan like the caps above.
 	MailboxSendMsgsPerDay   *int64 `json:"mailboxSendMsgsPerDay"`
 	MailboxSendRcptsPerDay  *int64 `json:"mailboxSendRcptsPerDay"`
 	MailboxSendMsgsPerHour  *int64 `json:"mailboxSendMsgsPerHour"`
@@ -136,13 +142,14 @@ type Account struct {
 	// Plan is the service-class LABEL last applied (core migration 0050) —
 	// display and billing only; enforcement reads the stamped columns.
 	Plan *string `json:"plan"`
-	// StorageLimitBytes is the account storage pool: NIL = platform default,
-	// 0 = explicitly unlimited/metered.
+	// StorageLimitBytes is the account storage pool, the account's own number
+	// from its plan: 0 = explicitly unlimited/metered, NIL = no number (only a
+	// purged account's row).
 	StorageLimitBytes *int64 `json:"storageLimitBytes"`
 	// MaxMailTemplates is the ceiling on the account's stored mail templates
-	// (core templated-mail-design D1): NIL = the platform default, 0 =
-	// unlimited. The vetting presets set it (untrusted holds five, trusted
-	// lifts it to the default); over it, a create answers 409
+	// (core templated-mail-design D1): the account's own number, stamped from
+	// its plan (new accounts hold fewer than a vetted one), 0 = unlimited, NIL
+	// = no number (only a purged account's row); over it, a create answers 409
 	// template_limit_reached carrying the effective number. System-written.
 	MaxMailTemplates *int64 `json:"maxMailTemplates"`
 	// NoticeLanguage is the language platform mail about this account is
@@ -255,7 +262,8 @@ type Mailbox struct {
 	Ephemeral bool `json:"ephemeral"`
 	// Per-mailbox send policy. The caps are POINTERS because core distinguishes
 	// three states and a plain int64 can only carry two: null = no override, so
-	// the platform default applies; 0 = explicitly unlimited; n = that cap.
+	// its account's mailbox default applies; 0 = explicitly unlimited; n = that
+	// cap.
 	// Decoding null into 0 would read "inherit the default" as "unlimited",
 	// which is the one misreading that removes a bound instead of adding one.
 	// SendHold is the mailbox-scope operator enforcement: nil, "paused" (429
@@ -341,8 +349,8 @@ type Mailbox struct {
 type SendUsage struct {
 	Messages   int64 `json:"messages"`
 	Recipients int64 `json:"recipients"`
-	// The limits in force: the mailbox override if it has one, else the
-	// platform default. Null means that axis is not enforced at all.
+	// The limits in force: the mailbox override if it has one, else its
+	// account's mailbox default. Null means that axis is not enforced at all.
 	MsgsPerDay  *int64 `json:"msgsPerDay"`
 	RcptsPerDay *int64 `json:"rcptsPerDay"`
 	// The burst window (current + previous hourly bucket) and its limits.

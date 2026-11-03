@@ -13,13 +13,15 @@ import (
 
 // The account PLAN screen: every per-account governance knob in one form.
 //
-// Core deliberately has no plan concept — only these independent columns — so
-// "is this a paid account?" is answered by a dozen separate values that an
-// operator otherwise has to remember to set one at a time, from two different
-// commands, with no single place that shows the resulting tier. Half-provisioned
-// accounts are the predictable outcome: vanity hostnames granted while the send
-// caps stay at the platform default, or a storage pool raised on an account
-// still frozen. Showing them together is the point of this pane.
+// Core's plans (new accounts, Free, Pro) are not one switch on the account:
+// a plan is the set of numbers stamped into these independent columns (core
+// migration 0157), and each column then stands on its own. So "is this a paid
+// account?" is answered by a dozen separate values that an operator otherwise
+// has to remember to set one at a time, from two different commands, with no
+// single place that shows the resulting tier. Half-provisioned accounts are the
+// predictable outcome: vanity hostnames granted while the send caps stay at the
+// new accounts' numbers, or a storage pool raised on an account still frozen.
+// Showing them together is the point of this pane.
 //
 // Every field here is SYSTEM-ONLY at core (`PATCH /accounts/:accountId` refuses
 // a non-system principal on the handler's first line, before it reads the body),
@@ -28,7 +30,7 @@ import (
 
 // accountPlan is the form's raw text state. Strings rather than typed values
 // because every numeric field here has a THIRD state that no number expresses
-// ("platform default"), and huh edits text.
+// (blank: "follow the account's plan"), and huh edits text.
 type accountPlan struct {
 	name string
 	// sending mirrors core's own `sendHold` (nil | "paused" | "disabled") as
@@ -57,10 +59,13 @@ const (
 // edits a value rather than re-types a tier from memory.
 func planFromAccount(a coreapi.Account) accountPlan {
 	p := accountPlan{
-		name:         a.Name,
-		sending:      sendingEnabled,
-		vanityHosts:  a.VanityHosts,
-		maxMailboxes: int64Or(a.MaxMailboxes, ""),
+		name:        a.Name,
+		sending:     sendingEnabled,
+		vanityHosts: a.VanityHosts,
+		// The caps' own vocabulary, so a Free or Pro account's 0 (no limit)
+		// seeds "unlimited" and round-trips — seeded as a bare "0" it was a
+		// value the form then refused, which failed every edit on the account.
+		maxMailboxes: planCapText(a.MaxMailboxes),
 		msgsPerDay:   planCapText(a.SendMsgsPerDay),
 		rcptsPerDay:  planCapText(a.SendRcptsPerDay),
 		storage:      planBytesText(a.StorageLimitBytes),
@@ -80,8 +85,12 @@ func planFromAccount(a coreapi.Account) accountPlan {
 
 // planCapText renders a cap's three states in the SAME vocabulary the form
 // accepts back, so the value an operator sees is one they could have typed.
-// Empty means "platform default" — deliberately blank rather than the word, so
-// the common case of leaving a field alone looks like leaving it alone.
+// Core stamps a number into every limit column from the account's plan, so a
+// live account seeds a number, or "unlimited" for 0 (no limit). Blank is what a
+// column with nothing in it seeds — only a purged account's row still has one —
+// and what an operator types to hand the limit back to the account's plan.
+// Deliberately blank rather than a word, so leaving a field alone looks like
+// leaving it alone.
 func planCapText(p *int64) string {
 	switch {
 	case p == nil:
@@ -106,7 +115,14 @@ func planBytesText(p *int64) string {
 
 // parsePlanCap reads the three-state cap vocabulary the CLI's --send-*-per-day
 // flags already use (`internal/cli/mailboxes.go`), so the two surfaces cannot
-// disagree about what "default" means. nil = platform default; 0 = unlimited.
+// disagree about what "default" means. nil = follow the account's plan (core
+// drops the operator's agreed number for that limit, the same as naming it in
+// clearLimitOverrides); 0 = unlimited.
+//
+// Max mailboxes reads it too. It used to be the one two-state cap (a positive
+// number or null, with no way to say "unlimited"), until core moved the plan
+// limits into the database (migration 0157): now 0 is no limit on it like on
+// every other cap, and the migration left Free and Pro accounts at exactly that.
 func parsePlanCap(field, s string) (*int64, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "default":
@@ -117,7 +133,7 @@ func parsePlanCap(field, s string) (*int64, error) {
 	}
 	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 	if err != nil || n < 0 {
-		return nil, fmt.Errorf("%s: expected a non-negative number, 'unlimited', or blank for the platform default", field)
+		return nil, fmt.Errorf("%s: expected a non-negative number, 'unlimited', or blank to follow the account's plan", field)
 	}
 	return &n, nil
 }
@@ -135,25 +151,6 @@ func parsePlanBytes(field, s string) (*int64, error) {
 	n, err := parseBytes(s)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", field, err)
-	}
-	return &n, nil
-}
-
-// parsePlanMailboxCap is the TWO-state one: a positive number, or blank for
-// the platform default (core reads a null maxMailboxes as
-// MAX_MAILBOXES_DEFAULT). Unlike the caps above there is no unlimited value —
-// core's column is `.positive()` — so 'unlimited' is refused rather than
-// quietly sent as null, which would set the platform default instead.
-func parsePlanMailboxCap(s string) (*int64, error) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "", "default":
-		return nil, nil
-	case "unlimited", "none":
-		return nil, fmt.Errorf("max mailboxes: core has no unlimited value; enter a number, or blank for the platform default")
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-	if err != nil || n < 1 {
-		return nil, fmt.Errorf("max mailboxes: expected a positive number, or blank for the platform default")
 	}
 	return &n, nil
 }
@@ -202,7 +199,8 @@ func accountPlanPatch(cur coreapi.Account, p accountPlan) (map[string]any, error
 		patch["vanityHosts"] = p.vanityHosts
 	}
 
-	maxMbx, err := parsePlanMailboxCap(p.maxMailboxes)
+	// The caps' three states: blank follows the plan, 'unlimited' is 0.
+	maxMbx, err := parsePlanCap("max mailboxes", p.maxMailboxes)
 	if err != nil {
 		return nil, err
 	}
@@ -303,19 +301,19 @@ func accountPlanFormPane(ctx context.Context, ui *Options, cur coreapi.Account) 
 					"may this account claim its own mail./smtp./webmail./dav. names — the paid-plan gate; turning it off never revokes hostnames already serving clients",
 					&p.vanityHosts),
 				huh.NewInput().Title("Max mailboxes").Value(&p.maxMailboxes).
-					Description("blank = platform default · or a positive number (there is no unlimited)"),
+					Description("blank = follow the account's plan · 'unlimited' · or a number (mailboxes it may hold, across every domain)"),
 				huh.NewInput().Title("Messages/day").Value(&p.msgsPerDay).
-					Description("blank = platform default · 'unlimited' · or a number (account-wide, across every mailbox)"),
+					Description("blank = follow the account's plan · 'unlimited' · or a number (account-wide, across every mailbox)"),
 				huh.NewInput().Title("Recipients/day").Value(&p.rcptsPerDay).
-					Description("blank = platform default · 'unlimited' · or a number"),
+					Description("blank = follow the account's plan · 'unlimited' · or a number"),
 				huh.NewInput().Title("Mailbox creates/day").Value(&p.mailboxCreates).
-					Description("blank = platform default · 'unlimited' · or a number (per rolling 24h — velocity, not the max-mailboxes ceiling)"),
+					Description("blank = follow the account's plan · 'unlimited' · or a number (per rolling 24h — velocity, not the max-mailboxes ceiling)"),
 				huh.NewInput().Title("Address creates/day").Value(&p.addressCreates).
-					Description("blank = platform default · 'unlimited' · or a number"),
+					Description("blank = follow the account's plan · 'unlimited' · or a number"),
 				huh.NewInput().Title("Domain creates/day").Value(&p.domainCreates).
-					Description("blank = platform default · 'unlimited' · or a number"),
+					Description("blank = follow the account's plan · 'unlimited' · or a number"),
 				huh.NewInput().Title("Storage pool").Value(&p.storage).
-					Description("blank = platform default · 'unlimited' (metered) · or a size like 50G"),
+					Description("blank = follow the account's plan · 'unlimited' (metered) · or a size like 50G"),
 			))
 		},
 		submit: func(sctx context.Context, c *coreapi.Client) (string, pane, error) {

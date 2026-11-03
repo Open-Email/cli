@@ -103,14 +103,16 @@ func (c *Client) CreateAccount(ctx context.Context, name string, maxMailboxes *i
 	return &out, nil
 }
 
-// UpdateAccount applies a partial patch (name, maxMailboxes, sendDisabled).
+// UpdateAccount applies a partial patch (name, the plan limits such as
+// maxMailboxes, sendHold, the gates).
 //
 // SYSTEM-ONLY in full — every field on it is an operator control over a tenant,
 // so unlike the mailbox patch there is no per-field guard: an account able to
 // clear its own freeze does not have one.
 //
 // The patch is a map for the same reason UpdateMailbox's is: an explicit null
-// maxMailboxes (back to the platform default) must stay distinguishable from an omitted one
+// limit (drop the operator's agreed number and follow the account's plan
+// again, core migration 0157) must stay distinguishable from an omitted one
 // (leave unchanged), and a struct with `omitempty` collapses both to "absent".
 func (c *Client) UpdateAccount(ctx context.Context, accountID string, patch map[string]any) (*Account, error) {
 	var out Account

@@ -1,6 +1,10 @@
 package tui
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -41,13 +45,13 @@ func TestAccountPlanPatchSendsOnlyChanges(t *testing.T) {
 }
 
 // The three cap states are distinct and none of them may collapse into another:
-// nil is the platform default, 0 is unlimited, and on a cap those are opposite
-// answers rather than synonyms.
+// nil follows the account's plan, 0 is unlimited, and on a cap those are
+// opposite answers rather than synonyms.
 func TestAccountPlanPatchCapStates(t *testing.T) {
 	cur := baseAccount()
 	cur.SendMsgsPerDay = i64(500)
 
-	// 500 -> platform default (blank)
+	// 500 -> follow the account's plan (blank)
 	p := planFromAccount(cur)
 	p.msgsPerDay = ""
 	patch, err := accountPlanPatch(cur, p)
@@ -56,10 +60,10 @@ func TestAccountPlanPatchCapStates(t *testing.T) {
 	}
 	v, ok := patch["sendMsgsPerDay"]
 	if !ok {
-		t.Fatal("clearing a cap to the platform default must be sent")
+		t.Fatal("handing a cap back to the plan must be sent")
 	}
 	if ptr, _ := v.(*int64); ptr != nil {
-		t.Fatalf("blank must mean null (platform default), got %v", *ptr)
+		t.Fatalf("blank must mean null (follow the plan), got %v", *ptr)
 	}
 
 	// 500 -> unlimited (0), which is NOT the same as the default above
@@ -85,10 +89,12 @@ func TestAccountPlanPatchCapStates(t *testing.T) {
 	}
 }
 
-// maxMailboxes has TWO states, not three: a positive number, or nil for the
-// platform default (core reads it as MAX_MAILBOXES_DEFAULT). There is no
-// unlimited value, so the word is refused rather than sent as null.
-func TestAccountPlanPatchMailboxCapIsTwoState(t *testing.T) {
+// maxMailboxes has the caps' THREE states (core migration 0157): a number, 0
+// for no limit, or nil to follow the account's plan. It used to have two, and
+// refused 0 and 'unlimited' — which broke every plan edit on a Free or Pro
+// account: the migration leaves them at 0, the form seeded "0", and then
+// refused its own seed whatever field the operator had actually changed.
+func TestAccountPlanPatchMailboxCapIsThreeState(t *testing.T) {
 	cur := baseAccount()
 	cur.MaxMailboxes = i64(50)
 	p := planFromAccount(cur)
@@ -102,20 +108,88 @@ func TestAccountPlanPatchMailboxCapIsTwoState(t *testing.T) {
 	}
 	ptr, ok := patch["maxMailboxes"].(*int64)
 	if !ok || ptr != nil {
-		t.Fatalf("blank max mailboxes must mean the platform default (null), got %v", patch["maxMailboxes"])
+		t.Fatalf("blank max mailboxes must mean null (follow the plan), got %v", patch["maxMailboxes"])
 	}
 
-	for _, bad := range []string{"unlimited", "0"} {
-		p.maxMailboxes = bad
-		if _, err := accountPlanPatch(cur, p); err == nil {
-			t.Fatalf("max mailboxes %q must be refused: core has no unlimited value and 0 is a 400", bad)
+	// No limit is 0 on the wire however it is spelled — never null, which
+	// would hand the ceiling to the plan instead.
+	for _, word := range []string{"unlimited", "none", "0"} {
+		p.maxMailboxes = word
+		patch, err := accountPlanPatch(cur, p)
+		if err != nil {
+			t.Fatalf("max mailboxes %q: unexpected error: %v", word, err)
+		}
+		if ptr, _ := patch["maxMailboxes"].(*int64); ptr == nil || *ptr != 0 {
+			t.Fatalf("max mailboxes %q must send 0 (no limit), got %v", word, patch["maxMailboxes"])
 		}
 	}
 
-	// And an account on the platform default seeds blank, so it round-trips.
+	// A Free or Pro account's 0 seeds "unlimited" and round-trips clean, so
+	// an edit to any OTHER field goes through and leaves the ceiling alone.
+	cur.MaxMailboxes = i64(0)
+	p = planFromAccount(cur)
+	if p.maxMailboxes != "unlimited" {
+		t.Fatalf("a 0 ceiling must seed 'unlimited', got %q", p.maxMailboxes)
+	}
+	p.msgsPerDay = "100"
+	patch, err = accountPlanPatch(cur, p)
+	if err != nil {
+		t.Fatalf("an edit on an account with no mailbox limit must not fail: %v", err)
+	}
+	if _, ok := patch["maxMailboxes"]; ok || len(patch) != 1 {
+		t.Fatalf("want only sendMsgsPerDay, got %v", patch)
+	}
+
+	// And a column with no number (only a purged account's row) seeds blank,
+	// so it round-trips too.
 	cur.MaxMailboxes = nil
 	if got := planFromAccount(cur).maxMailboxes; got != "" {
-		t.Fatalf("the platform default must seed blank, got %q", got)
+		t.Fatalf("a null ceiling must seed blank, got %q", got)
+	}
+	if patch, err := accountPlanPatch(cur, planFromAccount(cur)); err != nil || len(patch) != 0 {
+		t.Fatalf("an untouched null ceiling must round-trip clean, got %v (%v)", patch, err)
+	}
+}
+
+// parsePlanCap is the one vocabulary every cap in the plan form reads, and the
+// new-account form's max mailboxes with it: blank or 'default' follows the
+// account's plan (nil), 'unlimited' or 'none' is 0, a non-negative number is
+// itself. A bad value names the field and says what blank means.
+func TestParsePlanCap(t *testing.T) {
+	for _, tc := range []struct {
+		in      string
+		want    *int64 // nil = JSON null = follow the account's plan
+		wantErr bool
+	}{
+		{in: "", want: nil},
+		{in: "  ", want: nil},
+		{in: "default", want: nil},
+		{in: "DEFAULT", want: nil},
+		{in: "unlimited", want: i64(0)},
+		{in: "None", want: i64(0)},
+		{in: "0", want: i64(0)}, // the wire form of no limit, spelled directly
+		{in: "50", want: i64(50)},
+		{in: " 50 ", want: i64(50)},
+		{in: "-1", wantErr: true},
+		{in: "lots", wantErr: true},
+		{in: "1.5", wantErr: true},
+	} {
+		got, err := parsePlanCap("max mailboxes", tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("parsePlanCap(%q): expected an error, got %q", tc.in, planCapText(got))
+			} else if msg := err.Error(); !strings.Contains(msg, "max mailboxes") || !strings.Contains(msg, "account's plan") {
+				t.Errorf("parsePlanCap(%q): error %q must name the field and say blank follows the account's plan", tc.in, msg)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parsePlanCap(%q): unexpected error %v", tc.in, err)
+			continue
+		}
+		if !int64PtrEq(got, tc.want) {
+			t.Errorf("parsePlanCap(%q) = %q; want %q", tc.in, planCapText(got), planCapText(tc.want))
+		}
 	}
 }
 
@@ -185,6 +259,7 @@ func TestAccountPlanRejectsBadInput(t *testing.T) {
 		{"words in a cap", "msgs", "lots"},
 		{"bad size", "storage", "50 bananas"},
 		{"negative mailboxes", "maxmbx", "-3"},
+		{"words in mailboxes", "maxmbx", "lots"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := planFromAccount(cur)
@@ -244,7 +319,7 @@ func TestAccountPlanPatchCreateVelocity(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if v, ok := patch["mailboxCreatesPerDay"]; !ok || v.(*int64) != nil {
-		t.Fatalf("blank must send null (platform default), got %v", patch)
+		t.Fatalf("blank must send null (follow the plan), got %v", patch)
 	}
 	if v, _ := patch["domainCreatesPerDay"].(*int64); v == nil || *v != 20 {
 		t.Fatalf("want domainCreatesPerDay 20, got %v", patch["domainCreatesPerDay"])
@@ -259,5 +334,44 @@ func TestAccountPlanPatchCreateVelocity(t *testing.T) {
 	p.addressCreates = "-1"
 	if _, err := accountPlanPatch(cur, p); err == nil || !strings.Contains(err.Error(), "address creates/day") {
 		t.Fatalf("want an error naming address creates/day, got %v", err)
+	}
+}
+
+// The accounts screen shows the mailbox ceiling in the same three states: 0 is
+// no limit and reads "unlimited" (a bare "0" reads as a ceiling of nothing),
+// and a column with no number — only a purged account's row — is a dash in the
+// list and "not set" in the detail, never "unlimited".
+func TestAccountsScreenShowsTheMailboxCapStates(t *testing.T) {
+	for _, tc := range []struct {
+		name, field, cell, detail string
+	}{
+		{"no limit", `"maxMailboxes":0`, "unlimited", "unlimited"},
+		{"a number", `"maxMailboxes":25`, "25", "25"},
+		{"no number", `"maxMailboxes":null`, "—", "not set"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"accounts":[{"id":"id1","name":"Acme",%s,"sendMsgsPerDay":0}]}`, tc.field)
+			}))
+			defer srv.Close()
+			desc := accountsDesc()
+			rows, _, err := desc.fetch(context.Background(), newTestClient(t, srv.URL), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 || rows[0].cells[2] != tc.cell {
+				t.Fatalf("list = %+v, want max mailboxes %q", rows, tc.cell)
+			}
+			got := map[string]string{}
+			for _, kv := range desc.detail(rows[0].item) {
+				got[kv.k] = kv.v
+			}
+			if got["max mailboxes"] != tc.detail {
+				t.Errorf("detail max mailboxes = %q, want %q", got["max mailboxes"], tc.detail)
+			}
+			if got["messages/day"] != "unlimited" || got["recipients/day"] != "not set" {
+				t.Errorf("detail caps = %q / %q, want unlimited / not set", got["messages/day"], got["recipients/day"])
+			}
+		})
 	}
 }

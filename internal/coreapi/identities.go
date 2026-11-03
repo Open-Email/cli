@@ -22,8 +22,8 @@ type Identity struct {
 	Ephemeral bool `json:"ephemeral"`
 	// Per-mailbox send policy (always present; the Identity component composes
 	// the Mailbox schema).
-	// Pointers for the reason Mailbox's copies are: null = the platform default
-	// applies, 0 = explicitly unlimited.
+	// Pointers for the reason Mailbox's copies are: null = no override of its
+	// own, so its account's mailbox default applies; 0 = explicitly unlimited.
 	SendHold         *string `json:"sendHold"`
 	SendMsgsPerDay   *int64  `json:"sendMsgsPerDay"`
 	SendRcptsPerDay  *int64  `json:"sendRcptsPerDay"`
