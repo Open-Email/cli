@@ -11661,6 +11661,98 @@
         ],
         "type": "object"
       },
+      "ReceiverByDomain": {
+        "properties": {
+          "accountId": {
+            "description": "The owning account from the live registration (null for a platform domain), else the deletion tombstone when unregistered, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "description": "Bytes of the received messages",
+            "format": "int64",
+            "type": "integer"
+          },
+          "domain": {
+            "description": "The receiving domain (the traffic log's canonical local-party domain)",
+            "type": "string"
+          },
+          "received": {
+            "description": "Messages delivered to this receiver in the window, counted as daily usage counts an inbound delivery (each stored copy, a Sieve discard or redirect, an admission to a webhook or forward route) — sampled estimate",
+            "format": "int64",
+            "type": "integer"
+          },
+          "refused": {
+            "description": "Messages refused on the way in: the MX's refusals at DATA and bounces at the receiving door, a hosted recipient's routed refusal of a platform-internal send included (pre-route internal-send misses carry no route kind and stay in sender failed). New temporary DATA failures and failed optional forward taps are excluded. Historical MX deferrals and blocked forward-tap copies remain indistinguishable from permanent primary refusals in this dataset",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domain",
+          "accountId",
+          "received",
+          "refused",
+          "bytes"
+        ],
+        "type": "object"
+      },
+      "ReceiverByMailbox": {
+        "properties": {
+          "accountId": {
+            "description": "The owning account retained by the identity home, including after deletion; null for a platform identity or an unknown home",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "description": "Its primary address now, or null when the directory no longer knows the id (deleted since)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "description": "Bytes of the received messages",
+            "format": "int64",
+            "type": "integer"
+          },
+          "domain": {
+            "description": "The domain of that address, or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mailboxId": {
+            "description": "The receiving mailbox's ULID, as the traffic log recorded it",
+            "type": "string"
+          },
+          "received": {
+            "description": "Messages delivered to this receiver in the window, counted as daily usage counts an inbound delivery (each stored copy, a Sieve discard or redirect, an admission to a webhook or forward route) — sampled estimate",
+            "format": "int64",
+            "type": "integer"
+          },
+          "refused": {
+            "description": "Receiver refusals whose traffic row carries this mailbox id. MX DATA refusals and door refusals decided before mailbox attribution appear only in byDomain/platform; historical blocked-tap rows may still count",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mailboxId",
+          "address",
+          "domain",
+          "accountId",
+          "received",
+          "refused",
+          "bytes"
+        ],
+        "type": "object"
+      },
       "RecipientAccepted": {
         "properties": {
           "accepted": {
@@ -13822,14 +13914,14 @@
       "SenderByDomain": {
         "properties": {
           "accountId": {
-            "description": "The owning account — the live row, else the deletion tombstone — or null",
+            "description": "The owning account from the live registration (null for a platform domain), else the deletion tombstone when unregistered, or null",
             "type": [
               "string",
               "null"
             ]
           },
           "bytes": {
-            "description": "Bytes submitted (counted once per submission, not per relay leg)",
+            "description": "Bytes of accepted recipient legs, counted at acceptance without adding their relay-success bytes again",
             "format": "int64",
             "type": "integer"
           },
@@ -13838,12 +13930,12 @@
             "type": "string"
           },
           "failed": {
-            "description": "Refused at submission, refused by the remote MX, or bounced — either leg",
+            "description": "Refusals on the sender's submission or external relay leg; forwards, platform notices and hosted recipients' routed refusals excluded (pre-route internal-send misses carry no route kind and still count under the recipient domain)",
             "format": "int64",
             "type": "integer"
           },
           "relayed": {
-            "description": "Relay legs the remote MX accepted",
+            "description": "External recipient legs of this sender accepted by the remote MX; forwards and platform notices excluded",
             "format": "int64",
             "type": "integer"
           },
@@ -13866,7 +13958,7 @@
       "SenderByMailbox": {
         "properties": {
           "accountId": {
-            "description": "The owning account, or null when unknown",
+            "description": "The owning account retained by the identity home, including after deletion; null for a platform identity or an unknown home",
             "type": [
               "string",
               "null"
@@ -13880,7 +13972,7 @@
             ]
           },
           "bytes": {
-            "description": "Bytes submitted (counted once per submission, not per relay leg)",
+            "description": "Bytes of accepted recipient legs, counted at acceptance without adding their relay-success bytes again",
             "format": "int64",
             "type": "integer"
           },
@@ -13892,7 +13984,7 @@
             ]
           },
           "failed": {
-            "description": "Refused at submission, refused by the remote MX, or bounced — either leg",
+            "description": "Sender refusals whose traffic row carries this mailbox id. Submission gates often write only a domain, so those refusals appear only in byDomain/platform",
             "format": "int64",
             "type": "integer"
           },
@@ -13901,7 +13993,7 @@
             "type": "string"
           },
           "relayed": {
-            "description": "Relay legs the remote MX accepted",
+            "description": "External recipient legs of this sender accepted by the remote MX; forwards and platform notices excluded",
             "format": "int64",
             "type": "integer"
           },
@@ -14805,6 +14897,76 @@
         ],
         "type": "object"
       },
+      "SystemReceivers": {
+        "properties": {
+          "byDomain": {
+            "description": "Domains ranked by messages received, most first, ties by messages refused",
+            "items": {
+              "$ref": "#/components/schemas/ReceiverByDomain"
+            },
+            "type": "array"
+          },
+          "byMailbox": {
+            "description": "Mailboxes ranked by messages received, most first, ties by messages refused",
+            "items": {
+              "$ref": "#/components/schemas/ReceiverByMailbox"
+            },
+            "type": "array"
+          },
+          "estimated": {
+            "description": "Always true: the source is the sampled Analytics Engine aggregate",
+            "type": "boolean"
+          },
+          "platform": {
+            "description": "Deployment-wide totals for the window, from the domain fold",
+            "properties": {
+              "bytes": {
+                "description": "Bytes of the received messages",
+                "format": "int64",
+                "type": "integer"
+              },
+              "received": {
+                "description": "Messages delivered to this receiver in the window, counted as daily usage counts an inbound delivery (each stored copy, a Sieve discard or redirect, an admission to a webhook or forward route) — sampled estimate",
+                "format": "int64",
+                "type": "integer"
+              },
+              "refused": {
+                "description": "Messages refused on the way in: the MX's refusals at DATA and bounces at the receiving door, a hosted recipient's routed refusal of a platform-internal send included (pre-route internal-send misses carry no route kind and stay in sender failed). New temporary DATA failures and failed optional forward taps are excluded. Historical MX deferrals and blocked forward-tap copies remain indistinguishable from permanent primary refusals in this dataset",
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "received",
+              "refused",
+              "bytes"
+            ],
+            "type": "object"
+          },
+          "range": {
+            "description": "Time range queried",
+            "type": "string"
+          },
+          "retentionDays": {
+            "description": "Analytics retention window in days",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "True when counted traffic groups hit the query's row bound. Rankings and platform totals may be incomplete; narrow the range.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "range",
+          "estimated",
+          "retentionDays",
+          "truncated",
+          "platform",
+          "byMailbox",
+          "byDomain"
+        ],
+        "type": "object"
+      },
       "SystemRelayIps": {
         "properties": {
           "ips": {
@@ -15073,17 +15235,17 @@
             "description": "Deployment-wide totals for the window, from the domain fold",
             "properties": {
               "bytes": {
-                "description": "Bytes submitted (counted once per submission, not per relay leg)",
+                "description": "Bytes of accepted recipient legs, counted at acceptance without adding their relay-success bytes again",
                 "format": "int64",
                 "type": "integer"
               },
               "failed": {
-                "description": "Refused at submission, refused by the remote MX, or bounced — either leg",
+                "description": "Refusals on the sender's submission or external relay leg; forwards, platform notices and hosted recipients' routed refusals excluded (pre-route internal-send misses carry no route kind and still count under the recipient domain)",
                 "format": "int64",
                 "type": "integer"
               },
               "relayed": {
-                "description": "Relay legs the remote MX accepted",
+                "description": "External recipient legs of this sender accepted by the remote MX; forwards and platform notices excluded",
                 "format": "int64",
                 "type": "integer"
               },
@@ -15110,7 +15272,7 @@
             "type": "integer"
           },
           "truncated": {
-            "description": "True when a grouped query hit its row bound, so senders past it were not folded and the ranking may be incomplete. Narrow the range.",
+            "description": "True when counted traffic groups hit the query's row bound. Rankings and platform totals may be incomplete; narrow the range.",
             "type": "boolean"
           }
         },
@@ -49223,7 +49385,7 @@
     },
     "/api/v1/deliver/reject": {
       "post": {
-        "description": "Records a message the inbound MTA refused in-session at DATA, so the recipient can see mail that was evaluated and destroyed rather than delivered — the enforce-mode spam rejection that otherwise leaves no trace anywhere. One traffic row is written per recipient (source `edge`, outcome `rejected`, the reason in `detail`). System credentials only. Advisory and best-effort: the MTA calls this after it has decided its SMTP reply, so a failure here costs a log row and never a delivery decision. Refusals that precede RCPT (no rDNS, DNSBL, per-IP rate limits) must NOT be reported: they have no tenant to belong to. Never billable — a refused message was not delivered.",
+        "description": "Records a message the inbound MTA refused in-session at DATA, so the recipient can see mail that was evaluated and destroyed rather than delivered — the enforce-mode spam rejection that otherwise leaves no trace anywhere. One traffic row is written per recipient (source `edge`, outcome `rejected` for a permanent refusal or `deferred` for SMTP 4xx; without a code, `spam_soft_reject` and `rate_limit` are deferred. The reason stays in `detail`). System credentials only. Advisory and best-effort: the MTA calls this after it has decided its SMTP reply, so a failure here costs a log row and never a delivery decision. Refusals that precede RCPT (no rDNS, DNSBL, per-IP rate limits) must NOT be reported: they have no tenant to belong to. Never billable — a refused message was not delivered.",
         "operationId": "post_DeliverReject",
         "requestBody": {
           "content": {
@@ -63227,6 +63389,119 @@
           }
         },
         "summary": "Rank outbound senders by volume (system only)",
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/v1/system/receivers": {
+      "get": {
+        "description": "Ranks mailboxes and domains by messages received over a window, counted as daily usage counts an inbound delivery, with what was refused on the way in and bytes — from the sampled Analytics Engine aggregate (90-day retention), joined to the directory for addresses and owning accounts. A lead, not a bill: the per-mailbox events stream is the exact drill-down.",
+        "operationId": "get_SystemReceiversGet",
+        "parameters": [
+          {
+            "description": "Time window ('1h', '6h', '24h', '7d', '30d')",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "description": "Time window ('1h', '6h', '24h', '7d', '30d')",
+              "enum": [
+                "1h",
+                "6h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows per ranking (default 25, max 200)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Rows per ranking (default 25, max 200)",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemReceivers"
+                }
+              }
+            },
+            "description": "Two rankings — by mailbox and by domain — plus platform totals"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed — unknown range or limit out of bounds"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_query_failed — upstream Analytics Engine error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "analytics_unavailable: no analytics token or account id configured. Or temporary_failure: the platform's storage could not answer just now; retry after the Retry-After window. Any operation can answer this. A write that got it may have been applied, so retry it with the same idempotency key where it takes one, or read the state back first (see Transient failures in the API description)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Rank inbound receivers by volume (system only)",
         "tags": [
           "System"
         ]
