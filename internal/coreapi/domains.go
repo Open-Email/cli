@@ -65,8 +65,9 @@ type Domain struct {
 	// the DNS checklist gains _caldavs._tcp/_carddavs._tcp SRV + TXT records
 	// pointing at the DAV gateway.
 	DAV bool `json:"dav"`
-	// ITIP: inbound iTIP auto-apply (core migration 0015) — arriving
-	// text/calendar invitations are filed into recipients' calendars.
+	// ITIP: inbound iTIP auto-apply (core migration 0015, on by default since
+	// 0159): arriving text/calendar invitations are filed into recipients'
+	// calendars, and the DAV gateway claims calendar-auto-schedule on it.
 	ITIP bool `json:"itip"`
 	// Subaddressing: whether `+` is a tag delimiter on the domain (core
 	// migration 0068, default true) — `alice+x@` reaches `alice@` and the
@@ -197,8 +198,9 @@ type DomainCreateInput struct {
 	DMARC        *bool   `json:"dmarc,omitempty"`
 	// The three per-domain capability opt-ins. JMAP and DAV add their RFC 6764 /
 	// RFC 8620 SRV records to the DNS checklist; ITIP turns on inbound
-	// auto-filing of calendar invitations, which is a WRITE path arriving mail
-	// can reach, hence off by default.
+	// auto-filing of calendar invitations, a WRITE path arriving mail can
+	// reach. Core has it on unless a create says false (since core migration
+	// 0159), so nil here means on.
 	JMAP *bool `json:"jmap,omitempty"`
 	DAV  *bool `json:"dav,omitempty"`
 	ITIP *bool `json:"itip,omitempty"`
