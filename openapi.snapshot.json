@@ -13544,6 +13544,23 @@
             "description": "Error message if sending failed",
             "type": "string"
           },
+          "list": {
+            "description": "On an address-list refusal: the sender's list that decided",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "On an address-list refusal: the entry that decided (`*@*` for a block-all)",
+            "type": "string"
+          },
+          "source": {
+            "description": "On 'recipient_not_permitted' or 'recipient_not_verified': which of the sender's own policies refused it, as on `SendRecipientResult`",
+            "enum": [
+              "permitted_recipients",
+              "address_list",
+              "verified_recipients"
+            ],
+            "type": "string"
+          },
           "status": {
             "description": "Delivery status ('delivered', 'queued', 'failed')",
             "type": "string"
@@ -44541,6 +44558,16 @@
               "description": "Message ULID identifier",
               "type": "string"
             }
+          },
+          {
+            "description": "Revalidation ETag from previous response",
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "description": "Revalidation ETag from previous response",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -44553,7 +44580,15 @@
                 }
               }
             },
-            "description": "Raw RFC 5322 message stream"
+            "description": "Raw RFC 5322 message stream",
+            "headers": {
+              "ETag": {
+                "description": "The stored blob's ETag; send it back as If-None-Match",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "304": {
             "description": "Not modified — If-None-Match matched the stored blob's ETag"
