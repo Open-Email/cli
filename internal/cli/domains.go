@@ -266,6 +266,7 @@ func newDomainDNSCmd(a *app) *cobra.Command {
 					a.out.Warnf("DNS could not be queried — liveness is unknown, not failing.")
 				}
 				printDNSRecords(w, a.out, res.Records, true)
+				printDNSFindings(w, res.Records)
 				if res.Cached {
 					a.out.Msgf("%s", a.out.Dim("Cached verdict; pass --force to re-query."))
 				}
@@ -602,6 +603,54 @@ func printDNSRecords(w io.Writer, p *Printer, records []coreapi.DNSRecordCheck, 
 	printTable(w, p, head, rows)
 }
 
+// dnsFindings says, for each record that does not answer but has something
+// published at its name, what DNS holds there instead. The LIVE column says
+// "no" alike for a record that is missing and for one that is wrong, and the
+// two need opposite fixes: publish the record, or change or delete what is
+// there. Two DMARC records are why this exists: receivers apply DMARC only
+// when a domain publishes exactly one (RFC 7489 §6.6.3), so with two neither
+// is in effect, and the fix is to delete all but one. Reading only the table,
+// a customer would publish the DMARC record and have three.
+//
+// Unknown liveness (`ok` absent: DNS could not be asked) and a record with
+// nothing published say nothing here: the table already says "?" or "no".
+//
+// Every value printed is the customer's own DNS text, so each is sanitized
+// like a table cell (sanitizeCell): a TXT record must not write escapes to the
+// terminal, nor break the line.
+func dnsFindings(records []coreapi.DNSRecordCheck) []string {
+	var lines []string
+	for _, r := range records {
+		if r.OK == nil || *r.OK || len(r.Found) == 0 {
+			continue
+		}
+		found := sanitizeCells(r.Found)
+		name, value := sanitizeCell(r.Name), sanitizeCell(r.Value)
+		if r.Kind == "dmarc" && len(found) > 1 {
+			lines = append(lines, fmt.Sprintf(
+				"%s publishes %d DMARC records (%s). Receivers apply DMARC only when there is exactly one, "+
+					"so none of them is in effect: delete all but one, or merge them into one: %s",
+				name, len(found), strings.Join(found, " | "), value))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s holds %s, not %s", name, strings.Join(found, " | "), value))
+	}
+	return lines
+}
+
+// printDNSFindings prints dnsFindings under a records table, one "!" line
+// each, and nothing at all when every record is live, missing or unknown.
+func printDNSFindings(w io.Writer, records []coreapi.DNSRecordCheck) {
+	lines := dnsFindings(records)
+	if len(lines) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	for _, line := range lines {
+		fmt.Fprintf(w, "! %s\n", line)
+	}
+}
+
 // printOnboardingNext tells the customer what is left. Sending is EARNED by
 // publishing the oe-bounce CNAME + both DKIM CNAMEs and re-running create — it
 // is not a flag they can set, so pointing at the records is the only honest
@@ -622,6 +671,7 @@ func printOnboardingNext(w io.Writer, p *Printer, d *coreapi.Domain, records []c
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Still to publish (re-run this command afterwards to activate sending):")
 	printDNSRecords(w, p, pending, true)
+	printDNSFindings(w, pending)
 }
 
 // receiveMode names what a "no" MEANS rather than printing a bare "no": a

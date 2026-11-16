@@ -17,7 +17,9 @@ openemail mailboxes use alice@example.com
 #    but your MX pointing at us.)
 openemail whoami                        # shows _openemail.<domain> TXT to publish
 openemail domains create example.com    # refuses with the record until it is live
-openemail domains dns example.com       # what is still missing, and what resolves
+openemail domains dns example.com       # what is still missing, what resolves, and what
+                                        # a wrong record holds instead (two DMARC records:
+                                        # receivers apply neither, so keep one)
 
 # 2. The mailbox — passing --address CLAIMS it: the address→mailbox route and
 #    the label are created atomically, so the mailbox receives mail from this
