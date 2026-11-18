@@ -102,7 +102,7 @@
             ]
           },
           "maxMailTemplates": {
-            "description": "Stored mail templates this account may hold (null = the platform default, MAX_MAIL_TEMPLATES_DEFAULT; 0 = unlimited)",
+            "description": "Stored mail templates this account may hold (null = the platform default; 0 = unlimited)",
             "format": "int64",
             "type": [
               "integer",
@@ -110,7 +110,7 @@
             ]
           },
           "maxMailboxes": {
-            "description": "Maximum allowed mailboxes (null = the platform default, MAX_MAILBOXES_DEFAULT)",
+            "description": "Maximum allowed mailboxes (null = the platform default)",
             "format": "int64",
             "type": [
               "integer",
@@ -265,7 +265,7 @@
             ]
           },
           "verifiedRecipientsOnly": {
-            "description": "True while the account may send only to its VERIFIED RECIPIENTS (GET /accounts/:accountId/verified-recipients): addresses on its own domains, and outside addresses whose owners confirmed them; any other outside recipient is refused 403 recipient_not_verified, that recipient alone. Stamped by the vetting label (`untrusted` on, `trusted` off; system-written, POST /accounts/:accountId/plan); false for an account never vetted either way",
+            "description": "True while the account may send only to its VERIFIED RECIPIENTS (GET /accounts/:accountId/verified-recipients): addresses on its own domains, and outside addresses whose owners confirmed them. An immediate send to any other outside recipient answers 207, with that recipient alone `failed` (recipient_not_verified) and the rest of the send going on; a send scheduled with `sendAt` answers 400 recipient_not_verified, naming the first such `address`. Stamped by the vetting label (`untrusted` on, `trusted` off; system-written, POST /accounts/:accountId/plan); false for an account never vetted either way",
             "type": "boolean"
           }
         },
@@ -469,7 +469,7 @@
             "type": "boolean"
           },
           "enforcement": {
-            "description": "Configured behavior of this threshold: enforced = exceeding it can trigger refusal; log_only = measured and logged without refusing; off = no threshold applies (`limit` is null). SEND_LIMITS_LOG_ONLY shadows the eight send/mailbox-send limits, the three creation limits and forwarding; RECV_LIMITS_LOG_ONLY shadows both receive limits; STORAGE_LIMITS_LOG_ONLY shadows the account storage pool. Only the exact flag value true enables shadow mode. maxMailboxes and maxMailTemplates remain enforced when finite. This describes limit configuration, not transient ledger health or other refusal checks",
+            "description": "Configured behavior of this threshold: enforced = exceeding it can trigger refusal; log_only = measured and logged without refusing; off = no threshold applies (`limit` is null). The platform switches log_only on by family: the eight send/mailbox-send limits, the three creation limits and forwarding together; both receive limits together; the account storage pool alone. maxMailboxes and maxMailTemplates remain enforced when finite. This describes limit configuration, not transient ledger health or other refusal checks",
             "enum": [
               "enforced",
               "log_only",
@@ -517,7 +517,7 @@
             "type": "string"
           },
           "limits": {
-            "description": "Every plan limit, keyed by its field name on GET and PATCH /accounts/:accountId, which describe what each bounds. Each NULL value follows its platform default: send* the ACCOUNT_SEND_* vars; mailboxSend* (the default for a mailbox with no override of its own, which comes first) the per-mailbox SEND_* vars; recvMsgsPerDay/recvBytesPerDay ACCOUNT_RECV_*; storageLimitBytes ACCOUNT_STORAGE_LIMIT_BYTES; maxMailboxes MAX_MAILBOXES_DEFAULT (no API stores 0 for it: positive or null; a row holding 0 anyway is a ceiling of zero, reported as limit 0, enforced, not as unlimited); mailboxCreatesPerDay, addressCreatesPerDay, domainCreatesPerDay MAX_{MAILBOX,ADDRESS,DOMAIN}_CREATES_PER_DAY and forwardMsgsPerDay FORWARD_MSGS_PER_DAY, each of which is also the limit's on switch; maxMailTemplates MAX_MAIL_TEMPLATES_DEFAULT, where a blank default is the built-in 50, so its limit is null only when unlimited. forwardMsgsPerDay is counted per domain: N domains get N x this",
+            "description": "Every plan limit, keyed by its field name on GET and PATCH /accounts/:accountId, which describe what each bounds. Each NULL value follows the platform's default for that limit; for mailboxSend* (the default for a mailbox with no override of its own, which comes first) that is the platform's per-mailbox send default, and for send* its account send default. maxMailboxes: no API stores 0 for it (positive or null); a row holding 0 anyway is a ceiling of zero, reported as limit 0, enforced, not as unlimited. mailboxCreatesPerDay, addressCreatesPerDay, domainCreatesPerDay and forwardMsgsPerDay: the platform default is also the limit's on switch, so with none set the limit is off. maxMailTemplates: a blank platform default is the built-in 50, so its limit is null only when unlimited. forwardMsgsPerDay is counted per domain: N domains get N x this",
             "properties": {
               "addressCreatesPerDay": {
                 "$ref": "#/components/schemas/AccountLimitInForce"
@@ -737,7 +737,7 @@
             ]
           },
           "mailboxShare": {
-            "description": "Fraction of each allowance one mailbox may draw alone (RECV_MAILBOX_SHARE); 1 = no per-mailbox level",
+            "description": "Fraction of each allowance one mailbox may draw alone, a platform setting; 1 = no per-mailbox level",
             "type": "number"
           },
           "messages": {
@@ -965,7 +965,7 @@
                 ]
               },
               "addressesPerDay": {
-                "description": "Maximum addresses allowed to be created per day (null = unenforced: the account's number is 0, or MAX_ADDRESS_CREATES_PER_DAY is blank, which switches the limit off)",
+                "description": "Maximum addresses allowed to be created per day (null = unenforced: the account's number is 0, or the platform sets no default for it, which switches the limit off)",
                 "format": "int64",
                 "type": [
                   "integer",
@@ -981,7 +981,7 @@
                 ]
               },
               "domainsPerDay": {
-                "description": "Maximum domains allowed to be onboarded per day (null = unenforced: the account's number is 0, or MAX_DOMAIN_CREATES_PER_DAY is blank, which switches the limit off)",
+                "description": "Maximum domains allowed to be onboarded per day (null = unenforced: the account's number is 0, or the platform sets no default for it, which switches the limit off)",
                 "format": "int64",
                 "type": [
                   "integer",
@@ -1618,7 +1618,7 @@
             "type": "integer"
           },
           "domains": {
-            "description": "The domains this key is scoped to (migration 0078), sorted; ABSENT for a key with full account authority. A scoped key reaches only these domains' directory and the mailboxes with an address on them; everything account-level answers 403 account_credentials_required. An EMPTY list is a stored scope core cannot read (a hand-edited row): that key refuses to authenticate, and this is where the listing says so — never folded into absent, which would show a dead key as the widest one.",
+            "description": "The domains this key is scoped to, sorted; ABSENT for a key with full account authority. A scoped key reaches only these domains' directory and the mailboxes with an address on them; everything account-level answers 403 account_credentials_required. An EMPTY list is a stored scope core cannot read (a hand-edited row): that key refuses to authenticate, and this is where the listing says so — never folded into absent, which would show a dead key as the widest one.",
             "items": {
               "type": "string"
             },
@@ -1637,7 +1637,7 @@
             ]
           },
           "idleTtlS": {
-            "description": "Seconds of disuse after which this key stops authenticating (migration 0051), or null for a key that never lapses. Measured from lastUsedAt, or from createdAt while no use has been recorded. Usage updates are best-effort and coalesced with a five-minute interval; this is not an end-to-end precision guarantee, and a key can lapse before idleTtlS has passed since its final successful request.",
+            "description": "Seconds of disuse after which this key stops authenticating, or null for a key that never lapses. Measured from lastUsedAt, or from createdAt while no use has been recorded. Usage updates are best-effort and coalesced with a five-minute interval; this is not an end-to-end precision guarantee, and a key can lapse before idleTtlS has passed since its final successful request.",
             "format": "int64",
             "type": [
               "integer",
@@ -1668,11 +1668,11 @@
             "type": "string"
           },
           "requireActing": {
-            "description": "System keys only (migration 0046): when true, mailbox-scoped requests made with this key must declare `X-Acting-Identity` or are refused `403 acting_required`. Set it on an INGRESS credential (a gateway or BFF acting for a logged-in user); never on an autonomous one (smtp-in, pop3-fetch, automation), which has no acting user.",
+            "description": "System keys only: when true, mailbox-scoped requests made with this key must declare `X-Acting-Identity` or are refused `403 acting_required`. Set it on an INGRESS credential (a gateway or BFF acting for a logged-in user); never on an autonomous one (smtp-in, pop3-fetch, automation), which has no acting user.",
             "type": "boolean"
           },
           "requireActingCredential": {
-            "description": "System keys only (migration 0081): when true, those same requests must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — so the credential's scope and recipient list survive being relayed under this key. It is also what lets `/auth/verify` hand this key a credential scoped below 'full': only a key that carries the header can honour a scope, and a session it would silently exceed must not open.",
+            "description": "System keys only: when true, those same requests must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — so the credential's scope and recipient list survive being relayed under this key. It is also what lets `/auth/verify` hand this key a credential scoped below 'full': only a key that carries the header can honour a scope, and a session it would silently exceed must not open.",
             "type": "boolean"
           },
           "revokedAt": {
@@ -4301,7 +4301,7 @@
             "type": "boolean"
           },
           "unicodeName": {
-            "description": "The Unicode presentation of the domain (D4): `domainToUnicode` of the stored A-label, equal to `domain` when it is pure ASCII. A display form only - never an identifier; DNS instructions and all routing use `domain`",
+            "description": "The Unicode presentation of the domain: `domainToUnicode` of the stored A-label, equal to `domain` when it is pure ASCII. A display form only - never an identifier; DNS instructions and all routing use `domain`",
             "type": "string"
           },
           "usageAt": {
@@ -4402,6 +4402,19 @@
           "brandName"
         ],
         "type": "object"
+      },
+      "DomainCreateError": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ValidationError"
+          },
+          {
+            "$ref": "#/components/schemas/DomainNotVerified"
+          },
+          {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        ]
       },
       "DomainDmarc": {
         "properties": {
@@ -4735,6 +4748,25 @@
           "domain",
           "canClaim",
           "hostnames"
+        ],
+        "type": "object"
+      },
+      "DomainNotVerified": {
+        "properties": {
+          "error": {
+            "description": "The ownership TXT is not visible yet: publish `record`, then call POST /domains again",
+            "enum": [
+              "domain_not_verified"
+            ],
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/DnsRecord"
+          }
+        },
+        "required": [
+          "error",
+          "record"
         ],
         "type": "object"
       },
@@ -7267,7 +7299,7 @@
             ]
           },
           "shadow": {
-            "description": "True for a would-refuse under a LOG_ONLY flag (operator-facing only)",
+            "description": "True for a would-refuse while the limit is log_only (operator-facing only)",
             "type": "boolean"
           }
         },
@@ -9702,7 +9734,7 @@
         "type": "object"
       },
       "PickupDispatch": {
-        "description": "State of the last attempt to hand this source to the fetcher, read from the scheduler. Null when that read was not made (it failed, or the page exceeded the fan-out bound) — never to mean 'nothing happened', which is an object with a null outcome. ABSENT on the operator listing, which is a deliberately DO-free cross-tenant scan",
+        "description": "State of the last attempt to hand this source to the fetcher, read from the scheduler. Null when that read was not made (it failed, or the page exceeded the fan-out bound) — never to mean 'nothing happened', which is an object with a null outcome. ABSENT on the operator listing, a cross-tenant scan that deliberately reads no scheduler",
         "properties": {
           "consecutiveFailures": {
             "description": "Dispatch attempts failed in a row; 0 once one is accepted",
@@ -9733,7 +9765,7 @@
             ]
           },
           "outcome": {
-            "description": "dispatched = accepted; busy = a run was already in progress (also fine); rejected = the fetcher answered and said no; unreachable = no answer at all; decrypt_failed = the stored password would not decrypt (PICKUP_KEK); unconfigured = a required var is blank; receive_hold = the destination mailbox's receive hold is set (detail: receiving_paused or receiving_disabled), so nothing was collected, the source keeps its schedule and resumes once the hold is cleared. Null when nothing has been dispatched yet",
+            "description": "dispatched = accepted; busy = a run was already in progress (also fine); rejected = the fetcher answered and said no; unreachable = no answer at all; decrypt_failed = the stored password would not decrypt with this deployment's source-password key; unconfigured = a required var is blank; receive_hold = the destination mailbox's receive hold is set (detail: receiving_paused or receiving_disabled), so nothing was collected, the source keeps its schedule and resumes once the hold is cleared. Null when nothing has been dispatched yet",
             "enum": [
               "dispatched",
               "busy",
@@ -10064,6 +10096,22 @@
       },
       "PimCollection": {
         "properties": {
+          "calendarOrder": {
+            "description": "Apple calendar sort position, or null; calendar collections only",
+            "maxLength": 128,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "calendarTimezone": {
+            "description": "VCALENDAR containing exactly one valid VTIMEZONE used for floating and date-only values, or null (UTC fallback). Reads refuse timezone expansion beyond 32,768 transitions or 1,000,000 iteration steps with 413 range_too_large",
+            "maxLength": 65536,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "color": {
             "description": "Hex color code (e.g. #3b82f6), or null",
             "type": [
@@ -10091,6 +10139,38 @@
             "description": "Creation timestamp in epoch seconds",
             "format": "int64",
             "type": "integer"
+          },
+          "defaultAlarmVeventDate": {
+            "description": "VALARM preference for all-day events; empty string disables it, null means absent",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultAlarmVeventDatetime": {
+            "description": "VALARM preference for timed events; empty string disables it, null means absent. Stored for client round-trip; no server default-alarm capability is claimed",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultAlarmVtodoDate": {
+            "description": "VALARM preference for date-only tasks; empty string disables it, null means absent",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultAlarmVtodoDatetime": {
+            "description": "VALARM preference for timed tasks; empty string disables it, null means absent",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "description": {
             "description": "Collection description, or null",
@@ -10207,6 +10287,12 @@
           "id",
           "kind",
           "components",
+          "calendarOrder",
+          "calendarTimezone",
+          "defaultAlarmVeventDatetime",
+          "defaultAlarmVeventDate",
+          "defaultAlarmVtodoDatetime",
+          "defaultAlarmVtodoDate",
           "name",
           "displayName",
           "color",
@@ -11016,6 +11102,22 @@
       },
       "PimSharedWithMe": {
         "properties": {
+          "calendarOrder": {
+            "description": "Apple calendar sort position, or null; calendar collections only",
+            "maxLength": 128,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "calendarTimezone": {
+            "description": "VCALENDAR containing exactly one valid VTIMEZONE used for floating and date-only values, or null (UTC fallback). Reads refuse timezone expansion beyond 32,768 transitions or 1,000,000 iteration steps with 413 range_too_large",
+            "maxLength": 65536,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "collectionId": {
             "description": "Shared collection ULID",
             "type": "string"
@@ -11047,6 +11149,38 @@
             "description": "Timestamp when share was created in epoch seconds",
             "format": "int64",
             "type": "integer"
+          },
+          "defaultAlarmVeventDate": {
+            "description": "VALARM preference for all-day events; empty string disables it, null means absent",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultAlarmVeventDatetime": {
+            "description": "VALARM preference for timed events; empty string disables it, null means absent. Stored for client round-trip; no server default-alarm capability is claimed",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultAlarmVtodoDate": {
+            "description": "VALARM preference for date-only tasks; empty string disables it, null means absent",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultAlarmVtodoDatetime": {
+            "description": "VALARM preference for timed tasks; empty string disables it, null means absent",
+            "maxLength": 16384,
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "description": {
             "description": "Collection description, or null",
@@ -11145,6 +11279,12 @@
           "permission",
           "kind",
           "components",
+          "calendarOrder",
+          "calendarTimezone",
+          "defaultAlarmVeventDatetime",
+          "defaultAlarmVeventDate",
+          "defaultAlarmVtodoDatetime",
+          "defaultAlarmVtodoDate",
           "name",
           "displayName",
           "color",
@@ -12377,7 +12517,7 @@
             "type": "string"
           },
           "recoveryAddressVerified": {
-            "description": "Present on the invitation branch only (§XVII): true when the nominated address was promoted to this mailbox's verified recovery address in the same act. False when the account's policy is admin_only, which means the address was used once as a delivery destination and never stored. That is the one outcome the redeeming user could not otherwise discover, since it turns on a tenant policy they have never heard of",
+            "description": "Present only when the proof was a provisioning invitation code: true when the nominated address was promoted to this mailbox's verified recovery address in the same act. False when the account's policy is admin_only, which means the address was used once as a delivery destination and never stored. That is the one outcome the redeeming user could not otherwise discover, since it turns on a tenant policy they have never heard of",
             "type": "boolean"
           },
           "reset": {
@@ -12487,7 +12627,7 @@
             "type": "integer"
           },
           "invitation": {
-            "description": "An outstanding provisioning invitation, or null. This IS the idempotency answer for POST /identities/:id/invitation (§XVII.5): a caller that lost its create response asks whether one is outstanding rather than holding an idempotency key, because an invitation is never re-sent automatically and a repeat is always a deliberate second call. Consumed and expired both read as null",
+            "description": "An outstanding provisioning invitation, or null. This IS the idempotency answer for POST /identities/:id/invitation: a caller that lost its create response asks whether one is outstanding rather than holding an idempotency key, because an invitation is never re-sent automatically and a repeat is always a deliberate second call. Consumed and expired both read as null",
             "properties": {
               "createdAt": {
                 "description": "Epoch seconds at which it was sent",
@@ -12510,7 +12650,7 @@
             ]
           },
           "pending": {
-            "description": "A typed, unconfirmed address, masked, or null. Reported ALONGSIDE `state` because §II.3 allows both at once (replacing does not disarm: the old address keeps working until the new one confirms), so a settings screen has to be able to show a change in flight without implying the old one has stopped",
+            "description": "A typed, unconfirmed address, masked, or null. Reported ALONGSIDE `state` because both can hold at once (replacing does not disarm: the old address keeps working until the new one confirms), so a settings screen has to be able to show a change in flight without implying the old one has stopped",
             "type": [
               "string",
               "null"
@@ -12803,7 +12943,7 @@
             ]
           },
           "minDays": {
-            "description": "The platform floor (RETENTION_MIN_DAYS): no window may be shorter",
+            "description": "The platform floor: no window may be shorter",
             "type": "integer"
           },
           "nextRunAt": {
@@ -13544,6 +13684,23 @@
             "description": "Error message if sending failed",
             "type": "string"
           },
+          "list": {
+            "description": "On an address-list refusal: the sender's list that decided",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "On an address-list refusal: the entry that decided (`*@*` for a block-all)",
+            "type": "string"
+          },
+          "source": {
+            "description": "On 'recipient_not_permitted' or 'recipient_not_verified': which of the sender's own policies refused it, as on `SendRecipientResult`",
+            "enum": [
+              "permitted_recipients",
+              "address_list",
+              "verified_recipients"
+            ],
+            "type": "string"
+          },
           "status": {
             "description": "Delivery status ('delivered', 'queued', 'failed')",
             "type": "string"
@@ -14060,7 +14217,7 @@
             "$ref": "#/components/schemas/SemanticCoverage"
           },
           "fused": {
-            "description": "True when the lexical (BM25) ranking was fused in by reciprocal rank (hybrid): the default, and FORCED whenever a DO-side filter such as `label` is given, because the semantic candidate list is bounded at 100 before that filter and a narrow scope would otherwise starve",
+            "description": "True when the lexical (BM25) ranking was fused in by reciprocal rank (hybrid): the default, and FORCED whenever a filter the mailbox's own store applies, such as `label`, is given, because the semantic candidate list is bounded at 100 before that filter and a narrow scope would otherwise starve",
             "type": "boolean"
           },
           "nextCursor": {
@@ -14821,7 +14978,7 @@
       "StorageWatermark": {
         "properties": {
           "limitBytes": {
-            "description": "The per-store ceiling (DO_STORAGE_LIMIT_BYTES)",
+            "description": "The per-store ceiling (a soft limit, set below each store's hard 10 GB cap)",
             "format": "int64",
             "type": "integer"
           },
@@ -14910,6 +15067,10 @@
       },
       "Suppression": {
         "properties": {
+          "accountId": {
+            "description": "Sending account whose complaint blocks this recipient; absent for a deployment-global block",
+            "type": "string"
+          },
           "address": {
             "description": "Normalized (lowercased) recipient email address",
             "type": "string"
@@ -16565,12 +16726,12 @@
             "type": "integer"
           },
           "inbound": {
-            "description": "Events whose source is inbound. This existing source-based count is distinct from the usage-based bytesIn measure; internal recipient and group-expansion deliveries can add bytesIn without adding inbound",
+            "description": "Messages received in this time bucket, one per copy, by the rule daily usage counts `inboundDeliveries` by: each copy that reached a hosted address (from outside, as a group member, or from a hosted sender), was filtered by its rules, or was admitted to a webhook or forward route. Deferrals, refusals, duplicates, uploads, imports and Sent copies are not counted. Sampled, and not deduped by delivery as the daily ledger is",
             "format": "int64",
             "type": "integer"
           },
           "outbound": {
-            "description": "Events whose source is outbound or relay, including forwarding and internal recipient legs. This existing source-based count is distinct from usage-based bytesOut and is not a count of external sends",
+            "description": "Recipient legs sent in this time bucket, one per recipient, by the rule daily usage counts `outboundRecipients` by (counted when the send was accepted, or on the relay's success for days before usage counted at acceptance), plus each target a forward reached (`forwarded`). Deferrals and retries are not counted again. Sampled, and not deduped by delivery as the daily ledger is",
             "format": "int64",
             "type": "integer"
           }
@@ -17157,7 +17318,7 @@
             "type": "array"
           },
           "scope": {
-            "description": "The matched credential's scope (design D50). Below 'full' it is reported only to a caller that sent `enforcesScope: true` — its promise to forward `X-Acting-Credential: <credentialId>` beside `X-Acting-Identity` on every call it makes for this login, so core applies the scope there; any other caller is answered 401 invalid_credentials for such a credential, the one refusal the fleets treat as final",
+            "description": "The matched credential's scope. Below 'full' it is reported only to a caller that sent `enforcesScope: true` — its promise to forward `X-Acting-Credential: <credentialId>` beside `X-Acting-Identity` on every call it makes for this login, so core applies the scope there; any other caller is answered 401 invalid_credentials for such a credential, the one refusal the fleets treat as final",
             "enum": [
               "read",
               "write",
@@ -17801,7 +17962,7 @@
             ]
           },
           "domains": {
-            "description": "An account key's domain scope (migration 0078), sorted — ABSENT for an unscoped key and for every other credential kind. Present, this key reaches only these domains' directory and the mailboxes with an address on them; a call outside that answers 404 (a resource) or 403 account_credentials_required (the account tier, and JMAP).",
+            "description": "An account key's domain scope, sorted — ABSENT for an unscoped key and for every other credential kind. Present, this key reaches only these domains' directory and the mailboxes with an address on them; a call outside that answers 404 (a resource) or 403 account_credentials_required (the account tier, and JMAP).",
             "items": {
               "type": "string"
             },
@@ -17837,7 +17998,7 @@
             ]
           },
           "permittedRecipients": {
-            "description": "A mailbox credential's OWN outbound recipient allowlist (design D50) — exact addresses and `*@domain` wildcards, INTERSECTED with the identity's at every submission site, so this list is a bound and not a promise that everything in it is deliverable. ABSENT when this credential carries no list of its own (the `domains` convention), which is not the same fact as `[]`: an empty array is a credential permitted to send to NOBODY. Here so an agent door learns its correspondents up front instead of discovering them as a per-recipient `recipient_not_permitted`",
+            "description": "A mailbox credential's OWN outbound recipient allowlist — exact addresses and `*@domain` wildcards, INTERSECTED with the identity's at every submission site, so this list is a bound and not a promise that everything in it is deliverable. ABSENT when this credential carries no list of its own (the `domains` convention), which is not the same fact as `[]`: an empty array is a credential permitted to send to NOBODY. Here so an agent door learns its correspondents up front instead of discovering them as a per-recipient `recipient_not_permitted`",
             "items": {
               "type": "string"
             },
@@ -18392,7 +18553,7 @@
                     ]
                   },
                   "maxMailTemplates": {
-                    "description": "Stored mail templates this ACCOUNT may hold (docs/templated-mail-design.md D1). null = the platform default (MAX_MAIL_TEMPLATES_DEFAULT); 0 = unlimited. Over it, creating a template answers 409 template_limit_reached carrying the effective number",
+                    "description": "Stored mail templates this ACCOUNT may hold. null = the platform default (MAX_MAIL_TEMPLATES_DEFAULT); 0 = unlimited. Over it, creating a template answers 409 template_limit_reached carrying the effective number",
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
@@ -18414,7 +18575,7 @@
                     "type": "string"
                   },
                   "noticeLanguage": {
-                    "description": "The language platform mail is written in when the RECIPIENT has no identity here: an invitee, a nominated recovery address, a forwarding destination asked to confirm (templated-mail-design.md §V step 2). A BCP 47 tag, stored lowercased; null = English. A recipient who does have an identity gets their own webmail language first",
+                    "description": "The language platform mail is written in when the RECIPIENT has no identity here: an invitee, a nominated recovery address, a forwarding destination asked to confirm. A BCP 47 tag, stored lowercased; null = English. A recipient who does have an identity gets their own webmail language first",
                     "maxLength": 35,
                     "minLength": 2,
                     "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
@@ -18450,7 +18611,7 @@
                     ]
                   },
                   "semantic": {
-                    "description": "May this account's mailboxes enable SEMANTIC search (docs/semantic-search-design.md §VI)? Off by default: embedding spends a platform-shared model budget and keeps a derived copy of every message in a third store, so this is the paid-plan gate. Clearing it stops NEW opt-ins and answers the semantic read routes 409 semantic_not_enabled; it never un-embeds a mailbox by itself (that is the tenant's opt-out, or a deletion)",
+                    "description": "May this account's mailboxes enable SEMANTIC search? Off by default: embedding spends a platform-shared model budget and keeps a derived copy of every message in a third store, so this is the paid-plan gate. Clearing it stops NEW opt-ins and answers the semantic read routes 409 semantic_not_enabled; it never un-embeds a mailbox by itself (that is the tenant's opt-out, or a deletion)",
                     "type": "boolean"
                   },
                   "sendHold": {
@@ -18769,7 +18930,7 @@
     },
     "/api/v1/accounts/{accountId}/plan": {
       "post": {
-        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label, plus who applied it and when. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` of the DEFINITION — for caller content every key present, sorted, omitted numbers as null and each gate as false, so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Content is the caller's for the tiers tooling owns; omit `limits` to apply one of core's own presets by name — the vetting axis, `untrusted` (what every signup starts on) and `trusted` (lifted by an operator after looking) — and a name core does not define is refused 400 unknown_plan. Applying a vetting preset by name stamps only the columns core's table defines (every number and `verifiedRecipientsOnly`, no feature gate) and leaves every other plan column exactly as the account has it: `vanityHosts` is a billing feature an operator opens with PATCH, not a trust verdict, so re-vetting or revoking never closes a gate that was opened. `verifiedRecipientsOnly` IS the trust verdict: `untrusted` stamps it on (the account may send only to its verified recipients, every other outside recipient refused 403 recipient_not_verified) and `trusted` stamps it off. Caller content stamps every column, both gates included. When its label is `untrusted`, the complete resulting stamp must fit core's untrusted ceilings; a looser number, including an omitted number resolving to a looser platform default, or `verifiedRecipientsOnly` off or omitted, refuses the whole write with 409 account_not_vetted. Every stamp then lays the account's AGREED LIMITS over the preset: the numbers an operator set on this account with PATCH /accounts/:accountId (listed as `limitOverrides` on GET /accounts/:accountId/plan), so neither a re-vet, a revoke nor a tooling tier loses them. While the label is `untrusted` each is held to the stricter of untrusted's number and the agreement, so a raise waits for the next vet and a cut survives the revoke. The hash still names the definition, never the agreements.",
+        "description": "Stamps the preset's limit columns onto the account in one statement and records the plan label, plus who applied it and when. Enforcement reads the stamped numbers (never the label), so the change binds on the next submission or admission. EVERY numeric key follows the platform's spelling: null = the platform default, 0 = UNLIMITED — a preset author who means 'none' must write null, never 0. The audit trail records the preset name, its content hash (sha256 of the canonical `{plan, limits}` of the DEFINITION — for caller content every key present, sorted, omitted numbers as null and each gate as false, so the name is part of the identity) and the prior values. Drift between accounts and a plan's current definition is a query over that trail, which must ALSO consider any later `account.update` row that touched a plan column: a per-field PATCH after the plan is a deliberate exception and leaves the label in place. Content is the caller's for the tiers tooling owns; omit `limits` to apply one of core's own presets by name — the vetting axis, `untrusted` (what every signup starts on) and `trusted` (lifted by an operator after looking) — and a name core does not define is refused 400 unknown_plan. Applying a vetting preset by name stamps only the columns core's table defines (every number and `verifiedRecipientsOnly`, no feature gate) and leaves every other plan column exactly as the account has it: `vanityHosts` is a billing feature an operator opens with PATCH, not a trust verdict, so re-vetting or revoking never closes a gate that was opened. `verifiedRecipientsOnly` IS the trust verdict: `untrusted` stamps it on (the account may send only to its verified recipients, every other outside recipient refused recipient_not_verified) and `trusted` stamps it off. Caller content stamps every column, both gates included. When its label is `untrusted`, the complete resulting stamp must fit core's untrusted ceilings; a looser number, including an omitted number resolving to a looser platform default, or `verifiedRecipientsOnly` off or omitted, refuses the whole write with 409 account_not_vetted. Every stamp then lays the account's AGREED LIMITS over the preset: the numbers an operator set on this account with PATCH /accounts/:accountId (listed as `limitOverrides` on GET /accounts/:accountId/plan), so neither a re-vet, a revoke nor a tooling tier loses them. While the label is `untrusted` each is held to the stricter of untrusted's number and the agreement, so a raise waits for the next vet and a cut survives the revoke. The hash still names the definition, never the agreements.",
         "operationId": "post_AccountPlanApply",
         "parameters": [
           {
@@ -18914,7 +19075,7 @@
                         "type": "boolean"
                       },
                       "verifiedRecipientsOnly": {
-                        "description": "The verified-recipients rule (omitted = off): true = the account may send only to its verified recipients (its own domains, and outside addresses whose owners confirmed them); every other outside recipient is refused 403 recipient_not_verified. Content under the `untrusted` label must set it true",
+                        "description": "The verified-recipients rule (omitted = off): true = the account may send only to its verified recipients (its own domains, and outside addresses whose owners confirmed them); every other outside recipient is refused recipient_not_verified (an immediate send answers 207 with that recipient alone `failed`, a send scheduled with `sendAt` 400). Content under the `untrusted` label must set it true",
                         "type": "boolean"
                       }
                     },
@@ -21818,7 +21979,7 @@
     },
     "/api/v1/auth/whoami": {
       "get": {
-        "description": "Answers what the presented bearer credential IS and therefore what it reaches; call it first when integrating. Key on `type`: `account` (an `oek_…` API key: the account's directory plus every mailbox it owns), `mailbox` (an `oemp_…` app password: one mailbox, `mailboxId` says which; directory routes answer 403 insufficient_scope), or `system` (an operator key). `scope` and `permittedRecipients` are a mailbox credential's own bound (D50): what it may do, and who it may send to — asked once here rather than learned from a 403 per call. `idleExpiresAt` warns when a key will lapse from disuse, so a client can say 'this key stops working on <date> unless you use it' rather than letting the holder discover it as a 401.",
+        "description": "Answers what the presented bearer credential IS and therefore what it reaches; call it first when integrating. Key on `type`: `account` (an `oek_…` API key: the account's directory plus every mailbox it owns), `mailbox` (an `oemp_…` app password: one mailbox, `mailboxId` says which; directory routes answer 403 insufficient_scope), or `system` (an operator key). `scope` and `permittedRecipients` are a mailbox credential's own bound: what it may do, and who it may send to — asked once here rather than learned from a 403 per call. `idleExpiresAt` warns when a key will lapse from disuse, so a client can say 'this key stops working on <date> unless you use it' rather than letting the holder discover it as a 401.",
         "operationId": "get_AuthWhoami",
         "responses": {
           "200": {
@@ -21894,7 +22055,7 @@
     },
     "/api/v1/auth/verify": {
       "post": {
-        "description": "Verifies a username and password against mailbox credentials and returns sender permissions (system callers only). A credential SCOPED below `full` (design D50) opens a session only for a caller whose key carries `requireActingCredential`, because this endpoint's callers act with their own system key afterwards and would otherwise relay a narrowed credential as owner-mode authority. To any other key such a credential answers `invalid_credentials`, deliberately indistinguishable from a wrong password — a frontend that mints or accepts scoped credentials (an MCP or OAuth door) must be provisioned with that flag before its users can sign in with one.",
+        "description": "Verifies a username and password against mailbox credentials and returns sender permissions (system callers only). A credential SCOPED below `full` opens a session only for a caller whose key carries `requireActingCredential`, because this endpoint's callers act with their own system key afterwards and would otherwise relay a narrowed credential as owner-mode authority. To any other key such a credential answers `invalid_credentials`, deliberately indistinguishable from a wrong password — a frontend that mints or accepts scoped credentials (an MCP or OAuth door) must be provisioned with that flag before its users can sign in with one.",
         "operationId": "post_AuthVerify",
         "parameters": [
           {
@@ -22288,7 +22449,7 @@
     },
     "/api/v1/api-keys/{apiKeyId}": {
       "patch": {
-        "description": "Sets or clears the acting fences on a SYSTEM API key; name either field or both, and one left unnamed is left unchanged. `requireActing` (migration 0046): mailbox-scoped requests made with the key must declare `X-Acting-Identity` or are refused `403 acting_required`. `requireActingCredential` (migration 0081): they must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — and this is the flag `/auth/verify` consults before it will hand this key a credential scoped below `full` at all, since only a key that carries the header can honour a scope. Both are for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry either. A key listed in the deployment's SYSTEM_KEYS secret (by id, or by its stored hash under another id) authenticates with the fences in its entry there, and its row is what it falls back to if the secret stops serving it, so for such a key this writes only values equal to its entry's, keeping that fallback in step; any other value is refused (409 system_key_in_secret, naming the entry's values): change the entry and deploy first, then set the row to match here. While SYSTEM_KEYS is set but does not parse, a system key's fences are not written at all (409 system_keys_invalid).",
+        "description": "Sets or clears the acting fences on a SYSTEM API key; name either field or both, and one left unnamed is left unchanged. `requireActing`: mailbox-scoped requests made with the key must declare `X-Acting-Identity` or are refused `403 acting_required`. `requireActingCredential`: they must ALSO declare `X-Acting-Credential`, naming the mailbox credential the call acts under, or are refused `403 acting_credential_required` — and this is the flag `/auth/verify` consults before it will hand this key a credential scoped below `full` at all, since only a key that carries the header can honour a scope. Both are for INGRESS credentials (gateways and BFFs acting for a logged-in user); autonomous credentials such as smtp-in and the pop3-fetch callbacks have no acting user and must never carry either. A key listed in the deployment's SYSTEM_KEYS secret (by id, or by its stored hash under another id) authenticates with the fences in its entry there, and its row is what it falls back to if the secret stops serving it, so for such a key this writes only values equal to its entry's, keeping that fallback in step; any other value is refused (409 system_key_in_secret, naming the entry's values): change the entry and deploy first, then set the row to match here. While SYSTEM_KEYS is set but does not parse, a system key's fences are not written at all (409 system_keys_invalid).",
         "operationId": "patch_ApiKeyPatch",
         "parameters": [
           {
@@ -22419,7 +22580,7 @@
         "x-max-json-body-bytes": 1048576
       },
       "delete": {
-        "description": "Permanently revokes an API key. Where finished keys are retained for 180 days (see List API keys), an id in the form keys are minted in (26 upper-case Crockford base32 characters) that no principal holds unrevoked, such as a key already revoked or one the retention removed, answers 200 without changing anything; a key another principal still holds, or an id in any other form, answers 404. A system key the deployment's SYSTEM_KEYS secret serves (listed by its id, or by its stored hash under any id) authenticates from the secret, not from its row, so revoking it here is refused (409 system_key_in_secret) until the entry is removed from the secret; while SYSTEM_KEYS is set but does not parse, revoking any system key is refused (409 system_keys_invalid), since fixing the secret could bring a revoked key back.",
+        "description": "Permanently revokes an API key. Where finished keys are retained for 180 days (see List API keys), an id in the form keys are minted in (26 upper-case Crockford base32 characters) that no principal holds unrevoked, such as a key already revoked or one the retention removed, answers 200 without changing anything; a key another principal still holds, or an id in any other form, answers 404. A system key the deployment's system-key secret serves (listed by its id, or by its stored hash under any id) authenticates from the secret, not from its row, so revoking it here is refused (409 system_key_in_secret) until the entry is removed from the secret; while that secret is set but does not parse, revoking any system key is refused (409 system_keys_invalid), since fixing the secret could bring a revoked key back.",
         "operationId": "delete_ApiKeyDelete",
         "parameters": [
           {
@@ -22472,7 +22633,7 @@
                 }
               }
             },
-            "description": "System callers only. system_key_in_secret: the SYSTEM_KEYS secret serves the key and it keeps authenticating from it (`listedAs` names the entry); remove that entry from the secret and deploy, then revoke. system_keys_invalid: SYSTEM_KEYS is set but does not parse, and fixing it could bring a revoked system key back; fix it (or clear it) and deploy, then revoke"
+            "description": "System callers only. system_key_in_secret: the deployment's system-key secret serves the key and it keeps authenticating from it (`listedAs` names the entry); remove that entry from the secret and deploy, then revoke. system_keys_invalid: the secret is set but does not parse, and fixing it could bring a revoked system key back; fix it (or clear it) and deploy, then revoke"
           },
           "503": {
             "content": {
@@ -22593,7 +22754,7 @@
                         ]
                       },
                       "scope": {
-                        "description": "The credential's SCOPE (design D50), a ladder — 'read': list and read mail, nothing that leaves a trace; 'write': also mark, file, label and trash (everything the store undoes for 14 days); 'send': also submit mail; 'full' (the default): also permanent deletion, every settings route (rules, Sieve, vacation, prefs, forwarding, shares, retention, pickups, webhooks, credentials — reads included), PIM collection lifecycle and sharing. A call outside the scope answers 403 credential_scope naming the rung it needs. The bound for an agent token: mint 'write' for an assistant that reads and files, 'send' with permittedRecipients for one that may write to named people, and never 'full' for a program",
+                        "description": "The credential's SCOPE, a ladder — 'read': list and read mail, nothing that leaves a trace; 'write': also mark, file, label and trash (everything the store undoes for 14 days); 'send': also submit mail; 'full' (the default): also permanent deletion, every settings route (rules, Sieve, vacation, prefs, forwarding, shares, retention, pickups, webhooks, credentials — reads included), PIM collection lifecycle and sharing. A call outside the scope answers 403 credential_scope naming the rung it needs. The bound for an agent token: mint 'write' for an assistant that reads and files, 'send' with permittedRecipients for one that may write to named people, and never 'full' for a program",
                         "enum": [
                           "read",
                           "write",
@@ -22651,7 +22812,7 @@
                 }
               }
             },
-            "description": "validation_failed, username_required (the identity has no address for the username to default to, as one created withoutAddress has none: name it), invalid_address (D2: an address username must be an ASCII local part on an A-label domain), invalid_username (D2: a bare username must be printable ASCII with no whitespace), username_not_mailbox_address, username_not_in_scope (a DOMAIN-SCOPED api key may only mint a credential whose username is on one of its domains, migration 0078; `domain` names the refused one), permitted_recipients_requires_send (a recipient list on a credential whose scope is not 'send'), or password_required (the mailbox's own bearer sent no currentPassword)"
+            "description": "validation_failed, username_required (the identity has no address for the username to default to, as one created withoutAddress has none: name it), invalid_address (an address username must be an ASCII local part on an A-label domain), invalid_username (a bare username must be printable ASCII with no whitespace), username_not_mailbox_address, username_not_in_scope (a DOMAIN-SCOPED api key may only mint a credential whose username is on one of its domains; `domain` names the refused one), permitted_recipients_requires_send (a recipient list on a credential whose scope is not 'send'), or password_required (the mailbox's own bearer sent no currentPassword)"
           },
           "401": {
             "content": {
@@ -22938,7 +23099,7 @@
                     "type": "string"
                   },
                   "surface": {
-                    "description": "The hostname to tell the recipient to sign in at, e.g. webmail.open.email. Printed as a bare hostname and never as a link (§XVII.7): a user being invited has never been here, and a code with no destination is a dead end",
+                    "description": "The hostname to tell the recipient to sign in at, e.g. webmail.open.email. Printed as a bare hostname and never as a link: a user being invited has never been here, and a code with no destination is a dead end",
                     "maxLength": 64,
                     "type": "string"
                   }
@@ -25627,11 +25788,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorOrValidation"
+                  "$ref": "#/components/schemas/DomainCreateError"
                 }
               }
             },
-            "description": "validation_failed - the body is strict, so an UNRECOGNIZED field (a retired spelling such as the pre-0062 `canSend`/`canReceive`) is refused rather than ignored; invalid_domain - the name or aliasOf fails D3 canonicalization (not a convertible, LDH-valid domain; a non-xn label with hyphens at UTS 46 positions 3-4) or D5 (a label whose Unicode form mixes Latin with Cyrillic or Greek); domain_not_verified - the response's `record` field is the exact ownership TXT to publish, so publish it and POST again; account_required or unknown_account (system caller naming the owner); send_receive_exclusive (sendOnly and receiveOnly together describe a domain the platform does nothing for); or an invalid aliasOf: alias_self, unknown_domain, alias_cross_account, alias_chain, alias_fbl_exclusive"
+            "description": "validation_failed - the body is strict, so an UNRECOGNIZED field (a retired spelling such as the old `canSend`/`canReceive`) is refused rather than ignored; invalid_domain - the name or aliasOf fails canonicalization (not a convertible, LDH-valid domain; a non-xn label with hyphens at UTS 46 positions 3-4) or mixes scripts (a label whose Unicode form mixes Latin with Cyrillic or Greek); domain_not_verified - the response's `record` field is the exact ownership TXT to publish, so publish it and POST again (`DomainNotVerified`); account_required or unknown_account (system caller naming the owner); send_receive_exclusive (sendOnly and receiveOnly together describe a domain the platform does nothing for); or an invalid aliasOf: alias_self, unknown_domain, alias_cross_account, alias_chain, alias_fbl_exclusive"
           },
           "401": {
             "content": {
@@ -25651,7 +25812,7 @@
                 }
               }
             },
-            "description": "ingestion_not_writable: fbl, dmarc and srs turn the whole domain into a report-ingestion sink and are operator state; only a system caller may turn one on. Re-sending the value the domain already carries (as well as false, or omitting them) is unaffected; domain_blocked — the domain, or a parent of it, is on the platform blocklist (migration 0070): refused on the create path only and after proof of control, so an already-registered domain keeps advancing and an unproven caller still sees domain_not_verified"
+            "description": "ingestion_not_writable: fbl, dmarc and srs turn the whole domain into a report-ingestion sink and are operator state; only a system caller may turn one on. Re-sending the value the domain already carries (as well as false, or omitting them) is unaffected; domain_blocked — the domain, or a parent of it, is on the platform blocklist: refused on the create path only and after proof of control, so an already-registered domain keeps advancing and an unproven caller still sees domain_not_verified"
           },
           "409": {
             "content": {
@@ -26065,7 +26226,7 @@
                 }
               }
             },
-            "description": "validation_failed (the body is strict: an unrecognized field is refused, never silently dropped), empty_patch, invalid_domain (an aliasOf that fails D3 canonicalization or D5's mixed-script refusal), send_receive_exclusive (the post-patch state would be both sendOnly and receiveOnly), alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
+            "description": "validation_failed (the body is strict: an unrecognized field is refused, never silently dropped), empty_patch, invalid_domain (an aliasOf that fails domain canonicalization or the mixed-script refusal), send_receive_exclusive (the post-patch state would be both sendOnly and receiveOnly), alias_self, unknown_domain (alias target), alias_cross_account (system caller: the target belongs to a different account than the alias domain), alias_chain, or alias_fbl_exclusive"
           },
           "401": {
             "content": {
@@ -28640,7 +28801,7 @@
                     "type": "string"
                   },
                   "ephemeral": {
-                    "description": "Create the mailbox DISPOSABLE (#483): its DELETE destroys it at once — no undo record, no 7-day window, its object gone, the address free again immediately — the shape for a mailbox per support case, agent session or transaction. Fixed at creation and reported on every read; a PATCH naming it is refused 400 ephemeral_immutable in either direction, so a key cannot make a long-lived mailbox disposable after the fact. Omitted or false creates an ordinary mailbox. Refused 400 ephemeral_requires_account on a platform identity, which has no account home to destroy through",
+                    "description": "Create the mailbox DISPOSABLE: its DELETE destroys it at once — no undo record, no 7-day window, its object gone, the address free again immediately — the shape for a mailbox per support case, agent session or transaction. Fixed at creation and reported on every read; a PATCH naming it is refused 400 ephemeral_immutable in either direction, so a key cannot make a long-lived mailbox disposable after the fact. Omitted or false creates an ordinary mailbox. Refused 400 ephemeral_requires_account on a platform identity, which has no account home to destroy through",
                     "type": "boolean"
                   },
                   "eventWebhook": {
@@ -28759,7 +28920,7 @@
                     "description": "Create the mailbox already holding its receiving: 'paused' (senders retry for about four to five days, then their mail bounces and is lost) or 'disabled' (mail to it is rejected at once). The hold commits with the identity and its address, so it applies from the first arrival. Omitted or null creates a receiving mailbox. The account owner's control, like PATCH receiveHold: refused 400 not_holdable on a platform identity, and 403 receive_hold_not_enabled from an account key while this deployment has not enabled it"
                   },
                   "semantic": {
-                    "description": "SEMANTIC (meaning-based) search for this mailbox (docs/semantic-search-design.md). true embeds every new message after delivery and, on an existing mailbox, backfills a recent window (the later of 12 months and the 20,000 most recent messages; older mail on request via semanticFloor); false DELETES the mailbox's embeddings. Requires the account's plan gate (403 semantic_not_enabled) and an open shard (503 semantic_capacity). Off by default",
+                    "description": "SEMANTIC (meaning-based) search for this mailbox. true embeds every new message after delivery and, on an existing mailbox, backfills a recent window (the later of 12 months and the 20,000 most recent messages; older mail on request via semanticFloor); false DELETES the mailbox's embeddings. Requires the account's plan gate (403 semantic_not_enabled) and an open shard (503 semantic_capacity). Off by default",
                     "type": "boolean"
                   },
                   "semanticFloor": {
@@ -28909,7 +29070,7 @@
                 }
               }
             },
-            "description": "validation_failed, ephemeral_requires_account (ephemeral: true on a platform identity), unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again, migration 0078), without_address_has_address (withoutAddress: true with a primaryAddress), no_mail_store (semantic: true with withoutAddress: true: no mail to index), not_holdable (receiveHold on a platform identity, which belongs to no account), message_webhook_requires_address (messageWebhook with withoutAddress: true), webhook_format_unavailable (messageWebhook.format reference on a deployment that mints no capability URLs), idempotency_key_required (messageWebhook or eventWebhook without an Idempotency-Key) or idempotency_key_invalid (empty or over 128 characters)"
+            "description": "validation_failed, ephemeral_requires_account (ephemeral: true on a platform identity), unknown_account, invalid_address, unknown_domain, domain_is_alias, primary_address_required (no primaryAddress and withoutAddress not true; and a DOMAIN-SCOPED api key must create WITH an address on one of its domains, withoutAddress or not: a bare identity would be one it could never reach again), without_address_has_address (withoutAddress: true with a primaryAddress), no_mail_store (semantic: true with withoutAddress: true: no mail to index), not_holdable (receiveHold on a platform identity, which belongs to no account), message_webhook_requires_address (messageWebhook with withoutAddress: true), webhook_format_unavailable (messageWebhook.format reference on a deployment that mints no capability URLs), idempotency_key_required (messageWebhook or eventWebhook without an Idempotency-Key) or idempotency_key_invalid (empty or over 128 characters)"
           },
           "401": {
             "content": {
@@ -28929,7 +29090,7 @@
                 }
               }
             },
-            "description": "mailbox_limit_reached — the account's maximum mailbox limit has been reached; address_blocked — the primary address, its tag-stripped form, or its domain is on the platform blocklist (migration 0070); semantic_not_enabled — semantic: true was asked for without the account's plan gate; or receive_hold_not_enabled (receiveHold from an account key while this deployment has not enabled the owner's receive hold)"
+            "description": "mailbox_limit_reached — the account's maximum mailbox limit has been reached; address_blocked — the primary address, its tag-stripped form, or its domain is on the platform blocklist; semantic_not_enabled — semantic: true was asked for without the account's plan gate; or receive_hold_not_enabled (receiveHold from an account key while this deployment has not enabled the owner's receive hold)"
           },
           "409": {
             "content": {
@@ -29318,7 +29479,7 @@
               "schema": {
                 "properties": {
                   "ephemeral": {
-                    "description": "Create the mailbox DISPOSABLE (#483): its DELETE destroys it at once — no undo record, no 7-day window, its object gone, the address free again immediately — the shape for a mailbox per support case, agent session or transaction. Fixed at creation and reported on every read; a PATCH naming it is refused 400 ephemeral_immutable in either direction, so a key cannot make a long-lived mailbox disposable after the fact. Omitted or false creates an ordinary mailbox. Refused 400 ephemeral_requires_account on a platform identity, which has no account home to destroy through",
+                    "description": "Create the mailbox DISPOSABLE: its DELETE destroys it at once — no undo record, no 7-day window, its object gone, the address free again immediately — the shape for a mailbox per support case, agent session or transaction. Fixed at creation and reported on every read; a PATCH naming it is refused 400 ephemeral_immutable in either direction, so a key cannot make a long-lived mailbox disposable after the fact. Omitted or false creates an ordinary mailbox. Refused 400 ephemeral_requires_account on a platform identity, which has no account home to destroy through",
                     "type": "boolean"
                   },
                   "permittedRecipients": {
@@ -29374,7 +29535,7 @@
                     "description": "Hold the mailbox's RECEIVING, the account owner's control, independent of suspension: 'paused' tells every sender to retry later (429 receiving_paused, SMTP 451; senders give up after about four to five days, after which their mail bounces and is lost, so a pause is for interruptions measured in days), 'disabled' rejects mail to it at once (403 receiving_disabled, SMTP 550; a rejection already issued cannot be undone), null receives normally again. Existing mail, settings and logins are untouched. Must be the ONLY field of its request (400 control_exclusive otherwise). A change of mode restamps receiveHoldAt; re-sending the current value keeps it and completes any propagation still pending"
                   },
                   "semantic": {
-                    "description": "SEMANTIC (meaning-based) search for this mailbox (docs/semantic-search-design.md). true embeds every new message after delivery and, on an existing mailbox, backfills a recent window (the later of 12 months and the 20,000 most recent messages; older mail on request via semanticFloor); false DELETES the mailbox's embeddings. Requires the account's plan gate (403 semantic_not_enabled) and an open shard (503 semantic_capacity). Off by default",
+                    "description": "SEMANTIC (meaning-based) search for this mailbox. true embeds every new message after delivery and, on an existing mailbox, backfills a recent window (the later of 12 months and the 20,000 most recent messages; older mail on request via semanticFloor); false DELETES the mailbox's embeddings. Requires the account's plan gate (403 semantic_not_enabled) and an open shard (503 semantic_capacity). Off by default",
                     "type": "boolean"
                   },
                   "semanticFloor": {
@@ -29577,12 +29738,12 @@
             }
           },
           {
-            "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window. A system key's, or redundant on a mailbox created ephemeral (#483); from an account key on any other mailbox it is refused 403 system_credentials_required — the window is the undo a leaked key must not be able to waive",
+            "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window. A system key's, or redundant on a mailbox created ephemeral; from an account key on any other mailbox it is refused 403 system_credentials_required — the window is the undo a leaked key must not be able to waive",
             "in": "query",
             "name": "purge",
             "required": false,
             "schema": {
-              "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window. A system key's, or redundant on a mailbox created ephemeral (#483); from an account key on any other mailbox it is refused 403 system_credentials_required — the window is the undo a leaked key must not be able to waive",
+              "description": "Set to 'true' to permanently purge the mailbox immediately without a 7-day retention window. A system key's, or redundant on a mailbox created ephemeral; from an account key on any other mailbox it is refused 403 system_credentials_required — the window is the undo a leaked key must not be able to waive",
               "enum": [
                 "true",
                 "false"
@@ -29630,7 +29791,7 @@
                 }
               }
             },
-            "description": "system_credentials_required (purge=true from an account key on a mailbox not created ephemeral, #483) | account_credentials_required — a DOMAIN-SCOPED api key named a mailbox that is also routed on a domain outside its scope. Restore rebinds the mailbox's primary address, so deleting one primaried elsewhere could not be undone without writing a route on a domain this key does not hold; the account's own key may delete it"
+            "description": "system_credentials_required (purge=true from an account key on a mailbox not created ephemeral) | account_credentials_required — a DOMAIN-SCOPED api key named a mailbox that is also routed on a domain outside its scope. Restore rebinds the mailbox's primary address, so deleting one primaried elsewhere could not be undone without writing a route on a domain this key does not hold; the account's own key may delete it"
           },
           "404": {
             "content": {
@@ -31985,7 +32146,7 @@
                 }
               }
             },
-            "description": "system_credentials_required: the tombstone door to the fast wipe is a system key's (#483); an account key keeps the undo window. Answered before any lookup, so it says nothing about the id"
+            "description": "system_credentials_required: the tombstone door to the fast wipe is a system key's; an account key keeps the undo window. Answered before any lookup, so it says nothing about the id"
           },
           "404": {
             "content": {
@@ -32115,7 +32276,7 @@
                 }
               }
             },
-            "description": "validation_failed, invalid_address (malformed remoteAddress, or D2: the route's own address must be an ASCII local part on an A-label domain), unknown_domain, domain_is_alias, unknown_mailbox (missing, inaccessible, or outside the route domain's account, including platform domains), webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), or destination_is_self / destination_loops / destination_chain_too_long when the forward target routes back to this address"
+            "description": "validation_failed, invalid_address (malformed remoteAddress, or the route's own address is not an ASCII local part on an A-label domain), unknown_domain, domain_is_alias, unknown_mailbox (missing, inaccessible, or outside the route domain's account, including platform domains), webhook_format_unavailable (reference format asked for on a deployment that mints no capability URLs), or destination_is_self / destination_loops / destination_chain_too_long when the forward target routes back to this address"
           },
           "401": {
             "content": {
@@ -32135,7 +32296,7 @@
                 }
               }
             },
-            "description": "address_blocked — the address, its tag-stripped form, or its domain is on the platform blocklist (migration 0070)"
+            "description": "address_blocked — the address, its tag-stripped form, or its domain is on the platform blocklist"
           },
           "409": {
             "content": {
@@ -32470,7 +32631,7 @@
                     "type": "string"
                   },
                   "remoteAddress": {
-                    "description": "Destination forwarding address or forward tap address (null to remove tap). An external target may carry a UTF-8 local part (D6); the domain half is canonicalized (D3)",
+                    "description": "Destination forwarding address or forward tap address (null to remove tap). An external target may carry a UTF-8 local part; the domain half is canonicalized",
                     "type": [
                       "string",
                       "null"
@@ -41722,7 +41883,7 @@
                 }
               }
             },
-            "description": "pickup_not_configured — this deployment has no PICKUP_KEK, so a source password cannot be stored. temporary_failure: the mailbox or account is in transition while its store is being adopted; retry after Retry-After",
+            "description": "pickup_not_configured — this deployment has no source-password key, so a source password cannot be stored. temporary_failure: the mailbox or account is in transition while its store is being adopted; retry after Retry-After",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -42115,7 +42276,7 @@
                 }
               }
             },
-            "description": "pickup_not_configured — a password change needs PICKUP_KEK, which this deployment has not set. temporary_failure: the mailbox or account is in transition while its store is being adopted; retry after Retry-After",
+            "description": "pickup_not_configured — a password change needs the source-password key, which this deployment has not set. temporary_failure: the mailbox or account is in transition while its store is being adopted; retry after Retry-After",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -42480,7 +42641,7 @@
                 }
               }
             },
-            "description": "superseded: lost pending intent; mailbox_closing, mailbox_reopening, or mailbox_unavailable: the destination admission could not be confirmed or is reopening. Keep upstream mail and retry after Retry-After. Or temporary_failure: the platform's storage could not answer just now; retry after the Retry-After window. Any operation can answer this. A write that got it may have been applied, so retry it with the same idempotency key where it takes one, or read the state back first (see Transient failures in the API description)",
+            "description": "superseded: lost pending intent; mailbox_closing, mailbox_reopening, or mailbox_unavailable: the destination admission could not be confirmed or is reopening; temporary_failure: the destination store is waiting for an operator's restore. Keep upstream mail and retry after Retry-After.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -44541,6 +44702,16 @@
               "description": "Message ULID identifier",
               "type": "string"
             }
+          },
+          {
+            "description": "Revalidation ETag from previous response",
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "description": "Revalidation ETag from previous response",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -44553,7 +44724,15 @@
                 }
               }
             },
-            "description": "Raw RFC 5322 message stream"
+            "description": "Raw RFC 5322 message stream",
+            "headers": {
+              "ETag": {
+                "description": "The stored blob's ETag; send it back as If-None-Match",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "304": {
             "description": "Not modified — If-None-Match matched the stored blob's ETag"
@@ -47001,7 +47180,7 @@
                 }
               }
             },
-            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, or the assembled message exceeds MAX_MESSAGE_BYTES"
+            "description": "JSON body exceeds the largest body the API accepts, or the assembled message exceeds the largest message the platform accepts"
           },
           "429": {
             "content": {
@@ -48809,7 +48988,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50; carries `scope` and `required`) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`; carries `scope` and `required`) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
           },
           "404": {
             "content": {
@@ -48849,7 +49028,7 @@
                 }
               }
             },
-            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, the assembled message exceeds MAX_MESSAGE_BYTES, or attachments_too_large (referenced + inline attachment bytes exceed the per-message budget)"
+            "description": "JSON body exceeds the largest body the API accepts, the assembled message exceeds the largest message the platform accepts, or attachments_too_large (referenced + inline attachment bytes exceed the per-message budget)"
           },
           "429": {
             "content": {
@@ -49168,7 +49347,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50) | mailbox_gone (the sending mailbox was torn down mid-submission)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`) | mailbox_gone (the sending mailbox was torn down mid-submission)"
           },
           "404": {
             "content": {
@@ -49208,7 +49387,7 @@
                 }
               }
             },
-            "description": "JSON body exceeds MAX_JSON_BODY_BYTES, the assembled message exceeds MAX_MESSAGE_BYTES, or attachments_too_large (referenced + inline attachment bytes exceed the per-message budget)"
+            "description": "JSON body exceeds the largest body the API accepts, the assembled message exceeds the largest message the platform accepts, or attachments_too_large (referenced + inline attachment bytes exceed the per-message budget)"
           },
           "429": {
             "content": {
@@ -49383,7 +49562,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`, design D50) | recipient_not_permitted (a recipient of the draft is outside the submitting credential's own allowlist, naming the `address`) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`) | recipient_not_permitted (a recipient of the draft is outside the submitting credential's own allowlist, naming the `address`) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
           },
           "404": {
             "content": {
@@ -49656,7 +49835,7 @@
         ]
       },
       "patch": {
-        "description": "Moves WHEN a pending scheduled send fires. The message itself is untouched — same draft, same delivery id, same recipients — so this is not the draft-replacing 'edit in place' the design rules out; editing the MESSAGE remains cancel + resubmit. Pending sends only: once a release has started its legs may already be on the wire, and moving the time would neither recall them nor stop it.",
+        "description": "Moves WHEN a pending scheduled send fires. The message itself is untouched — same draft, same delivery id, same recipients — so this is not a draft-replacing 'edit in place', which the API does not offer: editing the MESSAGE remains cancel + resubmit. Pending sends only: once a release has started its legs may already be on the wire, and moving the time would neither recall them nor stop it.",
         "operationId": "patch_ScheduledReschedule",
         "parameters": [
           {
@@ -50527,7 +50706,7 @@
                 }
               }
             },
-            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (one of the sender's own policies excludes this recipient: the outbound recipient allowlist — the identity's, or the credential's own — or the sender's outbound address lists, which a `block *@*` makes \"send to nobody but\"; the body's `source` says which, and for a list names the deciding `list` and `pattern`), recipient_not_verified (the sending account is not yet vetted, so it may send only to its verified recipients: addresses on its own domains, and outside addresses whose owners confirmed them; this recipient is neither, `source: \"verified_recipients\"`; vetting the account or the owner confirming lifts it. The same code when the recipient is a hosted address that forwards — a remote route, a pattern or catch-all whose destination is remote, or an alias pattern — for an account not yet vetted, to a target that is not one of THAT account's verified recipients: the forward's owner is judged, never the sender), sender_blocked (a LOCAL recipient's inbound address lists refuse this sender; permanent, and the recipient's list is not named), credential_scope (the credential in play — the bearer's, or the one X-Acting-Credential names — is scoped below `send`; permanent for that credential, carrying `scope` and `required`), receiving_disabled (a local recipient is not accepting mail: its domain, or the recipient mailbox's receive hold is `disabled`, then with `policyScope: \"mailbox\"`, never to be cached or gossiped), posting_denied (a members-only group refused this poster), too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear and must bounce). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses (see isPermanentHold in src/db/sendhold.ts, which excludes it deliberately), so the backlog must be held rather than bounced."
+            "description": "Permanent submission refusals, which the MTA answers with an in-session 550 and never retries: sender_not_owned (one indistinguishable reply for EVERY not-yours case — an anti-enumeration collapse, so the caller learns nothing about which addresses exist), sender_not_local, sending_disabled (ONE code across three scopes — this mailbox's own freeze, its domain's, or its account's; same code, same permanence, so an operator debugging a refusal checks all three), from_not_owned, from_sending_disabled (the RFC 5322 From is not the sender's to use), mailbox_gone (the sending mailbox was deleted mid-submission), recipient_not_permitted (one of the sender's own policies excludes this recipient: the outbound recipient allowlist — the identity's, or the credential's own — or the sender's outbound address lists, which a `block *@*` makes \"send to nobody but\"; the body's `source` says which, and for a list names the deciding `list` and `pattern`), recipient_not_verified (the sending account is not yet vetted, so it may send only to its verified recipients: addresses on its own domains, and outside addresses whose owners confirmed them; this recipient is neither, `source: \"verified_recipients\"`; vetting the account or the owner confirming lifts it. The same code when the recipient is a hosted address that forwards — a remote route, a pattern or catch-all whose destination is remote, or an alias pattern — for an account not yet vetted, to a target that is not one of THAT account's verified recipients: the forward's owner is judged, never the sender), sender_blocked (a LOCAL recipient's inbound address lists refuse this sender; permanent, and the recipient's list is not named), credential_scope (the credential in play — the bearer's, or the one X-Acting-Credential names — is scoped below `send`; permanent for that credential, carrying `scope` and `required`), receiving_disabled (a local recipient is not accepting mail: its domain, or the recipient mailbox's receive hold is `disabled`, then with `policyScope: \"mailbox\"`, never to be cached or gossiped), posting_denied (a members-only group refused this poster), too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear and must bounce). **Key on the CODE, never on 403 alone**: two classes of 403 are NOT permanent and must DEFER (451). insufficient_scope / system_credentials_required say the caller's own bearer may not submit here — an operator fault, and a 550 would reject every message the server handles. account_deleted says the CALLING account is inside its deletion window, which a restore reverses, so the backlog must be held rather than bounced."
           },
           "404": {
             "content": {
@@ -50537,7 +50716,7 @@
                 }
               }
             },
-            "description": "mailbox_gone (the recipient's mailbox was deleted mid-flight) or unknown_address (the recipient is on a domain we host and receive for, and no route matches). Both are permanent — 550 5.1.1. A 404 carrying NO error code is something else entirely: this route was never reached and the delivery URL is missing its /api/v1/deliver/outbound path, so it must DEFER, exactly as core's own relay defers on 404/405/415 rather than bouncing on an operator typo (MTA_MISCONFIG_STATUSES in src/queues/relay.ts)."
+            "description": "mailbox_gone (the recipient's mailbox was deleted mid-flight) or unknown_address (the recipient is on a domain we host and receive for, and no route matches). Both are permanent — 550 5.1.1. A 404 carrying NO error code is something else entirely: this route was never reached and the delivery URL is missing its /api/v1/deliver/outbound path, so it must DEFER, exactly as core's own relay defers on 404/405/415 rather than bouncing on an operator typo."
           },
           "409": {
             "content": {
@@ -51052,7 +51231,7 @@
     },
     "/api/v1/suppressions": {
       "get": {
-        "description": "Returns email addresses currently suppressed on the platform do-not-send list due to spam complaints or hard bounces (system callers only).",
+        "description": "Lists deployment-global suppressions for system callers. With accountId, lists that account's complaints; account callers may select only their own account.",
         "operationId": "get_SuppressionListEndpoint",
         "parameters": [
           {
@@ -51074,6 +51253,18 @@
             "required": false,
             "schema": {
               "description": "Opaque page cursor from a previous response",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sending account whose complaint suppressions to inspect or modify",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "Sending account whose complaint suppressions to inspect or modify",
+              "maxLength": 128,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -51117,7 +51308,7 @@
                 }
               }
             },
-            "description": "system_credentials_required"
+            "description": "insufficient_scope — mailbox credentials or a foreign account; system_credentials_required — the global listing requires system credentials"
           },
           "503": {
             "content": {
@@ -51144,19 +51335,39 @@
         ]
       },
       "post": {
-        "description": "Adds an email address to the platform do-not-send list to block further outgoing mail (system callers only).",
+        "description": "Creates an explicit global block, or an account-scoped complaint when accountId is supplied (system only). With migrateGlobal, atomically moves an existing global complaint to that account after provenance review; expected must contain the unchanged global GET snapshot.",
         "operationId": "post_SuppressionCreate",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "properties": {
+                  "accountId": {
+                    "description": "Sending account whose complaint suppressions to inspect or modify",
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "address": {
                     "description": "Recipient email address to suppress",
                     "maxLength": 320,
                     "minLength": 3,
                     "pattern": "^[^\\s@]+@[^\\s@]+$",
                     "type": "string"
+                  },
+                  "expected": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Suppression"
+                      },
+                      {
+                        "description": "Required for migrateGlobal: complete global suppression record returned by GET before provenance review"
+                      }
+                    ]
+                  },
+                  "migrateGlobal": {
+                    "description": "Move the reviewed global complaint into accountId without lifting its block for that account",
+                    "type": "boolean"
                   },
                   "note": {
                     "description": "Operator audit note explaining the manual suppression",
@@ -51223,6 +51434,26 @@
             },
             "description": "system_credentials_required"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "account_not_found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "suppression_changed — the global complaint is absent, has another reason, or no longer matches the reviewed snapshot"
+          },
           "413": {
             "content": {
               "application/json": {
@@ -51261,7 +51492,7 @@
     },
     "/api/v1/suppressions/{address}": {
       "get": {
-        "description": "Checks whether a specific email address is currently blocked on the suppression list. System callers see every row; account callers see hard-bounce rows only (the ones they may lift), and a complaint row answers 404 exactly as an unsuppressed address does.",
+        "description": "Inspects the global list by default; account callers see global hard bounces only. With accountId, inspects an account complaint; account callers may select only their own account.",
         "operationId": "get_SuppressionGet",
         "parameters": [
           {
@@ -51271,6 +51502,18 @@
             "required": true,
             "schema": {
               "description": "Recipient email address to check",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sending account whose complaint suppressions to inspect or modify",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "Sending account whose complaint suppressions to inspect or modify",
+              "maxLength": 128,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -51295,6 +51538,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "insufficient_scope — mailbox credentials or a foreign account; system_credentials_required — the global listing requires system credentials"
           },
           "404": {
             "content": {
@@ -51331,7 +51584,7 @@
         ]
       },
       "delete": {
-        "description": "Removes an email address from the suppression list so outgoing mail can be sent to it again. Account callers can lift hard bounces; system callers can lift complaints and hard bounces.",
+        "description": "Lifts a global suppression by default; account callers may lift global hard bounces only. With accountId, lifts that account's complaint, which requires system credentials: an account may inspect its own complaints but not lift them.",
         "operationId": "delete_SuppressionDelete",
         "parameters": [
           {
@@ -51341,6 +51594,18 @@
             "required": true,
             "schema": {
               "description": "Recipient email address to lift from suppression",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sending account whose complaint suppressions to inspect or modify",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "Sending account whose complaint suppressions to inspect or modify",
+              "maxLength": 128,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -51365,6 +51630,16 @@
               }
             },
             "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "insufficient_scope — mailbox credentials; system_credentials_required — lifting an account complaint requires system credentials"
           },
           "404": {
             "content": {
@@ -52414,6 +52689,20 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "calendarOrder": {
+                    "maxLength": 128,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "calendarTimezone": {
+                    "maxLength": 65536,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "color": {
                     "maxLength": 32,
                     "type": "string"
@@ -52430,6 +52719,34 @@
                     "maxItems": 2,
                     "minItems": 1,
                     "type": "array"
+                  },
+                  "defaultAlarmVeventDate": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "defaultAlarmVeventDatetime": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "defaultAlarmVtodoDate": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "defaultAlarmVtodoDatetime": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "description": {
                     "maxLength": 1024,
@@ -52757,6 +53074,52 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "calendarOrder": {
+                    "maxLength": 128,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "calendarPropertyUpdates": {
+                    "description": "Ordered calendar metadata updates, applied after direct fields. Every value is validated before any change commits; null removes the property.",
+                    "items": {
+                      "properties": {
+                        "field": {
+                          "enum": [
+                            "calendarOrder",
+                            "calendarTimezone",
+                            "defaultAlarmVeventDatetime",
+                            "defaultAlarmVeventDate",
+                            "defaultAlarmVtodoDatetime",
+                            "defaultAlarmVtodoDate"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "maxLength": 65536,
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 128,
+                    "type": "array"
+                  },
+                  "calendarTimezone": {
+                    "maxLength": 65536,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "color": {
                     "maxLength": 32,
                     "type": [
@@ -52776,6 +53139,34 @@
                     "maxItems": 2,
                     "minItems": 1,
                     "type": "array"
+                  },
+                  "defaultAlarmVeventDate": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "defaultAlarmVeventDatetime": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "defaultAlarmVtodoDate": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "defaultAlarmVtodoDatetime": {
+                    "maxLength": 16384,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "description": {
                     "maxLength": 1024,
@@ -53321,6 +53712,17 @@
             "schema": {
               "description": "Case-insensitive substring over each event's summary and location",
               "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Base64 UTF-8 VCALENDAR containing one VTIMEZONE. Overrides the collection timezone for floating DATE/DATE-TIME in this calendar read.",
+            "in": "header",
+            "name": "x-calendar-timezone",
+            "required": false,
+            "schema": {
+              "description": "Base64 UTF-8 VCALENDAR containing one VTIMEZONE. Overrides the collection timezone for floating DATE/DATE-TIME in this calendar read.",
+              "maxLength": 87384,
               "type": "string"
             }
           }
@@ -62804,7 +63206,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/reindex": {
       "post": {
-        "description": "Re-enqueues background full-text indexing jobs for any unindexed messages in a mailbox (system callers only).",
+        "description": "Re-enqueues background full-text indexing jobs for a mailbox's unindexed messages, in message id order (system callers only). A queued message stays unindexed until its job runs, so a mailbox with more than one page pages by `after`, passing the previous answer's `last`, until fewer than `limit` come back.",
         "operationId": "post_MailboxReindex",
         "parameters": [
           {
@@ -62818,20 +63220,56 @@
             }
           },
           {
-            "description": "Maximum number of messages to enqueue for indexing (default 5000)",
+            "description": "Maximum number of messages to enqueue for indexing (default 500)",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
-              "description": "Maximum number of messages to enqueue for indexing (default 5000)",
+              "description": "Maximum number of messages to enqueue for indexing (default 500)",
               "maximum": 5000,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Start after this message id: the `last` of the previous page",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "Start after this message id: the `last` of the previous page",
+              "pattern": "^[0-9A-Za-z]{1,64}$",
+              "type": "string"
             }
           }
         ],
         "responses": {
           "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "enqueued": {
+                      "description": "Messages queued for indexing by this call",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "last": {
+                      "description": "The last message id queued, to pass as `after` for the next page; null when none was",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enqueued",
+                    "last"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
             "description": "Index jobs enqueued successfully"
           },
           "400": {
@@ -65652,7 +66090,7 @@
     },
     "/api/v1/system/recovery-snapshots/arm": {
       "post": {
-        "description": "Primes the recurring snapshot alarm for an existing Durable Object. Returns its current freshness and scheduling state, using Unix milliseconds. A null status means the object has no eligible live state. Does not export or restore data inline. Name the object by exactly one of `objectId`, `identityId` (MailboxDO, PimDO, IdentityDO) or `accountId` (AccountDirectoryDO); the response carries the object id either way, which is what the restore takes.",
+        "description": "Primes the recurring snapshot alarm for an existing Durable Object. Returns its current freshness and scheduling state, using Unix milliseconds. A null status means the object has no eligible live state. Does not export or restore data inline. `writeFormat` sets or clears one object's format-2 drill override. Name the object by exactly one of `objectId`, `identityId` (MailboxDO, PimDO, IdentityDO) or `accountId` (AccountDirectoryDO); the response carries the object id either way, which is what the restore takes.",
         "operationId": "post_SystemRecoverySnapshotArm",
         "requestBody": {
           "content": {
@@ -65691,6 +66129,14 @@
                     "maxLength": 64,
                     "minLength": 64,
                     "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "writeFormat": {
+                    "description": "Drill override for this one object: \"2\" makes its exports write format 2 while the Worker still writes format 1, \"default\" returns it to the Worker's format. Omitted leaves it as it is. Kept only while the object has eligible state; a store wipe erases it.",
+                    "enum": [
+                      "2",
+                      "default"
+                    ],
                     "type": "string"
                   }
                 },
@@ -65771,6 +66217,23 @@
                         },
                         "stale": {
                           "type": "boolean"
+                        },
+                        "writeFormat": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                1
+                              ],
+                              "type": "number"
+                            },
+                            {
+                              "enum": [
+                                2
+                              ],
+                              "type": "number"
+                            }
+                          ],
+                          "description": "The format this object's next export writes: the Worker's RECOVERY_SNAPSHOT_WRITE_FORMAT, or 2 when the object was armed with writeFormat \"2\""
                         }
                       },
                       "required": [
@@ -65783,7 +66246,8 @@
                         "failures",
                         "lastError",
                         "enabled",
-                        "stale"
+                        "stale",
+                        "writeFormat"
                       ],
                       "type": [
                         "object",
@@ -65871,7 +66335,7 @@
     },
     "/api/v1/system/recovery-snapshots/restore": {
       "post": {
-        "description": "Rebuilds a mailbox's Durable Object store from the latest copy in the recovery bucket, inside the object. The copy is opened and checked before the store is touched, so a missing or foreign copy leaves the store as it was. Every storage access is refused while the replay runs, nothing is served before the copy's completion hash has been verified, and a failed or interrupted replay leaves the store empty (an interruption is wiped on the object's next activation). The mailbox must be suspended AND hold receiving (both account controls), the object must be the mailbox's own, the copy must be of the mailbox's current incarnation, and the store must be empty unless `replace` is set. The directory's current controls replace the copy's and must fence the result. IMAP UIDVALIDITY (distinct per folder) and the JMAP sync epoch are rotated so every client resyncs. The store's alarm duties, outgoing ones included, stay quarantined until the suspension is lifted; its identity check and recovery snapshot duty keep running. The copy's search rows are not replayed: run POST /mailboxes/{mailboxId}/reindex afterwards. Policy is re-seeded from the directory row on the next heal. Does not require exports to be enabled.",
+        "description": "Rebuilds a mailbox's Durable Object store from the latest copy in the recovery bucket, inside the object. The copy is opened and checked before the store is touched, so a missing or foreign copy leaves the store as it was. Every storage access is refused while the replay runs, nothing is served before the copy's completion hash has been verified, and a failed or interrupted replay leaves the store empty (an interruption is wiped on the object's next activation) and holds it there, refusing every adoption and every export over the copy, until a restore completes or POST /system/recovery-snapshots/discard lifts the hold. The mailbox must be suspended AND hold receiving (both account controls), the object must be the mailbox's own, the copy must be of the mailbox's current incarnation, and the store must be empty unless `replace` is set. The directory's current controls replace the copy's and must fence the result. IMAP UIDVALIDITY (distinct per folder) and the JMAP sync epoch are rotated so every client resyncs. The store's alarm duties, outgoing ones included, stay quarantined until the suspension is lifted; its identity check and recovery snapshot duty keep running. The copy's search rows are not replayed: run POST /mailboxes/{mailboxId}/reindex afterwards. Policy is re-seeded from the directory row on the next heal. Does not require exports to be enabled.",
         "operationId": "post_SystemRecoverySnapshotRestore",
         "requestBody": {
           "content": {
@@ -65947,16 +66411,21 @@
                             "null"
                           ]
                         },
+                        "insertStatements": {
+                          "description": "INSERT frames in the copy, including staging, transfers and shadow index rows",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "key": {
                           "type": "string"
                         },
                         "rows": {
-                          "description": "Rows the copy carried, shadow index rows included",
+                          "description": "Final application rows when sourceRows metadata is present; legacy copies report their INSERT-frame count",
                           "minimum": 0,
                           "type": "integer"
                         },
                         "rowsApplied": {
-                          "description": "Rows written into the object",
+                          "description": "Executed INSERT frames, including staging and transfers; excludes skipped shadow index and sequence statements",
                           "minimum": 0,
                           "type": "integer"
                         },
@@ -66000,6 +66469,7 @@
                         "capturedAt",
                         "sha256",
                         "rows",
+                        "insertStatements",
                         "rowsApplied",
                         "tables",
                         "statements",
@@ -66113,6 +66583,374 @@
           }
         },
         "summary": "Restore one MailboxDO from its recovery snapshot (system only)",
+        "tags": [
+          "System"
+        ],
+        "x-max-json-body-bytes": 1048576
+      }
+    },
+    "/api/v1/system/recovery-snapshots/discard": {
+      "post": {
+        "description": "A restore whose replay fails, or is interrupted, leaves the mailbox's store empty and holds it there: every adoption of the store is refused (a retryable 503 to delivery, pickup and settings writes), its recovery snapshot schedule is not enrolled, and its empty state is never exported over the copy. A completed restore lifts the hold. This lifts it without one, when the copy cannot or should not be restored: the store stays empty and its next adoption starts the mailbox afresh from its directory row. The copy in the recovery bucket is not touched. `discarded` is false when no hold was held.",
+        "operationId": "post_SystemRecoverySnapshotDiscard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "className": {
+                    "description": "Only MailboxDO has a live restore, and so a hold to discard",
+                    "enum": [
+                      "MailboxDO"
+                    ],
+                    "type": "string"
+                  },
+                  "identityId": {
+                    "description": "The mailbox (identity) ULID whose object holds the failed restore; must map to objectId",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "objectId": {
+                    "description": "Cloudflare Durable Object ID of the mailbox's own object",
+                    "maxLength": 64,
+                    "minLength": 64,
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "className",
+                  "objectId",
+                  "identityId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "className": {
+                      "enum": [
+                        "MailboxDO"
+                      ],
+                      "type": "string"
+                    },
+                    "discarded": {
+                      "type": "boolean"
+                    },
+                    "identityId": {
+                      "type": "string"
+                    },
+                    "objectId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "className",
+                    "objectId",
+                    "identityId",
+                    "discarded"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Whether a hold was lifted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed or invalid_object_id"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "object_mismatch: the object is not the mailbox's own"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the platform's storage could not answer just now; retry after the Retry-After window. Any operation can answer this. A write that got it may have been applied, so retry it with the same idempotency key where it takes one, or read the state back first (see Transient failures in the API description)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Discard a failed MailboxDO restore's hold (system only)",
+        "tags": [
+          "System"
+        ],
+        "x-max-json-body-bytes": 1048576
+      }
+    },
+    "/api/v1/system/pre-reset-stores/purge": {
+      "post": {
+        "description": "A MailboxDO or PimDO store stamped under the legacy `schema_version` key was written by a build from before the schema numbering reset. No migration carries it forward, so its object refuses every request (`store predates the schema numbering reset`) and nothing else can delete it. This wipes one such store and its alarm, named by Durable Object id, and reopens the warm instance once storage is empty. The object decides: it purges only a store it refused when it started and that still carries the legacy stamp, so a store the current build can open answers `preReset: false` and is left as it is, and so is a store already purged. Before deleting blobs or storage, a non-dry-run call checks any recorded `mailboxId` against the directory and refuses with `409 owner_exists` if that identity is still live or restorable under a tombstone. A MailboxDO store's message blobs are deleted first: everything in the mail bucket under `blobPrefix`, which is `<mailboxId>/` when the owner the store recorded is the identity this object is named by, and null otherwise (no owner recorded, or an id that names another object, whose prefix is not this store's to delete). A PimDO store keeps nothing in R2, so its `blobPrefix` is always null. When the prefix cannot be emptied within one call the store is kept and the response says `purged: false` with the count deleted so far: repeat the call until `purged` is true. With `dryRun` nothing is deleted and the response reports what a purge would find: `legacyVersion` is the stamp, `mailboxId` is the identity the store recorded as its owner (null when it recorded none), and `blobPrefix` is the prefix a purge would empty. The purge cannot be undone.",
+        "operationId": "post_SystemPreResetStorePurge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "className": {
+                    "description": "The store's class; only these two carry the legacy stamp",
+                    "enum": [
+                      "MailboxDO",
+                      "PimDO"
+                    ],
+                    "type": "string"
+                  },
+                  "dryRun": {
+                    "description": "Report what a purge would find and delete nothing",
+                    "type": "boolean"
+                  },
+                  "objectId": {
+                    "description": "Cloudflare Durable Object ID, as the namespace's object listing gives it; not an identity ULID",
+                    "maxLength": 64,
+                    "minLength": 64,
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "className",
+                  "objectId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "blobPrefix": {
+                      "description": "The R2 prefix a purge empties before the store goes; null for a PimDO store, a store that recorded no owner, or an owner id that does not name this object",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "blobsDeleted": {
+                      "description": "Objects this call deleted under `blobPrefix`",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "className": {
+                      "enum": [
+                        "MailboxDO",
+                        "PimDO"
+                      ],
+                      "type": "string"
+                    },
+                    "legacyVersion": {
+                      "description": "The legacy stamp; null unless `preReset`",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "mailboxId": {
+                      "description": "The identity the store recorded as its owner; null unless `preReset`, or when it recorded none",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "objectId": {
+                      "type": "string"
+                    },
+                    "preReset": {
+                      "description": "Whether the object holds a store from before the reset",
+                      "type": "boolean"
+                    },
+                    "purged": {
+                      "description": "Whether this call wiped the store; false on a dry run, and when the prefix was not emptied within this call",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "className",
+                    "objectId",
+                    "preReset",
+                    "legacyVersion",
+                    "mailboxId",
+                    "blobPrefix",
+                    "blobsDeleted",
+                    "purged"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "What the object found, and whether it was wiped"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "validation_failed or invalid_object_id"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "system_credentials_required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "className": {
+                      "enum": [
+                        "MailboxDO",
+                        "PimDO"
+                      ],
+                      "type": "string"
+                    },
+                    "error": {
+                      "enum": [
+                        "owner_exists"
+                      ],
+                      "type": "string"
+                    },
+                    "mailboxId": {
+                      "type": "string"
+                    },
+                    "objectId": {
+                      "type": "string"
+                    },
+                    "ownerState": {
+                      "enum": [
+                        "live",
+                        "deleted"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "className",
+                    "objectId",
+                    "mailboxId",
+                    "ownerState"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "owner_exists: the recorded `mailboxId` still belongs to a live or restorable identity in the directory"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: JSON request body exceeds 1 MiB or 500,000 values (object keys included), checked before parsing"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the platform's storage could not answer just now; retry after the Retry-After window. Any operation can answer this. A write that got it may have been applied, so retry it with the same idempotency key where it takes one, or read the state back first (see Transient failures in the API description)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Purge a store that predates the schema numbering reset (system only)",
         "tags": [
           "System"
         ],
@@ -66855,12 +67693,12 @@
             }
           },
           {
-            "description": "`true` = NEAR episodes only (a count at or above 80% or 90% of its cap), each row with its `level`, and the answer echoes `near: true` — require the echo, since a core that predates the parameter ignores it; `false` (default) = at-limit episodes only, the answer without the parameter. Combines with `shadow`. Phase 1 covers the send caps (mailbox and account), the receive allowance (both levels) and the storage pool. A sharded account row measures its shard's enforced slice and displays the full plan cap; each shard settles only its own near rows",
+            "description": "`true` = NEAR episodes only (a count at or above 80% or 90% of its cap), each row with its `level`, and the answer echoes `near: true` — require the echo, since a core that predates the parameter ignores it; `false` (default) = at-limit episodes only, the answer without the parameter. Combines with `shadow`. NEAR episodes cover the send caps (mailbox and account), the receive allowance (both levels) and the storage pool. A sharded account row measures its shard's enforced slice and displays the full plan cap; each shard settles only its own near rows",
             "in": "query",
             "name": "near",
             "required": false,
             "schema": {
-              "description": "`true` = NEAR episodes only (a count at or above 80% or 90% of its cap), each row with its `level`, and the answer echoes `near: true` — require the echo, since a core that predates the parameter ignores it; `false` (default) = at-limit episodes only, the answer without the parameter. Combines with `shadow`. Phase 1 covers the send caps (mailbox and account), the receive allowance (both levels) and the storage pool. A sharded account row measures its shard's enforced slice and displays the full plan cap; each shard settles only its own near rows",
+              "description": "`true` = NEAR episodes only (a count at or above 80% or 90% of its cap), each row with its `level`, and the answer echoes `near: true` — require the echo, since a core that predates the parameter ignores it; `false` (default) = at-limit episodes only, the answer without the parameter. Combines with `shadow`. NEAR episodes cover the send caps (mailbox and account), the receive allowance (both levels) and the storage pool. A sharded account row measures its shard's enforced slice and displays the full plan cap; each shard settles only its own near rows",
               "enum": [
                 "true",
                 "false"
@@ -67223,7 +68061,7 @@
                 }
               }
             },
-            "description": "validation_failed or invalid_domain (a domain entry that fails D3 canonicalization)"
+            "description": "validation_failed or invalid_domain (a domain entry that fails domain canonicalization)"
           },
           "401": {
             "content": {
