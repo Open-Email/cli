@@ -49,8 +49,12 @@ type PimCollection struct {
 	// Components: the calendar's supported primary components, VEVENT then
 	// VTODO; nil for an addressbook.
 	Components []string `json:"components"`
-	Visibility string   `json:"visibility"` // private | shared | public
-	Role       *string  `json:"role"`       // default | tasks | nil
+	// The calendar's own properties a DAV client sets and reads back (core
+	// #923, calendar properties round-trip), each nil while unset. See
+	// PimCalendarProperties for each.
+	PimCalendarProperties
+	Visibility string  `json:"visibility"` // private | shared | public
+	Role       *string `json:"role"`       // default | tasks | nil
 	// ScheduleTransp is RFC 6638 §9.1's CALDAV:schedule-calendar-transp:
 	// whether this calendar's objects count toward the OWNER's free/busy time.
 	// Never empty — §9.1 says an absent property "MUST be assumed" to be
@@ -71,6 +75,29 @@ type PimCollection struct {
 	OwnerIdentityID *string `json:"ownerIdentityId,omitempty"`
 	OwnerAddress    *string `json:"ownerAddress,omitempty"`
 	MyPermission    *string `json:"myPermission,omitempty"`
+}
+
+// PimCalendarProperties are the calendar settings a client stores on its
+// calendar and expects back as it wrote them: the same six on the owner's
+// listing (PimCollection) and a sharee's (PimSharedWithMe), which is why they
+// are one embedded struct. Each is nil when absent.
+type PimCalendarProperties struct {
+	// CalendarOrder is Apple's calendar sort position (calendar collections
+	// only).
+	CalendarOrder *string `json:"calendarOrder"`
+	// CalendarTimezone is a VCALENDAR holding exactly one VTIMEZONE, the zone
+	// core reads floating and date-only values in; nil means the UTC
+	// fallback. A read whose expansion in this zone passes 32,768 transitions
+	// or 1,000,000 iteration steps is refused 413 range_too_large.
+	CalendarTimezone *string `json:"calendarTimezone"`
+	// The default-alarm preferences, a VALARM each: for timed events, all-day
+	// events, timed tasks and date-only tasks. An empty string turns that
+	// default off; nil means none is set. Stored for the client's round trip
+	// only: core claims no default-alarm capability of its own.
+	DefaultAlarmVeventDatetime *string `json:"defaultAlarmVeventDatetime"`
+	DefaultAlarmVeventDate     *string `json:"defaultAlarmVeventDate"`
+	DefaultAlarmVtodoDatetime  *string `json:"defaultAlarmVtodoDatetime"`
+	DefaultAlarmVtodoDate      *string `json:"defaultAlarmVtodoDate"`
 }
 
 // PimTaskCounts is a collection's task census by progress: Active is what
@@ -303,8 +330,10 @@ type PimSharedWithMe struct {
 	Description     *string  `json:"description"`
 	DescriptionLang *string  `json:"descriptionLang"` // BCP 47 tag of Description, or nil
 	Components      []string `json:"components"`      // VEVENT / VTODO; nil for an addressbook
-	SyncToken       string   `json:"syncToken"`
-	CreatedAt       int64    `json:"createdAt"`
+	// The owner's calendar properties, as on PimCollection.
+	PimCalendarProperties
+	SyncToken string `json:"syncToken"`
+	CreatedAt int64  `json:"createdAt"`
 	// The same census the owner's listing carries, so a shared task list can be
 	// badged without listing it.
 	ObjectCount int64         `json:"objectCount"`

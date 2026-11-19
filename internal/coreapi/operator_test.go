@@ -274,7 +274,8 @@ func TestSuppressionRoundTrip(t *testing.T) {
 }
 
 // "Not suppressed" is a 404, and callers must be able to tell it apart from a
-// real failure — it is the answer "clear to send".
+// real failure — it is the answer "no global row" (not "clear to send": an
+// account's own complaint is a separate, account-scoped row).
 func TestGetSuppressionNotFoundIsAnswerable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(404)

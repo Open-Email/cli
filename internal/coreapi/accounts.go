@@ -151,6 +151,12 @@ type AccountTraffic struct {
 		// window — see TrafficSeriesPoint.Forwarded. Never added to a total; it
 		// is already inside one.
 		Forwarded int64 `json:"forwarded"`
+		// BytesIn and BytesOut are the bytes received and sent across every
+		// domain the account owns, by daily usage's inboundBytes and
+		// outboundBytes rules — see TrafficSeriesPoint.BytesIn and BytesOut,
+		// which say what each holds.
+		BytesIn  int64 `json:"bytesIn"`
+		BytesOut int64 `json:"bytesOut"`
 	} `json:"totals"`
 	ByOutcome map[string]int64 `json:"byOutcome"`
 	Rows      []TrafficRow     `json:"rows"`

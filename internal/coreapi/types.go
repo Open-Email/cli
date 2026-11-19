@@ -136,6 +136,16 @@ type Account struct {
 	// Plan is the service-class LABEL last applied (core migration 0050) —
 	// display and billing only; enforcement reads the stamped columns.
 	Plan *string `json:"plan"`
+	// VerifiedRecipientsOnly is true while the account may send only to its
+	// VERIFIED RECIPIENTS: addresses on its own domains, and outside addresses
+	// whose owners confirmed them (GET /accounts/:id/verified-recipients). An
+	// immediate send to any other outside recipient answers 207 with that
+	// recipient alone failed (recipient_not_verified) and the rest going on; a
+	// send scheduled with sendAt answers 400 recipient_not_verified, naming the
+	// first such address. Stamped by the vetting label (untrusted sets it,
+	// trusted clears it; system-written through POST /accounts/:id/plan); false
+	// for an account never vetted either way.
+	VerifiedRecipientsOnly bool `json:"verifiedRecipientsOnly"`
 	// StorageLimitBytes is the account storage pool: NIL = platform default,
 	// 0 = explicitly unlimited/metered.
 	StorageLimitBytes *int64 `json:"storageLimitBytes"`
@@ -237,6 +247,25 @@ type AccountSendUsage struct {
 	Creates struct {
 		Mailboxes int64  `json:"mailboxes"`
 		PerDay    *int64 `json:"perDay"`
+		// The address (route) and domain create bounds, read the same way as
+		// the mailbox pair above but nullable on BOTH sides. A nil count is a
+		// count core could not read right now (the rest of the answer stands;
+		// read again), never zero; a count is 0 while its limit is nil, since
+		// nothing is counted while that limit is off. A nil limit means
+		// unenforced: the account's number is 0, or the platform sets no
+		// default for it. Note the inversion from Account.AddressCreatesPerDay,
+		// where nil is the platform default and 0 is unlimited: this is the
+		// limit IN FORCE, already resolved.
+		//
+		// Addresses counts one per new address in the rolling 24 hours (a
+		// re-create of the same address does not count again). Domains counts
+		// one per new domain name POSTed, before the ownership check, so an
+		// onboarding that fails verification still counts and a re-POST of the
+		// same name does not.
+		Addresses       *int64 `json:"addresses"`
+		AddressesPerDay *int64 `json:"addressesPerDay"`
+		Domains         *int64 `json:"domains"`
+		DomainsPerDay   *int64 `json:"domainsPerDay"`
 	} `json:"creates"`
 	WindowSeconds      int64 `json:"windowSeconds"`
 	BurstWindowSeconds int64 `json:"burstWindowSeconds"`

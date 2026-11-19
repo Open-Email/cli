@@ -10,18 +10,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newAdminSuppressionsCmd exposes the deployment-global do-not-send list. Rows
+// newAdminSuppressionsCmd exposes the deployment-global suppression list. Rows
 // are normally written by the FBL consumer from DSN/ARF reports; `add` is the
 // narrow exception, for a complaint that consumer could not PROVE and therefore
 // refused to act on (see newSuppressionAddCmd).
+//
+// Since core #884 a proven complaint is filed against the SENDING account and
+// blocks that account alone, so it is not on this list: every verb here reads
+// or writes the global rows only, and says so rather than "clear to send".
+// Account-scoped rows are `?accountId=` on the same routes, which these verbs
+// do not send (core's README points operators at `openemail api` for them).
 func newAdminSuppressionsCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "suppressions",
 		Aliases: []string{"suppression"},
-		Short:   "Inspect, add to and lift the do-not-send list (system-only)",
-		Long: "The suppression list is deployment-global: an address on it is refused for\n" +
-			"every account, because the evidence is a receiver's own hard bounce or spam\n" +
-			"complaint rather than a per-tenant setting.\n\n" +
+		Short:   "Inspect, add to and lift the global do-not-send list (system-only)",
+		Long: "The platform's own evidence that an address must not be mailed. Its scope\n" +
+			"follows the evidence: a hard bounce (the address does not exist) is\n" +
+			"deployment-global, refused for every account, while a spam complaint is\n" +
+			"filed against the account whose mail drew it and blocks that account alone,\n" +
+			"so one tenant's complaint never stops another from mailing the same person.\n\n" +
+			"These commands read and change the GLOBAL list: hard bounces, blocks entered\n" +
+			"by hand, and complaints from before core scoped them, which stay global\n" +
+			"until an operator moves them. Account complaints are read and lifted\n" +
+			"through the API, with the account's id:\n\n" +
+			"  openemail api GET /suppressions --query accountId=ACCOUNT_ID\n" +
+			"  openemail api DELETE /suppressions/ADDRESS --query accountId=ACCOUNT_ID\n\n" +
 			"Rows are normally written by the feedback-loop consumer, and that remains the\n" +
 			"way an address should get here. `add` is the exception for one specific gap:\n" +
 			"the consumer only acts on a complaint it can prove we sent, so a genuine\n" +
@@ -46,7 +60,7 @@ func newSuppressionListCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List suppressed recipient addresses",
+		Short:   "List the addresses on the global suppression list",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := a.authedClient()
@@ -93,9 +107,12 @@ func newSuppressionGetCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:     "get <address>",
 		Aliases: []string{"check"},
-		Short:   "Check whether one address is suppressed",
-		Long: "Answers whether this address can currently be sent to. A \"not suppressed\"\n" +
-			"answer is a normal result, not an error: it means the address is clear.",
+		Short:   "Check whether one address is on the global list",
+		Long: "Answers whether this address is on the deployment-global suppression list.\n" +
+			"A \"not suppressed\" answer is a normal result, not an error, but it covers\n" +
+			"the global list only: account complaints and address lists can still\n" +
+			"refuse the address for one account. Check an account complaint\n" +
+			"with `openemail api GET /suppressions/ADDRESS --query accountId=ACCOUNT_ID`.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
@@ -103,11 +120,14 @@ func newSuppressionGetCmd(a *app) *cobra.Command {
 				return err
 			}
 			s, err := client.GetSuppression(cmd.Context(), args[0])
-			// Core answers 404 for "clear to send". That is the ANSWER to the
-			// question asked, so report it as one rather than failing.
+			// Core answers 404 when the address has no GLOBAL row. That is the
+			// ANSWER to the question asked, so report it as one rather than
+			// failing, but not as "clear to send": core's own words are that it
+			// is no verdict on an account's complaints or address lists.
 			if coreapi.IsNotFound(err) {
 				a.out.Emit(map[string]any{"address": args[0], "suppressed": false}, func(w io.Writer) {
-					a.out.Successf("%s is not suppressed — clear to send", args[0])
+					a.out.Successf("%s is not on the global suppression list", args[0])
+					a.out.Msgf("  account complaints are not checked here: openemail api GET /suppressions/%s --query accountId=ACCOUNT_ID", args[0])
 				})
 				return nil
 			}
@@ -153,7 +173,9 @@ func newSuppressionAddCmd(a *app) *cobra.Command {
 		Use:     "add <address>",
 		Aliases: []string{"create", "suppress"},
 		Short:   "Suppress an address by hand",
-		Long: "Stops the platform sending to this address, for every account.\n\n" +
+		Long: "Stops the platform sending to this address, for every account. That is wider\n" +
+			"than a complaint the consumer proves, which core files against the sending\n" +
+			"account alone.\n\n" +
 			"Prefer letting the feedback-loop consumer do this: a row it writes carries the\n" +
 			"report as evidence. Reach for `add` when a complaint arrived that the consumer\n" +
 			"could not attribute to a recorded submission (look for `fbl_suppression_refused`\n" +
@@ -208,8 +230,10 @@ func newSuppressionLiftCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "lift <address>",
 		Aliases: []string{"delete", "rm"},
-		Short:   "Clear an address to send again",
-		Long: "Removes the suppression so mail to this address is attempted again.\n\n" +
+		Short:   "Lift an address's global suppression",
+		Long: "Removes the address's GLOBAL row so mail to it is attempted again. An\n" +
+			"account complaint for it, if there is one, stays; lift that with\n" +
+			"`openemail api DELETE /suppressions/ADDRESS --query accountId=ACCOUNT_ID`.\n\n" +
 			"Lift only when the underlying problem is actually fixed. A hard bounce that\n" +
 			"is still a hard bounce will simply re-suppress on the next attempt, and a\n" +
 			"lifted complaint means mailing someone who asked you to stop.\n\n" +
@@ -241,7 +265,9 @@ func newSuppressionLiftCmd(a *app) *cobra.Command {
 				return err
 			}
 			a.out.Emit(map[string]any{"address": args[0], "deleted": deleted}, func(w io.Writer) {
-				a.out.Successf("Suppression lifted — %s is clear to send", args[0])
+				// Not "clear to send": an account complaint is a separate row
+				// this lift does not touch.
+				a.out.Successf("Global suppression on %s lifted", args[0])
 			})
 			return nil
 		},

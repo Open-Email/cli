@@ -5,9 +5,19 @@ import (
 	"net/http"
 )
 
-// Suppression is one address on the deployment-global do-not-send list. Rows
-// are written by the FBL consumer from DSN/ARF reports — a hard bounce or a
-// spam complaint — and they suppress sending platform-wide, not per account.
+// Suppression is one address the platform's own evidence says not to mail.
+// Rows are written by the FBL consumer from DSN/ARF reports and by the relay
+// from an in-session hard bounce. Their SCOPE follows the evidence (core #884,
+// "fix(fbl): scope complaints to sender accounts"): a hard bounce is
+// deployment-global, refused for every account, while a spam complaint is
+// filed against the account whose mail drew it and blocks that account alone.
+// AccountID names that account; it is absent on a global row. Complaints that
+// predate the scoping stay global until an operator moves them.
+//
+// The unscoped reads (ListSuppressions, GetSuppression) see the GLOBAL rows
+// only: a 404 from GetSuppression is no verdict on any account's complaints.
+// Account complaints are read with `?accountId=` (`openemail api GET
+// /suppressions --query accountId=<id>`), which this client does not wrap.
 //
 // Detail is the diagnostic snippet or ARF feedback type verbatim from the
 // report, so it is the only field that says WHY beyond the two-value Reason.
@@ -27,9 +37,15 @@ type Suppression struct {
 	EventCount       int64   `json:"eventCount"`
 	FirstEventAt     int64   `json:"firstEventAt"`
 	LastEventAt      int64   `json:"lastEventAt"`
+	// AccountID is the sending account whose complaint blocks this recipient,
+	// on an account-scoped row; absent (empty) on a deployment-global one.
+	// Optional on the wire rather than nullable, so "" and absent are one
+	// state here.
+	AccountID string `json:"accountId,omitempty"`
 }
 
-// ListSuppressions returns one page of the do-not-send list (system-only).
+// ListSuppressions returns one page of the deployment-global suppression list
+// (system-only). Account-scoped complaints are not in it; see Suppression.
 func (c *Client) ListSuppressions(ctx context.Context, limit int, cursor string) (Page[Suppression], error) {
 	var out struct {
 		Suppressions []Suppression `json:"suppressions"`
@@ -45,9 +61,11 @@ func (c *Client) ListSuppressions(ctx context.Context, limit int, cursor string)
 	return Page[Suppression]{Items: out.Suppressions, NextCursor: out.NextCursor}, nil
 }
 
-// GetSuppression looks up one address (system-only). A 404 is the ANSWER, not a
-// failure: it means the address is clear to send. Callers should test with
-// IsNotFound rather than treating it as an error.
+// GetSuppression looks up one address on the GLOBAL list (system keys; an
+// account key sees hard_bounce rows only). A 404 is the ANSWER, not a failure:
+// the address has no global row. It is no verdict on an account's complaints
+// or address lists (core's own words), so it does not mean "clear to send".
+// Callers should test with IsNotFound rather than treating it as an error.
 func (c *Client) GetSuppression(ctx context.Context, address string) (*Suppression, error) {
 	var out Suppression
 	err := c.doJSON(ctx, request{
@@ -78,7 +96,10 @@ type SuppressionCreate struct {
 // or forwarding records no correlatable row, so a genuine complaint about it is
 // refused with an `fbl_suppression_refused` log line and nothing is acted on.
 // This call is the operator standing in for the proof the pipeline could not
-// produce — which is why it is system-only and logged loudly.
+// produce — which is why it is system-only and logged loudly. It sends no
+// accountId, so the row it writes is GLOBAL, refused for every account: wider
+// than a complaint the consumer proves, which core files against the sending
+// account alone.
 //
 // Idempotent by construction: repeat calls converge on the same row rather than
 // erroring or inflating the tally.
@@ -94,11 +115,12 @@ func (c *Client) AddSuppression(ctx context.Context, in SuppressionCreate) (*Sup
 	return &out, nil
 }
 
-// LiftSuppression clears an address to send again. 404 when the address was
-// not suppressed. System keys may lift any row; an ACCOUNT key may lift
-// hard_bounce rows only — a complaint row answers it 404 exactly like an
-// absent one (deliberately indistinguishable, so the verb is no oracle over
-// who complained), and only an operator can lift those.
+// LiftSuppression removes an address's GLOBAL row; an account complaint for it,
+// if there is one, stays. 404 when there was no global row. System keys may
+// lift any global row; an ACCOUNT key may lift hard_bounce rows only — a
+// complaint row answers it 404 exactly like an absent one (deliberately
+// indistinguishable, so the verb is no oracle over who complained), and only
+// an operator can lift those.
 func (c *Client) LiftSuppression(ctx context.Context, address string) (bool, error) {
 	var out struct {
 		Deleted bool `json:"deleted"`

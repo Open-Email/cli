@@ -250,6 +250,11 @@ type DomainTraffic struct {
 		// window — see TrafficSeriesPoint.Forwarded. Never added to a total; it
 		// is already inside one.
 		Forwarded int64 `json:"forwarded"`
+		// BytesIn and BytesOut are the window's bytes received and sent, by
+		// daily usage's inboundBytes and outboundBytes rules — see
+		// TrafficSeriesPoint.BytesIn and BytesOut, which say what each holds.
+		BytesIn  int64 `json:"bytesIn"`
+		BytesOut int64 `json:"bytesOut"`
 	} `json:"totals"`
 	ByOutcome map[string]int64 `json:"byOutcome"`
 	Rows      []TrafficRow     `json:"rows"`
@@ -261,19 +266,42 @@ type DomainTraffic struct {
 	RetentionDays int                  `json:"retentionDays"`
 }
 
-// TrafficSeriesPoint is one time bucket of the traffic summary: totals plus the
-// inbound/outbound split and the per-outcome breakdown inside that bucket.
+// TrafficSeriesPoint is one time bucket of the traffic summary: totals, the
+// messages received and recipient legs sent, the bytes each way, and the
+// per-outcome breakdown inside that bucket. The direction counts and the
+// bytes each way are sampled, and not deduped by delivery as the daily usage
+// ledger is.
 type TrafficSeriesPoint struct {
-	Bucket   string `json:"bucket"`
-	Events   int64  `json:"events"`
-	Bytes    int64  `json:"bytes"`
-	Inbound  int64  `json:"inbound"`
-	Outbound int64  `json:"outbound"`
+	Bucket string `json:"bucket"`
+	Events int64  `json:"events"`
+	Bytes  int64  `json:"bytes"`
+	// Inbound counts messages received, one per copy, by the rule daily usage
+	// counts inboundDeliveries by: each copy that reached a hosted address
+	// (from outside, as a group member, or from a hosted sender), was filtered
+	// by its rules, or was admitted to a webhook or forward route. Deferrals,
+	// refusals, duplicates, uploads, imports and Sent copies are not counted.
+	// Core #916 moved both directions to these rules; before it, they counted
+	// traffic events by their source.
+	Inbound int64 `json:"inbound"`
+	// Outbound counts recipient legs sent, one per recipient, by the rule daily
+	// usage counts outboundRecipients by (at acceptance, or at the relay's
+	// success for days before usage counted at acceptance), plus each target a
+	// forward reached (Forwarded). Deferrals and retries are not counted again.
+	Outbound int64 `json:"outbound"`
 	// Forwarded is the inbound-driven SUBSET of Outbound, never a third
 	// direction: mail that left because a route was configured rather than
 	// because anyone submitted it. Adding it to Outbound double-counts. It is
 	// bounded by the per-domain forwarding budget and spends no send allowance.
-	Forwarded int64            `json:"forwarded"`
+	Forwarded int64 `json:"forwarded"`
+	// BytesIn is the bytes received, by daily usage's inboundBytes rule: each
+	// copy that reached a hosted address (stored, or filtered by its rules) and
+	// each admission to a webhook or forward route. A subset of Bytes.
+	BytesIn int64 `json:"bytesIn"`
+	// BytesOut is the bytes sent, by daily usage's outboundBytes rule: each
+	// recipient leg of a send, hosted or external, counted when the send was
+	// accepted. A forward's bytes are in neither this nor BytesIn, so this is
+	// not the bytes of Outbound.
+	BytesOut  int64            `json:"bytesOut"`
 	ByOutcome map[string]int64 `json:"byOutcome,omitempty"`
 }
 

@@ -224,9 +224,11 @@ func newAccountSuppressionCheckCmd(a *app) *cobra.Command {
 		Long: "Runs the SAME evaluator submission and the relay run, so it answers for\n" +
 			"EVERY outbound list this account has — not only the do-not-send one — and\n" +
 			"names the pattern that decided.\n\n" +
-			"An address can still be refused by the platform's own bounce/complaint\n" +
-			"list, which an account key cannot read; those refusals show per message in\n" +
-			"`domains events` as `relay_suppressed`.",
+			"An address can still be refused by the platform's own suppressions: a hard\n" +
+			"bounce blocks it for every account, and a spam complaint about this\n" +
+			"account's mail blocks it for this account. Those refusals show per message\n" +
+			"in `domains events` as `relay_suppressed`, and this account's complaints\n" +
+			"are listed by `openemail api GET /suppressions --query accountId=ACCOUNT_ID`.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()

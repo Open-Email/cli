@@ -272,13 +272,15 @@ func doNotSendAddPane(ctx context.Context, ui *Options, accountID string, st *do
 // account's own entry AND, since this screen only exists on an account key,
 // attempts the global hard-bounce lift core grants that key — so a bounce
 // block discovered through a refused send is cleared in the same gesture. A
-// global complaint row is untouchable here by construction (core answers the
-// account key 404), which the body says out loud.
+// complaint row is untouchable here by construction, which the body says out
+// loud: a global one answers the account key 404, and the account's own
+// (core #884 files complaints per sending account) is lifted only by a system
+// key, on a scoped DELETE this screen never sends.
 func doNotSendRemoveConfirm(ctx context.Context, ui *Options, accountID string, st *doNotSendState, e coreapi.AddressListEntry) pane {
 	body := "Removes " + e.Pattern + " from this account's do-not-send list, and lifts the " +
 		"platform's bounce block on it if one exists.\n\n" +
-		"If the address was suppressed platform-wide over a spam COMPLAINT, mail to it " +
-		"stays refused — only an operator can lift that."
+		"If the platform suppressed it over a spam COMPLAINT (this account's own, or an " +
+		"older platform-wide one), mail to it stays refused — only an operator can lift that."
 	if e.Note != nil && *e.Note != "" {
 		body += "\n\nNote on the row: " + *e.Note
 	}
