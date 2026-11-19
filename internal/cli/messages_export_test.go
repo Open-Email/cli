@@ -451,3 +451,28 @@ func TestMessageExportRequiresOut(t *testing.T) {
 		t.Fatalf("requests sent before validation: %v", f.seen())
 	}
 }
+
+func TestMessageExportRefusesAnIDThatIsNotAFileName(t *testing.T) {
+	f := threeLiveTwoTrash()
+	f.t = t
+	f.live[1].meta.ID = "../escape"
+	root := t.TempDir()
+	dir := filepath.Join(root, "out")
+	run := runExport(t, f, false, "--out", dir)
+	var exitErr *ExitError
+	if run.err == nil || !errors.As(run.err, &exitErr) || exitErr.Code != 1 {
+		t.Fatalf("err = %v, want exit 1", run.err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "escape.eml")); !os.IsNotExist(err) {
+		t.Fatalf("wrote outside the export directory")
+	}
+	for _, req := range f.seen() {
+		if strings.Contains(req, "escape") {
+			t.Fatalf("read a message whose id is not a file name: %s", req)
+		}
+	}
+	lines := readManifest(t, dir)
+	if len(lines) != 3 || lines[1].Error != "unsafe_id" || lines[1].File != "" {
+		t.Fatalf("manifest = %+v", lines)
+	}
+}
