@@ -25,6 +25,7 @@ func newMessagesCmd(a *app) *cobra.Command {
 		newMessageListCmd(a),
 		newMessageGetCmd(a),
 		newMessageRawCmd(a),
+		newMessageExportCmd(a),
 		newMessageContentCmd(a),
 		newMessagePartCmd(a),
 		newMessageAppendCmd(a),

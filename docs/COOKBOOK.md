@@ -233,9 +233,10 @@ openemail message part 01MSGID… 2 --raw -o invoice.b64   # the stored encoded 
 openemail message raw 01MSGID… -o message.eml
 ```
 
-`content` and `part` serve **live** messages (a trashed message is `404`, like
-`raw`); over-large messages answer `413` with `raw` as the fallback. Add `--json`
-to `content` for the structured object.
+`content`, `part` and `raw` serve live messages and, until they are purged,
+messages on the recently-deleted tier (`messages list --trash`); a purged message
+is `404`. Over-large messages answer `413` to `content` with `raw` as the
+fallback. Add `--json` to `content` for the structured object.
 
 ## Work in the console
 
@@ -308,6 +309,27 @@ done
 APPEND bypasses the routing ladder and never dedups — two identical appends are
 two messages. Pass `--filter` to run the mailbox's active Sieve script on the
 imported message.
+
+## Export a mailbox (keep a copy of everything)
+
+```sh
+# Every live message, one .eml per message, plus manifest.jsonl and export.json.
+openemail messages export -m support@example.com --out ./support-export
+
+# Also the deleted messages core still holds (purged 14 days after the delete),
+# under ./hold/deleted/, and only mail to or from one address.
+openemail messages export -m 01J… --out ./hold --include-expunged --address chris@example.com
+```
+
+The export only reads: nothing is flagged, moved, restored or deleted, so the
+mailbox is exactly as it was. Each file is named by message id and checked
+against the SHA-256 core recorded when the message was stored; `manifest.jsonl`
+holds one line per message with the file, its checksum, and core's metadata
+(envelope, headers, labels, flags, `receivedAt`, and `expungedAt`/`purgeAfter`
+for deleted ones). Run it again into the same directory to resume: files that
+are present and verify are skipped. A message that could not be saved (purged
+between the listing and the read, or a checksum that does not match) gets a line
+with its `error`, and the command exits 1.
 
 ## Manage Sieve filters
 
