@@ -7,6 +7,40 @@ import (
 	"github.com/Open-Email/cli/internal/coreapi"
 )
 
+// TestRunCooldownSaysCoresWait holds the hint to core's answer: the wait
+// between two runs of a source is an operator's setting, so the CLI never says
+// a rate of its own, whatever core answered.
+func TestRunCooldownSaysCoresWait(t *testing.T) {
+	cases := []struct {
+		retryAfter any
+		want       string
+	}{
+		{float64(1), "please wait 1 second before"},
+		{float64(45), "please wait 45 seconds before"},
+		{45, "please wait 45 seconds before"},
+		{float64(119), "please wait 119 seconds before"},
+		{float64(120), "please wait 2 minutes before"},
+		{float64(121), "please wait 3 minutes before"},
+		{float64(3600), "please wait 60 minutes before"},
+		{float64(0), "please wait before fetching again"},
+		{"soon", "please wait before fetching again"},
+		{nil, "please wait before fetching again"},
+	}
+	for _, tc := range cases {
+		extra := map[string]any{}
+		if tc.retryAfter != nil {
+			extra["retryAfter"] = tc.retryAfter
+		}
+		got := errorHint(&coreapi.APIError{Status: 429, Code: "run_cooldown", Extra: extra}, false)
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("retryAfter %v: hint %q does not contain %q", tc.retryAfter, got, tc.want)
+		}
+		if strings.Contains(got, "per minute") || strings.Contains(got, "once") {
+			t.Errorf("retryAfter %v: hint %q states a rate of its own", tc.retryAfter, got)
+		}
+	}
+}
+
 func TestErrorHint(t *testing.T) {
 	cases := []struct {
 		name string
@@ -134,7 +168,13 @@ func TestErrorHint(t *testing.T) {
 		{
 			name: "run_cooldown without retryAfter still hints",
 			ae:   &coreapi.APIError{Status: 429, Code: "run_cooldown"},
-			want: "maximum once per minute",
+			want: "please wait before fetching again",
+		},
+		{
+			// An operator sets core's wait in minutes (pickup-run-wait-minutes).
+			name: "run_cooldown says a longer wait in minutes",
+			ae:   &coreapi.APIError{Status: 429, Code: "run_cooldown", Extra: map[string]any{"retryAfter": float64(300)}},
+			want: "wait 5 minutes before fetching again",
 		},
 		{
 			name: "pickup_limit_reached with limit",

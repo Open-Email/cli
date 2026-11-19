@@ -400,15 +400,22 @@ func errorHint(ae *coreapi.APIError, mailboxBearer bool) string {
 		}
 		return "that address reaches more than one recipient here (a group, an alias, a webhook, or a route that forwards on) — nobody there can answer the code, and the disable link would stop your forwarding for whoever clicked it first; name one person's address"
 	case "run_cooldown":
+		// Core's wait between two runs of a source is an operator's setting
+		// (pickup-run-wait-minutes), so the hint says only what core answered:
+		// retryAfter, the same seconds as its Retry-After header.
 		if ra, ok := ae.Extra["retryAfter"]; ok {
+			seconds := 0
 			switch v := ra.(type) {
 			case float64:
-				return fmt.Sprintf("pickup is on cooldown (maximum once per minute) — please wait %d seconds before fetching again", int(v))
+				seconds = int(v)
 			case int:
-				return fmt.Sprintf("pickup is on cooldown (maximum once per minute) — please wait %d seconds before fetching again", v)
+				seconds = v
+			}
+			if seconds > 0 {
+				return fmt.Sprintf("pickup is on cooldown — please wait %s before fetching again", waitWords(seconds))
 			}
 		}
-		return "pickup is on cooldown (maximum once per minute) — please wait before fetching again"
+		return "pickup is on cooldown — please wait before fetching again"
 	case "pickup_limit_reached":
 		if lim, ok := ae.Extra["limit"]; ok {
 			switch v := lim.(type) {
@@ -425,6 +432,19 @@ func errorHint(ae *coreapi.APIError, mailboxBearer bool) string {
 		return "a pickup source for this server and username already exists on this mailbox"
 	}
 	return ""
+}
+
+// waitWords says a wait core answered in seconds: in seconds under two minutes,
+// else in whole minutes, rounded up so a user who waits that long is never
+// early.
+func waitWords(seconds int) string {
+	switch {
+	case seconds == 1:
+		return "1 second"
+	case seconds < 120:
+		return fmt.Sprintf("%d seconds", seconds)
+	}
+	return fmt.Sprintf("%d minutes", (seconds+59)/60)
 }
 
 func (a *app) printError(err error) {
