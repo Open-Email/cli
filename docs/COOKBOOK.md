@@ -928,7 +928,8 @@ openemail accounts update 01JARQ00000000000000000001 \
 
 A mailbox's own override still wins over the account default, and core records
 every number such a PATCH writes as the account's agreed limit, which a later
-vet or billing change lays back over its preset rather than losing.
+grant or revoke of production access, or a billing change, lays back over its
+preset rather than losing.
 
 The same goes for a tenant provisioning in bulk who hits `429
 mailbox_creates_per_day`. That is the create VELOCITY bound (per rolling 24h),
@@ -940,8 +941,10 @@ openemail accounts update 01JARQ00000000000000000001 --mailbox-creates-per-day 5
 openemail accounts update 01JARQ00000000000000000001 --address-creates-per-day 2000 --domain-creates-per-day 50
 ```
 
-Vetting the account to the trusted preset stamps all three as well, so an
-override here lasts until the next preset is applied.
+Granting the account production access (the `trusted` preset) stamps all
+three as well, and an override here is the account's agreed limit, laid back
+over every later preset. While the account is in the sandbox, core refuses a
+raise above the sandbox's numbers (`409 account_not_vetted`).
 
 Two independent choices: **scope** (how much) and **mode** (how permanent).
 
