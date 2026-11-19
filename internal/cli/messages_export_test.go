@@ -476,3 +476,26 @@ func TestMessageExportRefusesAnIDThatIsNotAFileName(t *testing.T) {
 		t.Fatalf("manifest = %+v", lines)
 	}
 }
+
+// The purge takes the recently-deleted tier from its OLD end, 14 days after
+// each delete, so the export reads that tier oldest-first: the messages
+// closest to being lost are saved first.
+func TestMessageExportReadsTheDeletedTierOldestFirst(t *testing.T) {
+	f := threeLiveTwoTrash()
+	f.t = t
+	if run := runExport(t, f, false, "--out", filepath.Join(t.TempDir(), "out"), "--include-expunged"); run.err != nil {
+		t.Fatalf("export: %v", run.err)
+	}
+	trashListings := 0
+	for _, req := range f.seen() {
+		if strings.Contains(req, "state=expunged") {
+			trashListings++
+			if !strings.Contains(req, "order=asc") {
+				t.Fatalf("trash listed without order=asc: %s", req)
+			}
+		}
+	}
+	if trashListings == 0 {
+		t.Fatal("trash never listed")
+	}
+}

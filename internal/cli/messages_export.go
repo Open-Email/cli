@@ -91,6 +91,9 @@ restores or deletes anything, and the mailbox is exactly as it was afterwards.
                            or the error that kept it from being saved
   <dir>/export.json        the run: mailbox, filters, times, counts
 
+Live messages are read newest first; deleted ones oldest first, since those
+are the next to be purged.
+
 Every file is checked against the SHA-256 core recorded when the message was
 stored; a file that does not match is not kept. Running the export again into
 the same directory skips files that are already present and verify, and
@@ -241,8 +244,12 @@ func (e *exporter) run(ctx context.Context, mbx string, includeExpunged bool) er
 		return err
 	}
 	if includeExpunged {
+		// Oldest first: the purge takes this tier from its old end (14 days
+		// after each delete), so the messages closest to being lost are read
+		// before the walk reaches anything newer.
+		oldestFirst := coreapi.ListOpts{Limit: exportPageSize, Order: "asc"}
 		if err := e.walk(ctx, "deleted", func(ctx context.Context, cur string) ([]exportItem, string, error) {
-			page, err := e.client.ListTrash(ctx, mbx, opts.WithCursor(cur))
+			page, err := e.client.ListTrash(ctx, mbx, oldestFirst.WithCursor(cur))
 			items := make([]exportItem, 0, len(page.Items))
 			for _, m := range page.Items {
 				items = append(items, exportItem{meta: m.MessageMeta, manifest: m})
