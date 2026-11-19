@@ -3,6 +3,7 @@ package cli
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Open-Email/cli/internal/coreapi"
 )
@@ -61,6 +62,46 @@ func TestInvitationWhen(t *testing.T) {
 	rd := invitationWhen(&coreapi.MessageInvitation{DTStart: &start, RRule: strPtr("RDATE")})
 	if !strings.Contains(rd, "set dates") || strings.Contains(rd, "repeats: RDATE") {
 		t.Errorf("RDATE series = %q", rd)
+	}
+}
+
+// An all-day invitation is dates, never times (core's allDay). DTSTART;VALUE=DATE
+// arrives as that date's UTC midnight, the very number a meeting at 00:00 UTC
+// carries, so read on a local clock it gained an invented time and, west of
+// UTC, landed on the day before. It is the UTC date; an event's exclusive end
+// gives its last day; a to-do's DUE is the day it is due.
+func TestInvitationWhenAllDay(t *testing.T) {
+	day := int64(1795651200) // 2026-11-26T00:00:00Z
+	next, third := day+86400, day+3*86400
+	event, task := strPtr("VEVENT"), strPtr("VTODO")
+
+	// A clock eight hours west of UTC, where the old rendering read
+	// "2026-11-25 16:00". Swapped only around these pure calls and put back.
+	saved := time.Local
+	time.Local = time.FixedZone("UTC-8", -8*3600)
+	oneDay := invitationWhen(&coreapi.MessageInvitation{Component: event, DTStart: &day, DTEnd: &next, AllDay: true})
+	threeDays := invitationWhen(&coreapi.MessageInvitation{Component: event, DTStart: &day, DTEnd: &third, AllDay: true})
+	noEnd := invitationWhen(&coreapi.MessageInvitation{Component: event, DTStart: &day, AllDay: true})
+	dueOn := invitationWhen(&coreapi.MessageInvitation{Component: task, DTStart: &day, DTEnd: &third, AllDay: true})
+	yearly := invitationWhen(&coreapi.MessageInvitation{Component: event, DTStart: &day, DTEnd: &next, AllDay: true, RRule: strPtr("FREQ=YEARLY")})
+	timed := invitationWhen(&coreapi.MessageInvitation{Component: event, DTStart: &day, DTEnd: &next})
+	time.Local = saved
+
+	for _, c := range []struct{ name, got, want string }{
+		{"one-day event", oneDay, "2026-11-26 (all day)"},
+		{"three-day event", threeDays, "2026-11-26 → 2026-11-28 (all day)"},
+		{"event with no end", noEnd, "2026-11-26 (all day)"},
+		{"to-do due on the 29th", dueOn, "2026-11-26 → 2026-11-29 (all day)"},
+		{"yearly all-day event", yearly, "2026-11-26 (all day)  (repeats: FREQ=YEARLY)"},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
+		}
+	}
+	// The same numbers without allDay are a timed event at 00:00 UTC, shown on
+	// the local clock as before.
+	if !strings.Contains(timed, "2026-11-25 16:00") {
+		t.Errorf("a timed event moved off the local clock: %q", timed)
 	}
 }
 

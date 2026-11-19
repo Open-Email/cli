@@ -79,9 +79,17 @@ type MessageInvitation struct {
 	Location  *string `json:"location"`
 	// DTStart/DTEnd are epoch seconds, already resolved against the object's
 	// timezone — no VTIMEZONE to interpret client-side.
-	DTStart *int64  `json:"dtstart"`
-	DTEnd   *int64  `json:"dtend"`
-	RRule   *string `json:"rrule"`
+	DTStart *int64 `json:"dtstart"`
+	DTEnd   *int64 `json:"dtend"`
+	// AllDay is true when DTSTART is a DATE, not a DATE-TIME. DTStart is then
+	// that date's UTC midnight, and the start is shown as the UTC calendar
+	// date with no time: a time would be invented, and a local clock west of
+	// UTC would put it on the day before. Identical timestamps describe both
+	// kinds (an all-day 26 November and a meeting at 00:00 UTC that day),
+	// which is why core says which this is. A DATE end is exclusive (RFC 5545
+	// §3.6.1): an all-day event on the 26th ends at the 27th's midnight.
+	AllDay bool    `json:"allDay"`
+	RRule  *string `json:"rrule"`
 
 	Organizer *string `json:"organizer"`
 	// Attendees is truncated to the iTIP fan-out bound; AttendeeCount is the

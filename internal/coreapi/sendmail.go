@@ -92,7 +92,11 @@ type SendRecipientResult struct {
 	// recipient_not_permitted: "permitted_recipients" (the identity or
 	// credential allowlist) or "address_list" (its outbound lists, in which
 	// case List and Pattern name the list and entry that decided; Pattern is
-	// `*@*` for a block-all).
+	// `*@*` for a block-all). On a recipient_not_verified it is
+	// "verified_recipients": the sending account is not vetted yet and this
+	// recipient is not one of its verified recipients, or the recipient is a
+	// hosted address forwarding, for an account not vetted yet, to a target
+	// that is not one of that account's verified recipients.
 	Source  string `json:"source,omitempty"`
 	List    string `json:"list,omitempty"`
 	Pattern string `json:"pattern,omitempty"`

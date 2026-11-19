@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/Open-Email/cli/internal/coreapi"
@@ -30,29 +32,106 @@ func newAdminCmd(a *app) *cobra.Command {
 	return cmd
 }
 
+// reindexPage is how many messages `admin reindex` asks core to queue per
+// request while it covers a whole mailbox: core's own default page. Core sends
+// one queue message per id inside the request, so a bigger page is a longer
+// request, and this client gives up on a request after 30 seconds and sends it
+// again (the call is idempotent), which would queue that page twice.
+const reindexPage = 500
+
 func newAdminReindexCmd(a *app) *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "reindex <mailboxId>",
 		Short: "Re-enqueue full-text index jobs for a mailbox",
-		Args:  cobra.ExactArgs(1),
+		Long: "Queues a full-text index job for every message in the mailbox that is not\n" +
+			"indexed yet. Core queues one page per request, so this pages through the\n" +
+			"mailbox, 500 messages a request, until it is covered.\n\n" +
+			"--limit queues one page of at most that many messages and stops. Running it\n" +
+			"again queues the same messages again until their jobs have run, so leave\n" +
+			"--limit off to cover a large mailbox.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := a.authedClient()
 			if err != nil {
 				return err
 			}
-			enqueued, err := client.Reindex(cmd.Context(), args[0], limit)
+			run, err := reindexMailbox(cmd.Context(), client, args[0], limit)
 			if err != nil {
+				if run.Enqueued > 0 {
+					a.out.Warnf("%d index job(s) were queued before this stopped; running it again is safe", run.Enqueued)
+				}
 				return err
 			}
-			a.out.Emit(map[string]any{"enqueued": enqueued}, func(w io.Writer) {
-				a.out.Successf("Enqueued %d index job(s) for %s", enqueued, args[0])
+			a.out.Emit(map[string]any{"enqueued": run.Enqueued}, func(w io.Writer) {
+				a.out.Successf("Enqueued %d index job(s) for %s", run.Enqueued, args[0])
+				if run.Full {
+					a.out.Msgf("  that filled --limit, so more may remain: run it without --limit to queue the whole mailbox")
+				}
 			})
+			if run.NoCursor {
+				// Said in both output modes: a script reading only the count would
+				// otherwise take a partial reindex for a whole one.
+				a.out.Warnf("this core answered a full page with no cursor, so it cannot page a reindex; the rest of the mailbox is not queued (run this again once these jobs have run)")
+			}
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&limit, "limit", 0, "bound the reindex batch (1–5000)")
+	cmd.Flags().IntVar(&limit, "limit", 0, "queue one page of at most this many messages (1–5000) instead of the whole mailbox")
 	return cmd
+}
+
+// reindexRun is what reindexMailbox did.
+type reindexRun struct {
+	Enqueued int64
+	// Full is true when the one page --limit asked for came back full, so more
+	// may remain.
+	Full bool
+	// NoCursor is true when core answered a full page with no cursor (a core
+	// older than #888): asking again would queue that same first page.
+	NoCursor bool
+}
+
+// reindexMailbox queues index jobs for every unindexed message of a mailbox,
+// one page per request, the way core #888 pages it: each answer's `last` is the
+// next request's `after`, until fewer than a page come back. A queued message
+// stays unindexed until its job runs, so without the cursor every request would
+// queue the same first page; one call, which is all this command made before,
+// covered at most 500 messages. With limit > 0 it asks for that one page and
+// stops. The count so far comes back with an error, so the caller can say what
+// was queued before it.
+func reindexMailbox(ctx context.Context, client *coreapi.Client, mailboxID string, limit int) (reindexRun, error) {
+	var run reindexRun
+	if limit > 0 {
+		page, err := client.Reindex(ctx, mailboxID, limit, "")
+		if err != nil {
+			return run, err
+		}
+		run.Enqueued = page.Enqueued
+		run.Full = page.Enqueued >= int64(limit)
+		return run, nil
+	}
+	after := ""
+	for {
+		page, err := client.Reindex(ctx, mailboxID, reindexPage, after)
+		if err != nil {
+			return run, err
+		}
+		run.Enqueued += page.Enqueued
+		if page.Enqueued < reindexPage {
+			return run, nil
+		}
+		if page.Last == nil || *page.Last == "" {
+			run.NoCursor = true
+			return run, nil
+		}
+		// Core's ids only grow past `after`, so the same cursor twice is a core
+		// fault; stopping keeps it from becoming a loop that never ends.
+		if *page.Last == after {
+			return run, fmt.Errorf("core answered the reindex cursor %s twice; stopped rather than queue that page again", after)
+		}
+		after = *page.Last
+	}
 }
 
 func newAdminVerifyLoginCmd(a *app) *cobra.Command {

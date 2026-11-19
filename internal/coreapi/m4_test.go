@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -182,11 +183,50 @@ func TestReindexRetries503(t *testing.T) {
 			return
 		}
 		w.WriteHeader(202)
-		w.Write([]byte(`{"enqueued":4}`))
+		w.Write([]byte(`{"enqueued":4,"last":null}`))
 	}))
 	defer srv.Close()
-	n, err := m3Client(t, srv.URL).Reindex(context.Background(), "mb", 100)
-	if err != nil || n != 4 || atomic.LoadInt32(&calls) != 2 {
-		t.Fatalf("Reindex: n=%d err=%v calls=%d", n, err, calls)
+	page, err := m3Client(t, srv.URL).Reindex(context.Background(), "mb", 100, "")
+	if err != nil || page.Enqueued != 4 || atomic.LoadInt32(&calls) != 2 {
+		t.Fatalf("Reindex: page=%+v err=%v calls=%d", page, err, calls)
+	}
+}
+
+// One reindex call is one PAGE (core #888): the page's size and its cursor go
+// on the query, and the answer's `last` comes back as the next page's cursor.
+// No `after` on the first page and no `limit` when none is asked, so core's own
+// default applies; and a core older than the cursor, which answers no `last`,
+// decodes as a nil one rather than failing.
+func TestReindexPagesByCursor(t *testing.T) {
+	var seen []url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/mailboxes/mb/reindex" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		seen = append(seen, r.URL.Query())
+		w.WriteHeader(202)
+		switch len(seen) {
+		case 1:
+			w.Write([]byte(`{"enqueued":500,"last":"01MSG500"}`))
+		default:
+			w.Write([]byte(`{"enqueued":3}`))
+		}
+	}))
+	defer srv.Close()
+	c := m3Client(t, srv.URL)
+
+	first, err := c.Reindex(context.Background(), "mb", 500, "")
+	if err != nil || first.Enqueued != 500 || first.Last == nil || *first.Last != "01MSG500" {
+		t.Fatalf("first page: %+v err=%v", first, err)
+	}
+	older, err := c.Reindex(context.Background(), "mb", 0, *first.Last)
+	if err != nil || older.Enqueued != 3 || older.Last != nil {
+		t.Fatalf("second page: %+v err=%v", older, err)
+	}
+	if got := seen[0]; got.Get("limit") != "500" || got.Has("after") {
+		t.Errorf("first page query = %v, want limit=500 and no after", got)
+	}
+	if got := seen[1]; got.Has("limit") || got.Get("after") != "01MSG500" {
+		t.Errorf("second page query = %v, want after=01MSG500 and no limit", got)
 	}
 }
