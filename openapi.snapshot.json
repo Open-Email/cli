@@ -18585,7 +18585,7 @@
                     ]
                   },
                   "noticeMailboxId": {
-                    "description": "Where limit notices are delivered: a mailbox this account owns, with a mail store, which receives a postmaster message (local mail, one per limit episode, at most one per limit per day) when a send or receive allowance fires. null = no mail; incidents stay readable at GET /accounts/:accountId/limit-incidents",
+                    "description": "Where limit notices are delivered: a mailbox this account owns, with a mail store, which receives a postmaster message (local mail, one per limit episode, at most one per limit within the platform's wait between notices) when a send or receive allowance fires. null = no mail; incidents stay readable at GET /accounts/:accountId/limit-incidents",
                     "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
                     "type": [
                       "string",
@@ -20031,7 +20031,7 @@
                 }
               }
             },
-            "description": "resend_cooldown, with Retry-After and `retryAfterSeconds`: a link was mailed to this address less than a minute ago; or confirmation_limit_reached, with Retry-After, `retryAfterSeconds` and `limit`: the account has mailed its 20 confirmation links for this UTC day; or rate_limited, with Retry-After: too many links from this account, or to this address, in the last minute. The last is deliberately one answer for both, since the budget per address is shared across the deployment",
+            "description": "resend_cooldown, with Retry-After and `retryAfterSeconds`: a link was mailed to this address within the resend wait, which `retryAfterSeconds` counts down; or confirmation_limit_reached, with Retry-After, `retryAfterSeconds` and `limit`: the account has mailed its `limit` confirmation links for this UTC day (operators set both numbers, so they are answered, never stated here); or rate_limited, with Retry-After: too many links from this account, or to this address, in the last minute. The last is deliberately one answer for both, since the budget per address is shared across the deployment",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -23965,7 +23965,7 @@
                 }
               }
             },
-            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the fifth wrong code and the pending address was dropped. Set it again"
+            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the last wrong code its tries allowed and the pending address was dropped. Set it again"
           },
           "404": {
             "content": {
@@ -24474,7 +24474,7 @@
                 }
               }
             },
-            "description": "rate_limited: too many code submissions for this identity or forwarded client IP. Or code_locked, meaning the identity's hard attempt counter is spent and the surface is closed for an hour",
+            "description": "rate_limited: too many code submissions for this identity or forwarded client IP. Or code_locked, meaning the identity's hard attempt counter is spent and the surface is closed until the lock ends (an hour, unless operators set another length); the Retry-After header says how many seconds remain",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
@@ -39533,7 +39533,7 @@
     },
     "/api/v1/mailboxes/{mailboxId}/forwarding/destinations/{destId}/verify": {
       "post": {
-        "description": "Spends the code mailed to the destination. Five wrong codes end the ceremony. Confirming invalidates every disable link previously mailed for it.",
+        "description": "Spends the code mailed to the destination. Too many wrong codes end the ceremony: each refusal says how many tries are left (attemptsLeft). Confirming invalidates every disable link previously mailed for it.",
         "operationId": "post_ForwardingDestinationVerify",
         "parameters": [
           {
@@ -39617,7 +39617,7 @@
                 }
               }
             },
-            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the fifth wrong code. Add the address again for a fresh one"
+            "description": "invalid_code, with attemptsLeft; or confirmation_cleared, meaning that was the last wrong code its tries allowed. Add the address again for a fresh one"
           },
           "404": {
             "content": {
@@ -42469,7 +42469,7 @@
                 }
               }
             },
-            "description": "run_cooldown — the source was dispatched (by schedule or by hand) less than a minute ago; `retryAfter` and the Retry-After header say how many seconds to wait. A run already in flight absorbs the trigger, so this bounds the run AFTER the run",
+            "description": "run_cooldown — the source was dispatched (by schedule or by hand) too recently (within the last minute, unless operators set another wait); `retryAfter` and the Retry-After header say how many seconds to wait. A run already in flight absorbs the trigger, so this bounds the run AFTER the run",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying, when the wait is known",
