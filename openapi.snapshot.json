@@ -4109,25 +4109,36 @@
           {
             "properties": {
               "found": {
-                "description": "Normalized values seen at `name`; empty when absent",
+                "description": "Normalized values seen at `name`; empty when absent. For DMARC, only the TXT values receivers count as DMARC records (first tag v=DMARC1). A cached answer repeats the values its live check found; it is empty for a record that check stored none for",
                 "items": {
                   "type": "string"
                 },
                 "type": "array"
               },
+              "inheritedFound": {
+                "description": "DMARC only, with `inheritedFrom`: the DMARC records found at `_dmarc.<inheritedFrom>`",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "inheritedFrom": {
+                "description": "DMARC only: present when the domain publishes no DMARC record of its own and a parent does: the parent whose record receivers apply to this domain (RFC 7489 §6.6.3), its nearest parent with one, never a public suffix. `ok`, `policy` and `reportingToUs` then describe that record; `found` stays empty",
+                "type": "string"
+              },
               "ok": {
-                "description": "Absent = liveness unknown (resolver unreachable), distinct from false",
+                "description": "Absent = liveness unknown (resolver unreachable), distinct from false. DMARC: true only when exactly one DMARC record applies and it publishes a policy (a valid p= and, where written, a valid sp=; or a rua, read as p=none). With two or more, receivers apply no DMARC, so it is false and `found` lists each. With none at the domain's own name, a parent's applies, as receivers fall back to it (`inheritedFrom`)",
                 "type": "boolean"
               },
               "policy": {
-                "description": "DMARC only: the published p= value (none | quarantine | reject)",
+                "description": "DMARC only: the policy that applies (none | quarantine | reject): the record's p=, or, for a parent's record (`inheritedFrom`), its sp= where it has one; none for a record with no valid policy but a rua, which receivers read as p=none. Null when there is not exactly one DMARC record, or it publishes neither a valid policy nor a rua",
                 "type": [
                   "string",
                   "null"
                 ]
               },
               "reportingToUs": {
-                "description": "DMARC only: the published rua sends aggregate reports to this platform",
+                "description": "DMARC only: the published rua sends aggregate reports to this platform. False unless exactly one DMARC record is published: with two or more, receivers send no reports",
                 "type": "boolean"
               }
             },
@@ -4149,7 +4160,7 @@
             "type": "boolean"
           },
           "dmarc": {
-            "description": "True if DMARC TXT record is present",
+            "description": "True if exactly one DMARC record applies and it publishes a policy: the domain's own, or, when it publishes none, a parent's (RFC 7489 §6.6.3). Two or more make receivers apply no DMARC at all, so they read false",
             "type": "boolean"
           },
           "jmap": {
