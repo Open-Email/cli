@@ -802,9 +802,17 @@
             "description": "Account ULID identifier",
             "type": "string"
           },
+          "bucketSeconds": {
+            "description": "How wide each `series` bucket is, in seconds: 60, 300, 900, 3600 or 86400. A range's own width (300 over 1h, 900 over 6h, 3600 over 24h, 86400 over 7d and 30d); for a window, 60 when it spans an hour or less, else the width of the smallest range at least as long. A bucket's label is its start",
+            "type": "integer"
+          },
           "estimated": {
             "description": "True if metrics are sampled estimates",
             "type": "boolean"
+          },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; absent when the range was read",
+            "type": "string"
           },
           "range": {
             "description": "Time range queried",
@@ -821,6 +829,10 @@
             },
             "type": "array"
           },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
+            "type": "string"
+          },
           "total": {
             "description": "Calls across the window: the series summed",
             "format": "int64",
@@ -830,6 +842,7 @@
         "required": [
           "accountId",
           "range",
+          "bucketSeconds",
           "estimated",
           "retentionDays",
           "series",
@@ -1184,6 +1197,10 @@
             "description": "Account ID",
             "type": "string"
           },
+          "bucketSeconds": {
+            "description": "How wide each `series` bucket is, in seconds: 60, 300, 900, 3600 or 86400. A range's own width (300 over 1h, 900 over 6h, 3600 over 24h, 86400 over 7d and 30d); for a window, 60 when it spans an hour or less, else the width of the smallest range at least as long. A bucket's label is its start",
+            "type": "integer"
+          },
           "byOutcome": {
             "additionalProperties": {
               "format": "int64",
@@ -1206,6 +1223,10 @@
           "estimated": {
             "description": "True if metrics are sampled estimates",
             "type": "boolean"
+          },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; absent when the range was read",
+            "type": "string"
           },
           "mailboxId": {
             "description": "Present when the aggregate was narrowed to one mailbox",
@@ -1232,6 +1253,10 @@
               "$ref": "#/components/schemas/TrafficSeriesPoint"
             },
             "type": "array"
+          },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
+            "type": "string"
           },
           "totals": {
             "properties": {
@@ -1274,6 +1299,7 @@
         "required": [
           "accountId",
           "range",
+          "bucketSeconds",
           "domains",
           "domainsTruncated",
           "totals",
@@ -4783,6 +4809,10 @@
       },
       "DomainTraffic": {
         "properties": {
+          "bucketSeconds": {
+            "description": "How wide each `series` bucket is, in seconds: 60, 300, 900, 3600 or 86400. A range's own width (300 over 1h, 900 over 6h, 3600 over 24h, 86400 over 7d and 30d); for a window, 60 when it spans an hour or less, else the width of the smallest range at least as long. A bucket's label is its start",
+            "type": "integer"
+          },
           "byOutcome": {
             "additionalProperties": {
               "format": "int64",
@@ -4798,6 +4828,10 @@
           "estimated": {
             "description": "True if metrics are sampled estimates",
             "type": "boolean"
+          },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; absent when the range was read",
+            "type": "string"
           },
           "range": {
             "description": "Time range of statistics",
@@ -4820,6 +4854,10 @@
               "$ref": "#/components/schemas/TrafficSeriesPoint"
             },
             "type": "array"
+          },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
+            "type": "string"
           },
           "totals": {
             "properties": {
@@ -4862,6 +4900,7 @@
         "required": [
           "domain",
           "range",
+          "bucketSeconds",
           "totals",
           "byOutcome",
           "rows",
@@ -12929,7 +12968,7 @@
       "RequestsSeriesPoint": {
         "properties": {
           "bucket": {
-            "description": "Time bucket start, UTC `YYYY-MM-DD HH:MM:SS`: the same label, width and alignment the traffic aggregate gives the bucket for the same range",
+            "description": "Time bucket start, UTC `YYYY-MM-DD HH:MM:SS`: the same label, width and alignment the traffic aggregate gives the bucket for the same range or window",
             "type": "string"
           },
           "calls": {
@@ -15262,6 +15301,10 @@
             "description": "Always true: the source is the sampled Analytics Engine aggregate",
             "type": "boolean"
           },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; absent when the range was read",
+            "type": "string"
+          },
           "platform": {
             "description": "Deployment-wide totals for the window",
             "properties": {
@@ -15301,6 +15344,10 @@
           "retentionDays": {
             "description": "Analytics retention window in days",
             "type": "integer"
+          },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
+            "type": "string"
           },
           "truncated": {
             "description": "True when counted traffic groups hit the query's row bound. The ranking and platform totals may be incomplete; narrow the range.",
@@ -15640,6 +15687,10 @@
             "description": "Always true: the source is the sampled Analytics Engine aggregate",
             "type": "boolean"
           },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; absent when the range was read",
+            "type": "string"
+          },
           "platform": {
             "description": "Deployment-wide totals for the window, from the domain fold",
             "properties": {
@@ -15673,6 +15724,10 @@
           "retentionDays": {
             "description": "Analytics retention window in days",
             "type": "integer"
+          },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
+            "type": "string"
           },
           "truncated": {
             "description": "True when counted traffic groups hit the query's row bound. Rankings and platform totals may be incomplete; narrow the range.",
@@ -15743,9 +15798,17 @@
       },
       "SystemRequests": {
         "properties": {
+          "bucketSeconds": {
+            "description": "How wide each `series` bucket is, in seconds: 60, 300, 900, 3600 or 86400. A range's own width (300 over 1h, 900 over 6h, 3600 over 24h, 86400 over 7d and 30d); for a window, 60 when it spans an hour or less, else the width of the smallest range at least as long. A bucket's label is its start",
+            "type": "integer"
+          },
           "estimated": {
             "description": "True if metrics are sampled estimates",
             "type": "boolean"
+          },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; absent when the range was read",
+            "type": "string"
           },
           "range": {
             "description": "Time range queried",
@@ -15762,6 +15825,10 @@
             },
             "type": "array"
           },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
+            "type": "string"
+          },
           "total": {
             "description": "Calls across the window: the series summed",
             "format": "int64",
@@ -15770,6 +15837,7 @@
         },
         "required": [
           "range",
+          "bucketSeconds",
           "estimated",
           "retentionDays",
           "series",
@@ -16140,6 +16208,10 @@
       },
       "SystemTraffic": {
         "properties": {
+          "bucketSeconds": {
+            "description": "How wide each `series` bucket is, in seconds: 60, 300, 900, 3600 or 86400. A range's own width (300 over 1h, 900 over 6h, 3600 over 24h, 86400 over 7d and 30d); for a window, 60 when it spans an hour or less, else the width of the smallest range at least as long. A bucket's label is its start",
+            "type": "integer"
+          },
           "byOutcome": {
             "additionalProperties": {
               "format": "int64",
@@ -16222,6 +16294,7 @@
         },
         "required": [
           "range",
+          "bucketSeconds",
           "totals",
           "byOutcome",
           "rows",
@@ -20703,7 +20776,7 @@
     },
     "/api/v1/accounts/{accountId}/traffic": {
       "get": {
-        "description": "Returns total aggregated email volume and bytes across all domains owned by an account. Pass `mailboxId` to narrow the same aggregate to one mailbox — the series a mailbox overview charts. That dimension was added to the analytics write later than the rest, so a mailbox-scoped window covers traffic recorded since; `GET /domains/{domain}/events` (or `/accounts/{accountId}/events`) with the same filter remains the authoritative log.",
+        "description": "Returns total aggregated email volume and bytes across all domains owned by an account. Pass `mailboxId` to narrow the same aggregate to one mailbox — the series a mailbox overview charts. That dimension was added to the analytics write later than the rest, so a mailbox-scoped window covers traffic recorded since; `GET /domains/{domain}/events` (or `/accounts/{accountId}/events`) with the same filter remains the authoritative log. Read over a fixed `range` ending now, or an explicit window (`from`, optional `to`) within the ~90 days the aggregate keeps; `bucketSeconds` says how wide each series bucket is.",
         "operationId": "get_AccountTraffic",
         "parameters": [
           {
@@ -20744,6 +20817,28 @@
               "maxLength": 64,
               "type": "string"
             }
+          },
+          {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -20765,7 +20860,7 @@
                 }
               }
             },
-            "description": "validation_failed — unknown range value"
+            "description": "validation_failed — unknown range value; window_out_of_range: `to` without `from`, or a window not inside the last 90 days"
           },
           "401": {
             "content": {
@@ -20824,7 +20919,7 @@
     },
     "/api/v1/accounts/{accountId}/requests": {
       "get": {
-        "description": "Returns the API calls attributed to an account per time bucket, successes and failures alike: one per HTTP request plus one per JMAP method call, made with the account's keys or for its mailboxes. Buckets are labelled, sized and aligned exactly as `GET /accounts/{accountId}/traffic`'s for the same range. A sampled estimate; `GET /accounts/{accountId}/usage` carries the exact daily counts.",
+        "description": "Returns the API calls attributed to an account per time bucket, successes and failures alike: one per HTTP request plus one per JMAP method call, made with the account's keys or for its mailboxes. Read over a fixed `range` ending now or an explicit window (`from`, optional `to`). Buckets are labelled, sized and aligned exactly as `GET /accounts/{accountId}/traffic`'s for the same range or window, and `bucketSeconds` says how wide they are. A sampled estimate; `GET /accounts/{accountId}/usage` carries the exact daily counts.",
         "operationId": "get_AccountRequestsGet",
         "parameters": [
           {
@@ -20854,6 +20949,28 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the dataset keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the dataset keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -20875,7 +20992,7 @@
                 }
               }
             },
-            "description": "validation_failed — unknown range"
+            "description": "validation_failed — unknown range; window_out_of_range: `to` without `from`, or a window not inside the last 90 days"
           },
           "401": {
             "content": {
@@ -28293,7 +28410,7 @@
     },
     "/api/v1/domains/{domain}/traffic": {
       "get": {
-        "description": "Returns aggregated email volume and bytes by outcome and route kind over a time window for a domain.",
+        "description": "Returns aggregated email volume and bytes by outcome and route kind over a time window for a domain: a fixed `range` ending now, or an explicit window (`from`, optional `to`) within the ~90 days the aggregate keeps. `bucketSeconds` says how wide each series bucket is.",
         "operationId": "get_DomainTraffic",
         "parameters": [
           {
@@ -28323,6 +28440,28 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -28344,7 +28483,7 @@
                 }
               }
             },
-            "description": "validation_failed — unknown range value"
+            "description": "validation_failed — unknown range value; window_out_of_range: `to` without `from`, or a window not inside the last 90 days"
           },
           "401": {
             "content": {
@@ -64862,7 +65001,7 @@
     },
     "/api/v1/system/traffic": {
       "get": {
-        "description": "Returns traffic volume, byte counts, and delivery outcomes aggregated across the entire deployment (approx. 90-day retention).",
+        "description": "Returns traffic volume, byte counts, and delivery outcomes aggregated across the entire deployment (approx. 90-day retention), over a fixed `range` ending now or an explicit window (`from`, optional `to`). `bucketSeconds` says how wide each series bucket is: a window of an hour or less is counted by the minute.",
         "operationId": "get_SystemTrafficGet",
         "parameters": [
           {
@@ -65275,7 +65414,7 @@
     },
     "/api/v1/system/requests": {
       "get": {
-        "description": "Returns the deployment's API calls per time bucket, successes and failures alike: one per HTTP request plus one per JMAP method call. Buckets are labelled, sized and aligned exactly as `GET /system/traffic`'s for the same range. A sampled estimate, like that aggregate; the newest bucket fills in within seconds.",
+        "description": "Returns the deployment's API calls per time bucket, successes and failures alike: one per HTTP request plus one per JMAP method call, over a fixed `range` ending now or an explicit window (`from`, optional `to`). Buckets are labelled, sized and aligned exactly as `GET /system/traffic`'s for the same range or window, and `bucketSeconds` says how wide they are. A sampled estimate, like that aggregate; the newest bucket fills in within seconds.",
         "operationId": "get_SystemRequestsGet",
         "parameters": [
           {
@@ -65293,6 +65432,28 @@
                 "7d",
                 "30d"
               ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the dataset keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the dataset keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
               "type": "string"
             }
           }
@@ -65316,7 +65477,7 @@
                 }
               }
             },
-            "description": "validation_failed — unknown range"
+            "description": "validation_failed — unknown range; window_out_of_range: `to` without `from`, or a window not inside the last 90 days"
           },
           "401": {
             "content": {
@@ -65532,6 +65693,28 @@
             }
           },
           {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
             "description": "Rows per ranking (default 25, max 200)",
             "in": "query",
             "name": "limit",
@@ -65564,7 +65747,7 @@
                 }
               }
             },
-            "description": "validation_failed — unknown range or limit out of bounds"
+            "description": "validation_failed: unknown range or limit out of bounds; window_out_of_range: `to` without `from`, or a window not inside the last 90 days"
           },
           "401": {
             "content": {
@@ -65645,6 +65828,28 @@
             }
           },
           {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the ~90 days the aggregate keeps. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
             "description": "Rows in the ranking (default 25, max 200)",
             "in": "query",
             "name": "limit",
@@ -65677,7 +65882,7 @@
                 }
               }
             },
-            "description": "validation_failed — unknown range or limit out of bounds"
+            "description": "validation_failed: unknown range or limit out of bounds; window_out_of_range: `to` without `from`, or a window not inside the last 90 days"
           },
           "401": {
             "content": {
