@@ -63204,7 +63204,7 @@
     },
     "/api/v1/system/mail-slots/{slug}/test": {
       "post": {
-        "description": "Renders the slot and sends it to an address the operator names, over the slot's own channel. Only slots that leave by Email Sending can be tested this way (system callers only).",
+        "description": "Renders the slot and sends it to an address the operator names, over the slot's own channel. Only slots sent to an outside address can be tested this way, through our relays as the platform's mailbox (system callers only).",
         "operationId": "post_MailSlotTest",
         "parameters": [
           {
@@ -63278,7 +63278,7 @@
         },
         "responses": {
           "200": {
-            "description": "Handed to Email Sending"
+            "description": "Handed on: queued for our relays, or stored in a hosted mailbox"
           },
           "400": {
             "content": {
