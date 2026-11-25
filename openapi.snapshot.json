@@ -48977,7 +48977,7 @@
                         "$ref": "#/components/schemas/MailAddress"
                       },
                       {
-                        "description": "Sender email address (must belong to this mailbox)"
+                        "description": "Sender email address (must belong to this mailbox). Required, but for a `slot`, whose sender defaults to the mailbox's own address"
                       }
                     ]
                   },
@@ -49028,6 +49028,50 @@
                       "null"
                     ]
                   },
+                  "slot": {
+                    "additionalProperties": false,
+                    "description": "The platform's own apps only: send one of the platform's slots, drawn by core (the operator's override for the language, else the default), in place of subject, text and html, which must then be absent. Only from a mailbox of the platform's own account; slot_with_content, slot_mailbox_not_platform, unknown_slot or slot_values_invalid otherwise",
+                    "properties": {
+                      "lang": {
+                        "description": "The language to draw it in, else English",
+                        "maxLength": 35,
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "slug": {
+                        "description": "One of the platform's slots an app sends (GET /system/mail-slots lists them)",
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "values": {
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "description": "The slot's values, by its variables' names",
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "slug"
+                    ],
+                    "type": "object"
+                  },
                   "subject": {
                     "description": "Message subject line",
                     "maxLength": 2000,
@@ -49052,9 +49096,6 @@
                     "type": "array"
                   }
                 },
-                "required": [
-                  "from"
-                ],
                 "type": "object"
               }
             }
@@ -49130,7 +49171,7 @@
                 }
               }
             },
-            "description": "validation_failed, no_recipients, too_many_recipients, auto_submitted_conflict (autoSubmitted alongside a free-form Auto-Submitted header), a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), a bad attachment reference (unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`), or a refused schedule: send_at_too_far, send_at_requires_save, recipient_not_permitted, recipient_not_verified (the account is not yet vetted and may send only to its verified recipients; carries the first `address` that is not one)"
+            "description": "slot_with_content (a slot beside a subject, text or html) or slot_values_invalid (the slot will not render with the values given), validation_failed, no_recipients, too_many_recipients, auto_submitted_conflict (autoSubmitted alongside a free-form Auto-Submitted header), a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), a bad attachment reference (unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`), or a refused schedule: send_at_too_far, send_at_requires_save, recipient_not_permitted, recipient_not_verified (the account is not yet vetted and may send only to its verified recipients; carries the first `address` that is not one)"
           },
           "401": {
             "content": {
@@ -49150,7 +49191,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`; carries `scope` and `required`) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
+            "description": "Permanent — slot_mailbox_not_platform (a slot sent from a mailbox not of the platform's own account) | sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`; carries `scope` and `required`) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
           },
           "404": {
             "content": {
@@ -49160,7 +49201,7 @@
                 }
               }
             },
-            "description": "Permanent — not_found (the mailbox does not exist, or is not this caller's: cross-tenant and missing collapse to one indistinguishable answer) or mailbox_gone (the sending mailbox was torn down mid-submission)."
+            "description": "Permanent — not_found (the mailbox does not exist, or is not this caller's: cross-tenant and missing collapse to one indistinguishable answer), unknown_slot (a slot that is no app's to send) or mailbox_gone (the sending mailbox was torn down mid-submission)."
           },
           "409": {
             "content": {
