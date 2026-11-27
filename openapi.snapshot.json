@@ -21296,12 +21296,12 @@
             }
           },
           {
-            "description": "Pagination cursor",
+            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
             "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
-              "description": "Pagination cursor",
+              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
               "type": "string"
             }
           }
@@ -28911,12 +28911,12 @@
             }
           },
           {
-            "description": "Pagination cursor",
+            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
             "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
-              "description": "Pagination cursor",
+              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
               "type": "string"
             }
           }
@@ -65427,12 +65427,12 @@
             }
           },
           {
-            "description": "Opaque page cursor from a previous response. A windowed cursor retains its original from/to bounds, which take precedence over query bounds.",
+            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
             "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
-              "description": "Opaque page cursor from a previous response. A windowed cursor retains its original from/to bounds, which take precedence over query bounds.",
+              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
               "type": "string"
             }
           }
