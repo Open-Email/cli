@@ -245,6 +245,14 @@
               "null"
             ]
           },
+          "sendRcptsPerMessage": {
+            "description": "Recipients one message may name (null = no number of the plan's, only the request's bound of 100; 0 = unlimited). Past it a send answers 403 too_many_recipients, `reason: \"rcpts_per_message\"`",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "storageLimitBytes": {
             "description": "Account storage limit in bytes (null = platform default, 0 = unlimited)",
             "format": "int64",
@@ -279,6 +287,7 @@
           "sendRcptsPerDay",
           "sendMsgsPerHour",
           "sendRcptsPerHour",
+          "sendRcptsPerMessage",
           "mailboxSendMsgsPerDay",
           "mailboxSendRcptsPerDay",
           "mailboxSendMsgsPerHour",
@@ -477,7 +486,7 @@
             "type": "boolean"
           },
           "enforcement": {
-            "description": "Configured behavior of this threshold: enforced = exceeding it can trigger refusal; log_only = measured and logged without refusing; off = no threshold applies (`limit` is null). The platform switches log_only on by family: the eight send/mailbox-send limits, the three creation limits and forwarding together; both receive limits together; the account storage pool alone. maxMailboxes and maxMailTemplates remain enforced when finite. This describes limit configuration, not transient ledger health or other refusal checks",
+            "description": "Configured behavior of this threshold: enforced = exceeding it can trigger refusal; log_only = measured and logged without refusing; off = no threshold applies (`limit` is null). The platform switches log_only on by family: the eight send/mailbox-send limits, recipients a message, the three creation limits and forwarding together; both receive limits together; the account storage pool alone. maxMailboxes and maxMailTemplates remain enforced when finite. This describes limit configuration, not transient ledger health or other refusal checks",
             "enum": [
               "enforced",
               "log_only",
@@ -486,7 +495,7 @@
             "type": "string"
           },
           "limit": {
-            "description": "The resolved threshold used by the limit's check: the account's own number, or the platform default when the account stores none. Shadow mode preserves this number; `enforcement` says whether exceeding it can trigger refusal. null = no threshold applies on this axis: the account stores 0 (explicitly unlimited), or it stores null and the platform default is blank or 0, or (mailboxCreatesPerDay, addressCreatesPerDay, domainCreatesPerDay, forwardMsgsPerDay) the deployment has that limit switched off, which makes any account number inert. `value` says which",
+            "description": "The resolved threshold used by the limit's check: the account's own number, or the platform default when the account stores none. Shadow mode preserves this number; `enforcement` says whether exceeding it can trigger refusal. null = no threshold applies on this axis: the account stores 0 (explicitly unlimited), or it stores null and the platform default is blank or 0 (sendRcptsPerMessage has none, so its null is always no bound), or (mailboxCreatesPerDay, addressCreatesPerDay, domainCreatesPerDay, forwardMsgsPerDay) the deployment has that limit switched off, which makes any account number inert. `value` says which",
             "format": "int64",
             "type": [
               "integer",
@@ -494,7 +503,7 @@
             ]
           },
           "value": {
-            "description": "The account's stored number, as GET /accounts/:accountId reports it: null = the account follows the platform default, 0 = explicitly unlimited (except maxMailboxes, which has no such spelling), n = the account's own number. With `limit` it tells the causes of a null limit apart: value 0 = the account is unlimited; value null = the platform sets no bound; value n with a null limit = the deployment has the limit switched off",
+            "description": "The account's stored number, as GET /accounts/:accountId reports it: null = the account follows the platform default (sendRcptsPerMessage has none: null is no number), 0 = explicitly unlimited (except maxMailboxes, which has no such spelling), n = the account's own number. With `limit` it tells the causes of a null limit apart: value 0 = the account is unlimited; value null = the platform sets no bound; value n with a null limit = the deployment has the limit switched off",
             "format": "int64",
             "type": [
               "integer",
@@ -525,7 +534,7 @@
             "type": "string"
           },
           "limits": {
-            "description": "Every plan limit, keyed by its field name on GET and PATCH /accounts/:accountId, which describe what each bounds. Each NULL value follows the platform's default for that limit; for mailboxSend* (the default for a mailbox with no override of its own, which comes first) that is the platform's per-mailbox send default, and for send* its account send default. maxMailboxes: no API stores 0 for it (positive or null); a row holding 0 anyway is a ceiling of zero, reported as limit 0, enforced, not as unlimited. mailboxCreatesPerDay, addressCreatesPerDay, domainCreatesPerDay and forwardMsgsPerDay: the platform default is also the limit's on switch, so with none set the limit is off. maxMailTemplates: a blank platform default is the built-in 50, so its limit is null only when unlimited. forwardMsgsPerDay is counted per domain: N domains get N x this",
+            "description": "Every plan limit, keyed by its field name on GET and PATCH /accounts/:accountId, which describe what each bounds. Each NULL value follows the platform's default for that limit; for mailboxSend* (the default for a mailbox with no override of its own, which comes first) that is the platform's per-mailbox send default, and for send* its account send default. maxMailboxes: no API stores 0 for it (positive or null); a row holding 0 anyway is a ceiling of zero, reported as limit 0, enforced, not as unlimited. mailboxCreatesPerDay, addressCreatesPerDay, domainCreatesPerDay and forwardMsgsPerDay: the platform default is also the limit's on switch, so with none set the limit is off. maxMailTemplates: a blank platform default is the built-in 50, so its limit is null only when unlimited. sendRcptsPerMessage has no platform default: its NULL is no bound. forwardMsgsPerDay is counted per domain: N domains get N x this",
             "properties": {
               "addressCreatesPerDay": {
                 "$ref": "#/components/schemas/AccountLimitInForce"
@@ -575,6 +584,9 @@
               "sendRcptsPerHour": {
                 "$ref": "#/components/schemas/AccountLimitInForce"
               },
+              "sendRcptsPerMessage": {
+                "$ref": "#/components/schemas/AccountLimitInForce"
+              },
               "storageLimitBytes": {
                 "$ref": "#/components/schemas/AccountLimitInForce"
               }
@@ -584,6 +596,7 @@
               "sendRcptsPerDay",
               "sendMsgsPerHour",
               "sendRcptsPerHour",
+              "sendRcptsPerMessage",
               "mailboxSendMsgsPerDay",
               "mailboxSendRcptsPerDay",
               "mailboxSendMsgsPerHour",
@@ -18569,6 +18582,7 @@
                         "sendRcptsPerDay",
                         "sendMsgsPerHour",
                         "sendRcptsPerHour",
+                        "sendRcptsPerMessage",
                         "mailboxSendMsgsPerDay",
                         "mailboxSendRcptsPerDay",
                         "mailboxSendMsgsPerHour",
@@ -18585,7 +18599,7 @@
                       ],
                       "type": "string"
                     },
-                    "maxItems": 17,
+                    "maxItems": 18,
                     "minItems": 1,
                     "type": "array"
                   },
@@ -18767,6 +18781,15 @@
                   },
                   "sendRcptsPerHour": {
                     "description": "The BURST window: envelope recipients this ACCOUNT may send to per hour. null = the platform default; 0 = unlimited",
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "sendRcptsPerMessage": {
+                    "description": "RECIPIENTS A MESSAGE: how many distinct recipients (To, Cc and Bcc together) one message from this ACCOUNT may name, under the request's own bound of 100. Past it a submission answers 403 too_many_recipients with `reason: \"rcpts_per_message\"` and this number as `limit`, permanently: split the recipients across several sends. Checked at every submission door (POST /mailboxes/:mailboxId/send and the routes built on it, a draft's submit, JMAP EmailSubmission/set) and, for SMTP submission, at RCPT TO through GET /deliver/check?submission=true. null = no number of the plan's (there is no platform default; only the request's bound applies); 0 = unlimited. Recorded as the account's agreed limit",
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": [
@@ -19154,6 +19177,15 @@
                       },
                       "sendRcptsPerHour": {
                         "description": "Account hourly (burst) recipient cap (null = platform default, 0 = UNLIMITED)",
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "sendRcptsPerMessage": {
+                        "description": "Recipients one message may name, under the request's own bound of 100 (null = no number of the plan's, since there is no platform default; 0 = UNLIMITED). Past it a submission answers 403 too_many_recipients",
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": [
@@ -49020,7 +49052,7 @@
                     "items": {
                       "$ref": "#/components/schemas/MailAddress"
                     },
-                    "maxItems": 50,
+                    "maxItems": 100,
                     "type": "array"
                   },
                   "cc": {
@@ -49028,7 +49060,7 @@
                     "items": {
                       "$ref": "#/components/schemas/MailAddress"
                     },
-                    "maxItems": 50,
+                    "maxItems": 100,
                     "type": "array"
                   },
                   "from": {
@@ -49152,7 +49184,7 @@
                     "items": {
                       "$ref": "#/components/schemas/MailAddress"
                     },
-                    "maxItems": 50,
+                    "maxItems": 100,
                     "type": "array"
                   }
                 },
@@ -49231,7 +49263,7 @@
                 }
               }
             },
-            "description": "slot_with_content (a slot beside a subject, text or html) or slot_values_invalid (the slot will not render with the values given), validation_failed, no_recipients, too_many_recipients, auto_submitted_conflict (autoSubmitted alongside a free-form Auto-Submitted header), a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), a bad attachment reference (unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`), or a refused schedule: send_at_too_far, send_at_requires_save, recipient_not_permitted, recipient_not_verified (the account is not yet vetted and may send only to its verified recipients; carries the first `address` that is not one)"
+            "description": "slot_with_content (a slot beside a subject, text or html) or slot_values_invalid (the slot will not render with the values given), validation_failed, no_recipients, too_many_recipients (more distinct recipients than the request's own bound of 100, which `limit` names; a plan's lower number is the 403 of the same name), auto_submitted_conflict (autoSubmitted alongside a free-form Auto-Submitted header), a refused build (header_newline, reserved_header, invalid_address, invalid_base64, …), a bad attachment reference (unknown_message / unknown_part / part_unresolvable, each carrying the offending `index`), or a refused schedule: send_at_too_far, send_at_requires_save, recipient_not_permitted, recipient_not_verified (the account is not yet vetted and may send only to its verified recipients; carries the first `address` that is not one)"
           },
           "401": {
             "content": {
@@ -49251,7 +49283,7 @@
                 }
               }
             },
-            "description": "Permanent — slot_mailbox_not_platform (a slot sent from a mailbox not of the platform's own account) | sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`; carries `scope` and `required`) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients (the submission's own recipient count exceeds the sender's recipient cap — an empty window would refuse it too, so unlike the 429 rate_limited this can never clear; distinct from the 400 of the same name, which is the per-request recipient-list bound)"
+            "description": "Permanent — slot_mailbox_not_platform (a slot sent from a mailbox not of the platform's own account) | sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`; carries `scope` and `required`) | mailbox_gone (the sending mailbox was torn down mid-submission) | too_many_recipients, with `limit`: the message names more recipients than the account's plan allows one message (`reason: \"rcpts_per_message\"`, checked before anything is sent, a scheduled send included), or more than a day's or an hour's recipient cap holds on its own (`reason` names that axis). Either way an empty window would refuse it too, so unlike the 429 rate_limited it never clears: split the recipients across several sends. Distinct from the 400 of the same name, which is the request's own bound of 100 recipients"
           },
           "404": {
             "content": {
@@ -49805,7 +49837,7 @@
                 }
               }
             },
-            "description": "validation_failed, no_recipients, too_many_recipients, invalid_recipients (a To/Cc/Bcc header is not a valid address list, so the envelope cannot be derived — never guessed at), invalid_from (no usable Sender/From), invalid_address (an envelope address contains ASCII controls), ambiguous_sender (more than one Sender/From address, so no return path can be derived), or a malformed X-Delivery-Id"
+            "description": "validation_failed, no_recipients, too_many_recipients (more distinct recipients than the request's own bound of 100, which `limit` names; a plan's lower number is the 403 of the same name), invalid_recipients (a To/Cc/Bcc header is not a valid address list, so the envelope cannot be derived — never guessed at), invalid_from (no usable Sender/From), invalid_address (an envelope address contains ASCII controls), ambiguous_sender (more than one Sender/From address, so no return path can be derived), or a malformed X-Delivery-Id"
           },
           "401": {
             "content": {
@@ -49825,7 +49857,7 @@
                 }
               }
             },
-            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`) | recipient_not_permitted (a recipient of the draft is outside the submitting credential's own allowlist, naming the `address`) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under)"
+            "description": "Permanent — sender_not_owned | sender_not_local | sending_disabled (the mailbox, its domain, or its account may not send) | credential_scope (the credential is scoped below `send`) | recipient_not_permitted (a recipient of the draft is outside the submitting credential's own allowlist, naming the `address`) | from_not_owned | from_sending_disabled (an RFC 5322 From address is not this mailbox's to send under) | too_many_recipients (`reason: \"rcpts_per_message\"`: the draft names more recipients than the account's plan allows one message, `limit` its number; permanent, so split the recipients across several drafts)"
           },
           "404": {
             "content": {
@@ -50706,6 +50738,18 @@
             }
           },
           {
+            "description": "With `submission=true`: how many recipients the message names with this one, its RCPT TO's place among the recipients the transaction has accepted so far (1 for the first). Past the sending account's recipients a message the answer is 403 too_many_recipients carrying `limit`. Omitted: not judged, and the MTA's own bound is the only one at RCPT TO.",
+            "in": "query",
+            "name": "recipients",
+            "required": false,
+            "schema": {
+              "description": "With `submission=true`: how many recipients the message names with this one, its RCPT TO's place among the recipients the transaction has accepted so far (1 for the first). Past the sending account's recipients a message the answer is 403 too_many_recipients carrying `limit`. Omitted: not judged, and the MTA's own bound is the only one at RCPT TO.",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
             "description": "`true`: judge the SENDER's rules for an authenticated submission instead of the recipient's inbound acceptance (default false). Accepted from system and account keys; a sender the caller may not send as, or one that is held, frozen or gone, is accepted here and refused by /deliver/outbound at DATA, which answers it for the whole message.",
             "in": "query",
             "name": "submission",
@@ -50749,7 +50793,7 @@
                 }
               }
             },
-            "description": "FIVE codes, split by the error CODE — the MTA must never map this status alone. receiving_disabled: the address resolves but its domain is not accepting, or the destination mailbox's receive hold is `disabled` (then `policyScope: \"mailbox\"`) — a recipient verdict, reject permanently (550); the mailbox-scope one is never cached, since its owner can clear it. recipient_not_verified, TWO meanings by mode, both permanent (550) and never cached, since vetting the account or the owner confirming lifts them. By default: the address forwards (a remote route, a pattern or catch-all whose destination is remote, or an alias pattern) for an account that is not yet vetted, to a target that is not one of its verified recipients (an address on its own domains, or one whose owner confirmed it; another customer's address is not) — a recipient verdict; /deliver/inbound refuses the same recipient with the same code at DATA. With `submission=true`: the SENDING account is not yet vetted, so it may send only to its verified recipients, and this recipient is neither; the body carries `source: \"verified_recipients\"`, the same code and source /deliver/outbound answers at DATA, for this recipient alone (550 5.7.1), and the verdict depends on `from`. sender_blocked: an address list refuses this MAIL FROM for this recipient — also 550, but note the verdict depends on `from`, so it must NOT be cached under the recipient key alone. recipient_not_permitted (`submission=true` only): one of the SENDER's own policies excludes this recipient, the identity's or credential's recipient allowlist or the sender's outbound address lists; `source` says which (`permitted_recipients` | `address_list`), and an address list also names the deciding `list` and `pattern`. Permanent: 550 5.7.1 for this recipient alone, the same code /deliver/outbound answers at DATA; it depends on `from`, so it may not be cached under the recipient alone. insufficient_scope: this caller may not check at all (mailbox principals never can; with `submission=true`, neither can a system key that must name `X-Acting-Credential` and did not, nor one that sent `X-Acting-Credential` without its `X-Acting-Identity` companion) — a fault in the CALLER's configuration, not a fact about the recipient, so it must DEFER (451). A 550 here rejects every message the server sees, on a mistake an operator can fix in a minute."
+            "description": "SIX codes, split by the error CODE — the MTA must never map this status alone. receiving_disabled: the address resolves but its domain is not accepting, or the destination mailbox's receive hold is `disabled` (then `policyScope: \"mailbox\"`) — a recipient verdict, reject permanently (550); the mailbox-scope one is never cached, since its owner can clear it. recipient_not_verified, TWO meanings by mode, both permanent (550) and never cached, since vetting the account or the owner confirming lifts them. By default: the address forwards (a remote route, a pattern or catch-all whose destination is remote, or an alias pattern) for an account that is not yet vetted, to a target that is not one of its verified recipients (an address on its own domains, or one whose owner confirmed it; another customer's address is not) — a recipient verdict; /deliver/inbound refuses the same recipient with the same code at DATA. With `submission=true`: the SENDING account is not yet vetted, so it may send only to its verified recipients, and this recipient is neither; the body carries `source: \"verified_recipients\"`, the same code and source /deliver/outbound answers at DATA, for this recipient alone (550 5.7.1), and the verdict depends on `from`. sender_blocked: an address list refuses this MAIL FROM for this recipient — also 550, but note the verdict depends on `from`, so it must NOT be cached under the recipient key alone. recipient_not_permitted (`submission=true` only): one of the SENDER's own policies excludes this recipient, the identity's or credential's recipient allowlist or the sender's outbound address lists; `source` says which (`permitted_recipients` | `address_list`), and an address list also names the deciding `list` and `pattern`. Permanent: 550 5.7.1 for this recipient alone, the same code /deliver/outbound answers at DATA; it depends on `from`, so it may not be cached under the recipient alone. too_many_recipients (`submission=true` with `recipients` only, `reason: \"rcpts_per_message\"`): the SENDING account's plan allows `limit` recipients a message, and this one would be past it. Answer 452 4.5.3 for this recipient (RFC 5321 §4.5.3.1.10), so the client sends it, and any after it, in another transaction; it depends on `from` and on the count, so it is never cached. insufficient_scope: this caller may not check at all (mailbox principals never can; with `submission=true`, neither can a system key that must name `X-Acting-Credential` and did not, nor one that sent `X-Acting-Credential` without its `X-Acting-Identity` companion) — a fault in the CALLER's configuration, not a fact about the recipient, so it must DEFER (451). A 550 here rejects every message the server sees, on a mistake an operator can fix in a minute."
           },
           "404": {
             "content": {
