@@ -443,12 +443,20 @@
             },
             "type": "array"
           },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; retained on cursor pages, absent when the range was read",
+            "type": "string"
+          },
           "nextCursor": {
             "description": "Pagination cursor for next page of events",
             "type": "string"
           },
           "range": {
             "description": "Time range queried (e.g. '24h', '7d')",
+            "type": "string"
+          },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
             "type": "string"
           }
         },
@@ -4671,12 +4679,20 @@
             },
             "type": "array"
           },
+          "from": {
+            "description": "The effective explicit window's start (ISO 8601), after retention-edge clamping; retained on cursor pages, absent when the range was read",
+            "type": "string"
+          },
           "nextCursor": {
             "description": "Pagination cursor for next page of events",
             "type": "string"
           },
           "range": {
             "description": "Time range queried (e.g. '24h', '7d')",
+            "type": "string"
+          },
+          "to": {
+            "description": "The explicit window's end (ISO 8601, exclusive), echoed with `from`",
             "type": "string"
           }
         },
@@ -21051,7 +21067,7 @@
     },
     "/api/v1/accounts/{accountId}/events": {
       "get": {
-        "description": "Returns paginated delivery events and attempt history across every domain owned by an account, with filtering by time range, one or more outcomes, source, mailbox, or the prepared email that sent it.",
+        "description": "Returns paginated delivery events and attempt history across every domain owned by an account, with filtering by time range or an explicit window (`from`, optional `to`), one or more outcomes, source, mailbox, or the prepared email that sent it.",
         "operationId": "get_AccountEvents",
         "parameters": [
           {
@@ -21079,6 +21095,28 @@
                 "7d",
                 "30d"
               ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the last 30 days, as far back as `range` reads. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the last 30 days, as far back as `range` reads. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
               "type": "string"
             }
           },
@@ -21287,7 +21325,7 @@
                 }
               }
             },
-            "description": "validation_failed or invalid_cursor"
+            "description": "validation_failed, invalid_cursor, or window_out_of_range: `to` without `from`, or a window not inside the last 30 days"
           },
           "401": {
             "content": {
@@ -28644,7 +28682,7 @@
     },
     "/api/v1/domains/{domain}/events": {
       "get": {
-        "description": "Returns paginated detailed delivery events and attempt history for a domain with filtering by time range, one or more outcomes, source, mailbox, or the prepared email that sent it.",
+        "description": "Returns paginated detailed delivery events and attempt history for a domain with filtering by time range or an explicit window (`from`, optional `to`), one or more outcomes, source, mailbox, or the prepared email that sent it.",
         "operationId": "get_DomainEvents",
         "parameters": [
           {
@@ -28672,6 +28710,28 @@
                 "7d",
                 "30d"
               ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window start (ISO 8601, UTC), in place of `range`: within the last 30 days, as far back as `range` reads. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "description": "Window start (ISO 8601, UTC), in place of `range`: within the last 30 days, as far back as `range` reads. Starts up to 60 seconds before the retention edge are clamped to it; older starts are refused.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "description": "Window end (ISO 8601, UTC, exclusive); now when left out",
+              "format": "date-time",
               "type": "string"
             }
           },
@@ -28880,7 +28940,7 @@
                 }
               }
             },
-            "description": "validation_failed or invalid_cursor"
+            "description": "validation_failed, invalid_cursor, or window_out_of_range: `to` without `from`, or a window not inside the last 30 days"
           },
           "401": {
             "content": {
