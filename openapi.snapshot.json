@@ -21296,12 +21296,12 @@
             }
           },
           {
-            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
+            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds. A cursor whose read began more than a day past the log's 30 days is refused with invalid_cursor: start the read again.",
             "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
-              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
+              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds. A cursor whose read began more than a day past the log's 30 days is refused with invalid_cursor: start the read again.",
               "type": "string"
             }
           }
@@ -28911,12 +28911,12 @@
             }
           },
           {
-            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
+            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds. A cursor whose read began more than a day past the log's 30 days is refused with invalid_cursor: start the read again.",
             "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
-              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
+              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds. A cursor whose read began more than a day past the log's 30 days is refused with invalid_cursor: start the read again.",
               "type": "string"
             }
           }
@@ -65427,12 +65427,12 @@
             }
           },
           {
-            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
+            "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds. A cursor whose read began more than a day past the log's 30 days is refused with invalid_cursor: start the read again.",
             "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
-              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds.",
+              "description": "Opaque page cursor from a previous response. A continuation reads what its first page read: a windowed cursor keeps its from/to bounds and a range cursor stays a range read, whatever from/to the query adds. A cursor whose read began more than a day past the log's 30 days is refused with invalid_cursor: start the read again.",
               "type": "string"
             }
           }
