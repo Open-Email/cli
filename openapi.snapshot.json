@@ -4415,9 +4415,28 @@
             "description": "Domain name",
             "type": "string"
           },
+          "hasIcon": {
+            "description": "True if a square icon (the browser tab icon) has been uploaded",
+            "type": "boolean"
+          },
           "hasLogo": {
             "description": "True if a custom logo image has been uploaded",
             "type": "boolean"
+          },
+          "iconType": {
+            "description": "Media type of the stored icon (always image/png), or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "iconUpdatedAt": {
+            "description": "Epoch seconds of the last icon write, or null; also acts as the icon's cache version",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "logoType": {
             "description": "Media MIME type of the stored logo, or null",
@@ -4440,7 +4459,10 @@
           "brandName",
           "hasLogo",
           "logoType",
-          "logoUpdatedAt"
+          "logoUpdatedAt",
+          "hasIcon",
+          "iconType",
+          "iconUpdatedAt"
         ],
         "type": "object"
       },
@@ -11824,6 +11846,21 @@
               "null"
             ]
           },
+          "iconType": {
+            "description": "Media type of the public square icon (always image/png), or null",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "iconUpdatedAt": {
+            "description": "Timestamp when the public icon was last updated in epoch seconds, or null; append it as `?v=` to the icon URL so a replaced icon is fetched at once",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "logoType": {
             "description": "Media type of the public logo, or null",
             "type": [
@@ -11843,7 +11880,9 @@
         "required": [
           "brandName",
           "logoType",
-          "logoUpdatedAt"
+          "logoUpdatedAt",
+          "iconType",
+          "iconUpdatedAt"
         ],
         "type": "object"
       },
@@ -26815,7 +26854,7 @@
         "x-max-json-body-bytes": 1048576
       },
       "get": {
-        "description": "Returns white-label branding configuration (brand name and logo metadata) for a domain.",
+        "description": "Returns white-label branding configuration (brand name, logo and icon metadata) for a domain.",
         "operationId": "get_DomainBrandingGet",
         "parameters": [
           {
@@ -26887,7 +26926,7 @@
     },
     "/api/v1/domains/{domain}/logo": {
       "put": {
-        "description": "Uploads a raw image file (PNG, JPEG, WebP, SVG) to set as the white-label logo for a domain.",
+        "description": "Uploads a raw image file (PNG, JPEG, WebP or SVG, up to 128 KiB) as the white-label logo for a domain. A PNG, JPEG or WebP may be at most 360 pixels wide and 132 tall: the webmail header draws the logo at most 120 pixels wide and the sign-in card at most 44 tall, so that is the largest it is shown on a screen of three device pixels a pixel. Only the image's header is read, for its width and height, and it must be the format the Content-Type names: its pixels are not decoded. An SVG has no such header, so its width and height are not checked; it must open with `<`, as XML does. Replacing the logo moves `logoUpdatedAt`, the cache version clients append as `?v=`.",
         "operationId": "put_DomainLogoUpdate",
         "parameters": [
           {
@@ -26901,12 +26940,12 @@
             }
           },
           {
-            "description": "Body size in bytes (required)",
+            "description": "Body size in bytes (required); must equal the bytes sent",
             "in": "header",
             "name": "content-length",
             "required": false,
             "schema": {
-              "description": "Body size in bytes (required)",
+              "description": "Body size in bytes (required); must equal the bytes sent",
               "type": "string"
             }
           },
@@ -26991,7 +27030,7 @@
                 }
               }
             },
-            "description": "Image exceeds maximum allowed logo size limit"
+            "description": "too_large: the image exceeds the 128 KiB logo size limit"
           },
           "415": {
             "content": {
@@ -27001,7 +27040,17 @@
                 }
               }
             },
-            "description": "unsupported_media_type"
+            "description": "unsupported_media_type: `type` names what was sent, parameters stripped"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The image is not a usable logo. `invalid_logo`: the body is not the format its type names (a PNG with no PNG signature or IHDR, a JPEG whose markers do not lead to a frame header, a WebP whose first chunk is not VP8, VP8L or VP8X, an SVG that does not open with `<`, or a declared width or height of zero or past the format's maximum), or its length differs from Content-Length; `detail` says which. `logo_too_large`: a PNG, JPEG or WebP over 360 pixels wide or 132 tall, with the measured `width` and `height`."
           },
           "503": {
             "content": {
@@ -27098,9 +27147,232 @@
         ]
       }
     },
+    "/api/v1/domains/{domain}/icon": {
+      "put": {
+        "description": "Uploads a raw square PNG (up to 128 KiB) as the domain's icon: the browser tab icon its white-label webmail wears, beside the logo. The PNG must be square and from 32x32 to 1024x1024 pixels; 180x180 or larger is recommended, so the same file can serve as the home-screen (apple-touch) icon. Only the PNG's header is read, for its width and height: its pixels are not decoded. SVG is not accepted, since nothing bounds what an SVG costs a browser to draw. Replacing the icon moves `iconUpdatedAt`, the cache version clients append as `?v=`.",
+        "operationId": "put_DomainIconUpdate",
+        "parameters": [
+          {
+            "description": "Customer domain name (e.g. example.com)",
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "description": "Customer domain name (e.g. example.com)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Body size in bytes (required); must equal the bytes sent",
+            "in": "header",
+            "name": "content-length",
+            "required": false,
+            "schema": {
+              "description": "Body size in bytes (required); must equal the bytes sent",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Image MIME type (image/png)",
+            "in": "header",
+            "name": "content-type",
+            "required": false,
+            "schema": {
+              "description": "Image MIME type (image/png)",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "description": "Raw image file bytes",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainBranding"
+                }
+              }
+            },
+            "description": "Icon uploaded successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOrValidation"
+                }
+              }
+            },
+            "description": "empty_body"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Domain not found or not accessible to this principal"
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Content-Length header required"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "too_large: the image exceeds the 128 KiB icon size limit"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unsupported_media_type: only image/png is accepted, so SVG is refused too; `type` names what was sent, parameters stripped"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The image is not a usable icon. `invalid_icon`: the body is not the PNG its type claims (no PNG signature, the first chunk is not IHDR, too short to hold the header, a width or height of zero or past the PNG maximum), or its length differs from Content-Length; `detail` says which. `icon_not_square`: the PNG's width and height differ. `icon_too_small`: the PNG is under 32 pixels a side. `icon_too_large`: the PNG is over 1024 pixels a side. The last three carry the measured `width` and `height`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the platform's storage could not answer just now; retry after the Retry-After window. Any operation can answer this. A write that got it may have been applied, so retry it with the same idempotency key where it takes one, or read the state back first (see Transient failures in the API description)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Upload domain icon",
+        "tags": [
+          "Domains"
+        ]
+      },
+      "delete": {
+        "description": "Deletes the stored icon for a domain. The logo and brand name are untouched; a domain left publishing nothing answers the public branding read with 404 again.",
+        "operationId": "delete_DomainIconDelete",
+        "parameters": [
+          {
+            "description": "Customer domain name (e.g. example.com)",
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "description": "Customer domain name (e.g. example.com)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedResult"
+                }
+              }
+            },
+            "description": "Icon removed successfully"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "unauthorized: the bearer credential is missing, malformed, expired, or revoked. Carries a `WWW-Authenticate: Bearer` challenge"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Domain not found or not accessible to this principal"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the platform's storage could not answer just now; retry after the Retry-After window. Any operation can answer this. A write that got it may have been applied, so retry it with the same idempotency key where it takes one, or read the state back first (see Transient failures in the API description)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Delete domain icon",
+        "tags": [
+          "Domains"
+        ]
+      }
+    },
     "/api/v1/branding/{domain}": {
       "get": {
-        "description": "Returns public branding metadata (brand name and logo info) for login page custom styling. No credential: a login screen needs this before anyone signs in. An unknown domain and an unbranded one answer the same 404.",
+        "description": "Returns public branding metadata (brand name, logo and icon info) for login page custom styling. No credential: a login screen needs this before anyone signs in. An unknown domain and an unbranded one answer the same 404; a domain publishing any one of the three answers 200.",
         "operationId": "get_PublicBrandingGet",
         "parameters": [
           {
@@ -27241,6 +27513,91 @@
         },
         "security": [],
         "summary": "Get public logo image",
+        "tags": [
+          "Domains"
+        ]
+      }
+    },
+    "/api/v1/branding/{domain}/icon": {
+      "get": {
+        "description": "Returns raw image bytes for a domain's published square icon, the browser tab icon of its white-label webmail. No credential: a login screen needs this before anyone signs in. Served with the logo's headers: cacheable publicly for an hour, so append `iconUpdatedAt` from the branding read as `?v=` to see a replaced icon at once. The icon is always a square PNG.",
+        "operationId": "get_PublicBrandingIconGet",
+        "parameters": [
+          {
+            "description": "Customer domain name (e.g. example.com)",
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "description": "Customer domain name (e.g. example.com)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Revalidation ETag from previous response",
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "description": "Revalidation ETag from previous response",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "description": "Raw image bytes",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Icon image bytes",
+            "headers": {
+              "ETag": {
+                "description": "Content hash for revalidation; send it back as If-None-Match",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No published icon or domain not found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "temporary_failure: the platform's storage could not answer just now; retry after the Retry-After window. Any operation can answer this. A write that got it may have been applied, so retry it with the same idempotency key where it takes one, or read the state back first (see Transient failures in the API description)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying, when the wait is known",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "summary": "Get public icon image",
         "tags": [
           "Domains"
         ]
