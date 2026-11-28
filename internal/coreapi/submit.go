@@ -24,6 +24,15 @@ type ScheduledLegResult struct {
 	Status     string `json:"status"`
 	DeliveryID string `json:"deliveryId"`
 	Error      string `json:"error,omitempty"`
+	// Source, List and Pattern say which of the sender's own policies refused
+	// the leg, as on SendRecipientResult: Source on recipient_not_permitted or
+	// recipient_not_verified (permitted_recipients | address_list |
+	// verified_recipients), and on an address-list refusal List and Pattern
+	// name the list and the entry that decided (Pattern is `*@*` for a
+	// block-all). Absent on every other leg.
+	Source  string `json:"source,omitempty"`
+	List    string `json:"list,omitempty"`
+	Pattern string `json:"pattern,omitempty"`
 }
 
 // ScheduledSend is a submission core is still working on. SubmitDraft answers

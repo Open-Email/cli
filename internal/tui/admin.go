@@ -17,11 +17,17 @@ import (
 // `openemail admin suppressions add`, deliberately CLI-only, because it is a
 // deployment-wide write no report backs and it should not be one keystroke away
 // while browsing a list.
+//
+// Since core #884 a proven complaint blocks only the account that sent the
+// mail, and that row is not in this listing (it is read with `?accountId=`):
+// what shows here is hard bounces, blocks entered by hand, and complaints from
+// before the scoping. The caption says so, so an empty screen is not read as
+// "nobody complained".
 func suppressionsDesc() resourceDesc {
 	return resourceDesc{
 		key:     "suppressions",
 		name:    "Suppressions",
-		caption: "deployment-global do-not-send list · normally written from bounce and complaint reports",
+		caption: "deployment-global do-not-send list · account complaints are not listed here",
 		columns: []column{
 			{title: "ADDRESS", flex: true},
 			{title: "REASON", width: 12},
@@ -91,7 +97,9 @@ func suppressionLiftConfirm(ctx context.Context, ui *Options, s coreapi.Suppress
 			if _, err := c.LiftSuppression(sctx, s.Address); err != nil {
 				return "", err
 			}
-			return s.Address + " is clear to send", nil
+			// Not "clear to send": an account complaint is a separate row
+			// this lift does not touch.
+			return "global suppression on " + s.Address + " lifted", nil
 		},
 	})
 }

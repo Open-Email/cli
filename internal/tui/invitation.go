@@ -347,6 +347,9 @@ func invWhenLabel(inv *coreapi.MessageInvitation) string {
 // carries a deadline alone. Anchoring on the start would render its only date as
 // nothing at all. An EVENT with no start stays blank — core does not produce
 // one, and inventing a start from an end would be worse than saying nothing.
+//
+// An all-day invitation (AllDay: DTSTART is a DATE) is shown as dates, by
+// invAllDay.
 func invWhen(inv *coreapi.MessageInvitation) string {
 	if inv.DTStart == nil {
 		if inv.DTEnd != nil && invSubject(inv) == "Task" {
@@ -354,11 +357,38 @@ func invWhen(inv *coreapi.MessageInvitation) string {
 		}
 		return ""
 	}
+	if inv.AllDay {
+		return invAllDay(*inv.DTStart, inv.DTEnd, invSubject(inv) == "Task")
+	}
 	when := fmtEpoch(*inv.DTStart)
 	if inv.DTEnd != nil {
 		when += " → " + fmtEpoch(*inv.DTEnd)
 	}
 	return when
+}
+
+// invAllDay renders an all-day window as core says to: a DATE start is that
+// date's UTC midnight, so it is the UTC calendar date, with no time. The local
+// clock fmtEpoch reads would invent a time, and west of UTC put the event on
+// the day before.
+//
+// An event's DATE end is exclusive (RFC 5545 §3.6.1): a one-day event on the
+// 26th ends at the 27th's midnight, so the last day shown is the one before
+// its end, and a one-day event shows its one date. A to-do's end is its DUE,
+// the day it is due, shown as it is. The CLI's invitationAllDay is the same
+// rule.
+func invAllDay(start int64, end *int64, task bool) string {
+	when := time.Unix(start, 0).UTC().Format("2006-01-02")
+	if end != nil && *end > start {
+		lastDay := *end
+		if !task {
+			lastDay-- // a second before the exclusive end: the event's last day
+		}
+		if last := time.Unix(lastDay, 0).UTC().Format("2006-01-02"); last != when {
+			when += " → " + last
+		}
+	}
+	return when + " (all day)"
 }
 
 // invAttendees summarizes the guest list, keeping the real total visible when

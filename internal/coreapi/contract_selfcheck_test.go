@@ -150,6 +150,80 @@ func TestContractHarnessDescendsInlineObjects(t *testing.T) {
 	}
 }
 
+// Core's nullable enums are a union with a null LITERAL arm since core
+// 2f97d38a, `z.union([z.enum([...]), z.literal(null)])`, which its generator
+// writes as the three arms below. The middle arm admits null alone, whatever
+// its `type` says, so the property is a string or null: a *string matches, a
+// plain string cannot hold the null, and a number is the wrong kind. Read by
+// its `type`, the arm made every such property an "object" and failed eleven
+// structs whose Go types were right.
+func TestContractHarnessReadsNullLiteralArms(t *testing.T) {
+	schemas := map[string]any{
+		"Held": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"hold": map[string]any{
+					"anyOf": []any{
+						map[string]any{"enum": []any{"disabled", "paused"}, "type": "string"},
+						map[string]any{"enum": []any{nil}, "type": []any{"object", "null"}},
+						map[string]any{"type": "null"},
+					},
+				},
+			},
+		},
+	}
+	props := schemas["Held"].(map[string]any)["properties"].(map[string]any)
+	issuesFor := func(v any) []string {
+		return compare(pairing{comp: "Held"}, schemas, props, flattenGoFields(reflect.TypeOf(v)))
+	}
+
+	type pointer struct {
+		Hold *string `json:"hold"`
+	}
+	if got := issuesFor(pointer{}); len(got) != 0 {
+		t.Fatalf("a *string should match a string-or-null union, got: %v", got)
+	}
+	type plain struct {
+		Hold string `json:"hold"`
+	}
+	if !hasIssue(issuesFor(plain{}), "nullable") {
+		t.Error("expected a nullability issue for a plain string under a union with a null arm")
+	}
+	type number struct {
+		Hold *int64 `json:"hold"`
+	}
+	if !hasIssue(issuesFor(number{}), "spec kind") {
+		t.Error("expected a kind mismatch for a number under a string-or-null union")
+	}
+}
+
+// isNullSchema says "null only" for exactly the shapes that admit nothing but
+// null. An enum or a type list that also admits a value is no null arm: taking
+// it for one would hide that value's kind from the comparison.
+func TestIsNullSchema(t *testing.T) {
+	cases := []struct {
+		name   string
+		schema map[string]any
+		want   bool
+	}{
+		{"type null", map[string]any{"type": "null"}, true},
+		{"type list of null", map[string]any{"type": []any{"null"}}, true},
+		{"enum of null, typed object (core's z.literal(null))", map[string]any{"enum": []any{nil}, "type": []any{"object", "null"}}, true},
+		{"const null", map[string]any{"const": nil}, true},
+		{"enum with a value beside null", map[string]any{"enum": []any{"a", nil}}, false},
+		{"nullable string", map[string]any{"type": []any{"string", "null"}}, false},
+		{"const value", map[string]any{"const": "x"}, false},
+		{"string", map[string]any{"type": "string"}, false},
+		{"no type", map[string]any{}, false},
+		{"nil", nil, false},
+	}
+	for _, c := range cases {
+		if got := isNullSchema(c.schema); got != c.want {
+			t.Errorf("%s: isNullSchema = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func hasIssue(issues []string, substr string) bool {
 	for _, i := range issues {
 		if strings.Contains(i, substr) {

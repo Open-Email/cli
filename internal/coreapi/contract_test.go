@@ -536,12 +536,35 @@ func variantList(schema map[string]any) []any {
 	return nil
 }
 
+// isNullSchema reports a schema whose ONLY admitted value is null: the `null`
+// arm of a union. Core writes that arm two ways. `.nullable()` gives
+// `{"type": "null"}`; `z.union([z.enum([...]), z.literal(null)])`, which core
+// uses for its nullable enums since 2f97d38a (so Ajv admits the null an
+// `enum` beside `type: ["string", "null"]` refused), gives
+// `{"enum": [null], "type": ["object", "null"]}`. The `type` there is
+// generator noise: an `enum` (or `const`) of null admits null and nothing
+// else, so reading that arm by its `type` called every such string-or-null
+// field an object.
 func isNullSchema(schema map[string]any) bool {
 	if schema == nil {
 		return false
 	}
-	if s, ok := schema["type"].(string); ok {
-		return s == "null"
+	if v, ok := schema["const"]; ok {
+		return v == nil
+	}
+	if values, ok := schema["enum"].([]any); ok && len(values) > 0 {
+		for _, v := range values {
+			if v != nil {
+				return false
+			}
+		}
+		return true
+	}
+	switch t := schema["type"].(type) {
+	case string:
+		return t == "null"
+	case []any:
+		return len(t) == 1 && t[0] == "null"
 	}
 	return false
 }

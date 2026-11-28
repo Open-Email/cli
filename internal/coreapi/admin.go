@@ -51,21 +51,43 @@ type VerifyResult struct {
 	Scope string `json:"scope"`
 }
 
-// Reindex re-enqueues FTS index jobs for a mailbox (system-only). limit bounds the
-// batch (0 = unbounded). Returns the count enqueued. Idempotent repair.
-func (c *Client) Reindex(ctx context.Context, mailboxID string, limit int) (int64, error) {
+// ReindexPage is one answer of POST /mailboxes/:id/reindex.
+type ReindexPage struct {
+	// Enqueued is how many messages THIS call queued for indexing.
+	Enqueued int64 `json:"enqueued"`
+	// Last is the id of the last message queued, the `after` of the next page:
+	// nil when the call queued none, and from a core older than core #888,
+	// which answers no cursor.
+	Last *string `json:"last"`
+}
+
+// Reindex queues full-text index jobs for ONE PAGE of a mailbox's unindexed
+// messages, in message id order (system-only). limit bounds the page (0 =
+// core's default, 500; at most 5000), and after starts it past that message
+// id, the previous page's Last ("" = from the first).
+//
+// One call never covers a mailbox larger than a page, and calling again
+// without after does not either: a queued message stays unindexed until its
+// job runs, so the same first page is queued again. Core #888 added the cursor
+// for exactly that (core#886). Idempotent repair: a page queued twice costs a
+// second index job per message, nothing else.
+func (c *Client) Reindex(ctx context.Context, mailboxID string, limit int, after string) (*ReindexPage, error) {
 	q := url.Values{}
 	if limit > 0 {
 		q.Set("limit", itoa(limit))
 	}
-	var out struct {
-		Enqueued int64 `json:"enqueued"`
+	if after != "" {
+		q.Set("after", after)
 	}
+	var out ReindexPage
 	err := c.doJSON(ctx, request{
 		method: http.MethodPost, path: "/mailboxes/" + escapeSegment(mailboxID) + "/reindex",
 		query: q, idempotent: true,
 	}, &out)
-	return out.Enqueued, err
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // VerifyLogin verifies IMAP/SMTP credentials (system-only). 401 invalid_credentials

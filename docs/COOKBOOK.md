@@ -264,7 +264,8 @@ account's own lists, the same two screens the web console has: **Do-Not-Send**
 verdict on each row; `a` adds, `f` flips block ↔ allow, `d` removes). Every
 other list (per-domain, per-mailbox, or more named lists) is `openemail lists`.
 With a system key the sidebar carries **Suppressions** instead (the
-platform-wide do-not-send list, `u` lifts an entry) and **DKIM** (key
+deployment-global do-not-send list, which leaves out account complaints;
+`u` lifts an entry) and **DKIM** (key
 generations, `n` stages a rotation, `A` activates a staged key).
 
 Two screens deliberately state a verdict rather than just listing rows, because
@@ -847,17 +848,30 @@ openemail --json api GET /accounts | jq '.accounts[].id'      # any route + jq
 ## "Why is mail to this address not going out?" (operator)
 
 ```sh
-openemail admin suppressions get bounced@example.com   # 404 here means clear to send
-openemail admin suppressions list --all                 # the whole do-not-send list
+openemail admin suppressions get bounced@example.com   # is it on the global list?
+openemail admin suppressions list --all                 # the whole global list
 openemail admin suppressions lift bounced@example.com   # once the cause is fixed
 ```
 
-The suppression list is **deployment-global**: an address on it is refused for
-every account, because the evidence is a receiver's own hard bounce or spam
-complaint rather than a per-tenant setting. Rows are normally written by the
-feedback-loop consumer and the relay's own in-session bounce writer; `add` is
-the operator's stand-in for a complaint the consumer could not prove. `get` on
-a clear address is a normal "not suppressed" answer, not a failure.
+The platform's own suppressions follow their evidence. A **hard bounce** (the
+address does not exist) is **deployment-global**: refused for every account. A
+**spam complaint** is filed against the **account whose mail drew it** and
+blocks that account alone, so one tenant's complaint never stops another from
+mailing the same person. Rows are normally written by the feedback-loop consumer
+and the relay's own in-session bounce writer; `add` is the operator's stand-in
+for a complaint the consumer could not prove, and it blocks every account.
+
+`admin suppressions` reads and changes the **global** list: hard bounces, blocks
+entered by hand, and complaints from before core scoped them, which stay global
+until an operator moves them. `get` on an address with no global row is a normal
+"not suppressed" answer, not a failure, and it says nothing of account
+complaints. Those go through the API, with the account's id:
+
+```sh
+openemail api GET /suppressions --query accountId=ACCOUNT_ID                           # an account's complaints
+openemail api GET /suppressions/them@example.net --query accountId=ACCOUNT_ID          # one of them
+openemail api DELETE /suppressions/them@example.net --query accountId=ACCOUNT_ID       # lift it (system key only)
+```
 
 Lift with care. A hard bounce that is still a hard bounce simply re-suppresses on
 the next attempt, and a lifted complaint means mailing someone who asked you to
@@ -868,7 +882,9 @@ Tenants have their own, separate answer to the same question. An **account's
 own do-not-send list** (`openemail suppressions …`, no system key needed) holds
 addresses that account decided never to mail, and its `remove` also lifts a
 platform **hard-bounce** block on the address — the self-healing case an
-account key is allowed. A platform **complaint** row stays operator-only:
+account key is allowed. A platform **complaint** row stays operator-only to
+lift; an account key may read its own account's complaints with the first two
+`api` lines above:
 
 ```sh
 openemail suppressions add them@example.net --note "unsubscribed"

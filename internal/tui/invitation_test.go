@@ -168,6 +168,27 @@ func TestInvitationRendering(t *testing.T) {
 		t.Error("a dateless invitation must render no When row")
 	}
 
+	// An all-day invitation (core's allDay) is the UTC date with no time: its
+	// DATE start is that date's UTC midnight, which a local clock showed as a
+	// time, and west of UTC as the day before. An event's DATE end is
+	// exclusive, so a one-day event shows one date; a to-do's DUE is its day.
+	day := int64(1795651200) // 2026-11-26T00:00:00Z
+	next, third := day+86400, day+3*86400
+	vevent, vtodo := "VEVENT", "VTODO"
+	for _, c := range []struct {
+		name string
+		inv  coreapi.MessageInvitation
+		want string
+	}{
+		{"one-day event", coreapi.MessageInvitation{Component: &vevent, DTStart: &day, DTEnd: &next, AllDay: true}, "2026-11-26 (all day)"},
+		{"three-day event", coreapi.MessageInvitation{Component: &vevent, DTStart: &day, DTEnd: &third, AllDay: true}, "2026-11-26 → 2026-11-28 (all day)"},
+		{"to-do due on the 29th", coreapi.MessageInvitation{Component: &vtodo, DTStart: &day, DTEnd: &third, AllDay: true}, "2026-11-26 → 2026-11-29 (all day)"},
+	} {
+		if got := invWhen(&c.inv); got != c.want {
+			t.Errorf("%s: when = %q, want %q", c.name, got, c.want)
+		}
+	}
+
 	att := invAttendees(inv)
 	if !strings.Contains(att, "Ann (accepted)") {
 		t.Errorf("attendees = %q — a real answer should show", att)
